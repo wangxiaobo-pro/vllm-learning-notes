@@ -1,15 +1,15 @@
 <!doctype html>
-<html lang="en" data-visualize-standalone>
+<html lang="zh-CN" data-visualize-standalone>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Transformer 数据流探索器</title>
-<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:16px;background:inherit}iframe{display:block;width:100%;max-width:960px;min-width:0;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
 
 <style id="page-switch-styles">
-.page-switch{display:flex;flex-wrap:wrap;gap:8px;max-width:1200px;margin:0 auto 12px;font:14px/1.4 system-ui,"Microsoft YaHei",sans-serif}
+.page-switch{display:flex;flex-wrap:wrap;gap:8px;width:100%;max-width:960px;min-width:0;margin:0 auto 12px;font:14px/1.4 system-ui,"Microsoft YaHei",sans-serif}
 .page-switch a{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:8px 16px;border:1px solid light-dark(#cbd5e1,#475569);border-radius:8px;color:light-dark(#334155,#e2e8f0);text-decoration:none;background:light-dark(#f8fafc,#1e293b)}
 .page-switch a[aria-current="page"]{color:light-dark(#1d4ed8,#bfdbfe);background:light-dark(#eff6ff,#172554);border-color:light-dark(#3b82f6,#60a5fa);font-weight:650}
 .page-switch a:hover,.page-switch a:focus-visible{outline:2px solid light-dark(#60a5fa,#93c5fd);outline-offset:2px}
@@ -20,7 +20,7 @@ iframe#codex-visualization{height:calc(100vh - 5.2rem)}
 <body>
 <nav aria-label="学习页面" class="page-switch"><a href="transformer-structure-explorer.html" aria-current="page">结构讲解</a><a href="transformer-structure-explorer-matrices.html">真实矩阵计算</a></nav>
 <iframe id="codex-visualization" sandbox="allow-scripts" referrerpolicy="no-referrer" title="Transformer 数据流探索器" data-srcdoc="&lt;!doctype html&gt;
-&lt;html lang=&quot;en&quot; data-visualize-standalone&gt;
+&lt;html lang=&quot;zh-CN&quot; data-visualize-standalone&gt;
 &lt;head&gt;
 &lt;meta charset=&quot;utf-8&quot;&gt;
 &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
@@ -1803,13 +1803,14 @@ html&gt;body{padding:0}&lt;/style&gt;
     #llm-map h1 { margin: 0 0 5px; }
     #llm-map h2, #llm-map h3 { margin: 0 0 7px; }
     #llm-map .subtle { color: var(--soft); font-size: 0.88em; }
-    #llm-map .viz-controls { margin: 12px 0 14px; }
+    #llm-map .viz-controls { display: block; width: 100%; max-width: 620px; min-width: 0; margin: 12px auto 14px; }
+    #llm-map .viz-controls &gt; :is(.nav, .nav-row, .autoplay-row, .batch-row) { justify-content: center; }
     #llm-map .nav { display: flex; flex-wrap: wrap; gap: 6px; }
     #llm-map .nav-link { min-height: 36px; }
     #llm-map .nav-row { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 10px; margin: 10px 0 12px; }
     #llm-map .nav-path { color: var(--soft); font-size: 0.88em; margin-right: 2px; }
     #llm-map .jump-indicator { color: var(--active); font-size: 0.84em; min-height: 1.2em; }
-    #llm-map .toolbar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin: 10px 0 14px; }
+    #llm-map .toolbar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: center; width: 100%; max-width: 620px; min-width: 0; margin: 10px auto 14px; }
     #llm-map .toolbar label { display: inline-flex; align-items: center; gap: 8px; }
     #llm-map .toolbar select, #llm-map .toolbar input[type=&quot;range&quot;] { max-width: 180px; }
     #llm-map .stage { display: none; }
@@ -1911,6 +1912,7 @@ html&gt;body{padding:0}&lt;/style&gt;
     #llm-map .return-action { border-color: var(--active); color: var(--active); background: color-mix(in srgb, var(--active) 10%, transparent); font-weight: 600; }
     #llm-map .return-action:hover, #llm-map .return-action:focus-visible { background: color-mix(in srgb, var(--active) 18%, transparent); }
     #llm-map #module-page-canvas { min-height: 64px; }
+    #llm-map #module-page-canvas &gt; .viz-row { justify-content: center; width: 100%; max-width: 620px; margin-left: auto; margin-right: auto; }
     @media (max-width: 650px) { #llm-map .internal-branches { grid-template-columns: 1fr; } }
     #llm-map .kv { width: 100%; border-collapse: collapse; }
     #llm-map .kv td { padding: 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -2063,10 +2065,6 @@ html&gt;body{padding:0}&lt;/style&gt;
       font-size: 0.9em;
     }
     #llm-map .layer-shape .btn { white-space: nowrap; }
-      grid-template-columns: 1fr;
-      max-width: 620px;
-      margin: 0 auto;
-    }
     @media (max-width: 650px) {
       #llm-map .node { grid-template-columns: minmax(0, 1fr) minmax(112px, 0.72fr); }
       #llm-map .stack-row { grid-template-columns: 43px minmax(0, 1fr); }
@@ -2217,7 +2215,7 @@ html&gt;body{padding:0}&lt;/style&gt;
       &lt;div class=&quot;flow&quot;&gt;&lt;button class=&quot;node io&quot; type=&quot;button&quot; data-stack-step=&quot;ids&quot;&gt;&lt;span class=&quot;name&quot;&gt;Token IDs&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[B,T] = [2,4]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;[1,2,3,7] 与 [4,5,6,7]&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;&lt;button class=&quot;node io&quot; type=&quot;button&quot; data-stack-step=&quot;embed&quot;&gt;&lt;span class=&quot;name&quot;&gt;Embedding&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,4,8]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;每个 ID 查一行 8 维向量&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;&lt;span class=&quot;subtle&quot;&gt;进入同一条表示流&lt;/span&gt;&lt;/div&gt;
       &lt;div class=&quot;section-label&quot;&gt;层与层之间：上一层的 Y 变成下一层的 X&lt;/div&gt;
       &lt;div id=&quot;layer-stack&quot; class=&quot;stack&quot; aria-label=&quot;可调层数的 Transformer Block 堆叠&quot;&gt;&lt;/div&gt;
-      &lt;div class=&quot;flow&quot;&gt;&lt;span class=&quot;arrow&quot;&gt;↓&lt;/span&gt;&lt;/div&gt;
+      &lt;div class=&quot;flow&quot;&gt;&lt;span class=&quot;stack-arrow&quot; aria-hidden=&quot;true&quot;&gt;↓&lt;/span&gt;&lt;/div&gt;
       &lt;div class=&quot;flow&quot;&gt;&lt;button class=&quot;node norm&quot; type=&quot;button&quot; data-stack-step=&quot;finalnorm&quot;&gt;&lt;span class=&quot;name&quot;&gt;Final RMSNorm&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,4,8]&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;&lt;button class=&quot;node attn&quot; type=&quot;button&quot; data-stack-step=&quot;lmhead&quot;&gt;&lt;span class=&quot;name&quot;&gt;LM Head&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,4,8]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;8 维 → 8 个词表分数&lt;/span&gt;&lt;/button&gt;&lt;/div&gt;
       &lt;div class=&quot;callout&quot;&gt;&lt;strong&gt;层深 ≠ 生成步数：&lt;/strong&gt;一次输入的 4 个位置会在每个 Block 中一起计算；层数只是“表示被加工了多少轮”。&lt;/div&gt;
     &lt;/div&gt;

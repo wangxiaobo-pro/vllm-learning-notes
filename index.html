@@ -3,99 +3,121 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="按模块浏览 Transformer、vLLM 与 Ascend 的源码流程和交互演示。">
   <title>vLLM 学习笔记与交互演示</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { max-width: 860px; margin: 0 auto; padding: 48px 24px; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.7; background: Canvas; color: CanvasText; }
-    h1 { margin: 0 0 12px; font-size: clamp(24px, 4vw, 34px); }
-    h2 { margin: 0 0 8px; font-size: 21px; }
-    p { margin: 0 0 16px; }
-    main { display: grid; gap: 24px; margin-top: 32px; }
-    section { padding: 24px; border: 1px solid color-mix(in srgb, CanvasText 20%, Canvas); border-radius: 12px; }
-    nav { display: flex; flex-wrap: wrap; gap: 12px 24px; }
-    a { color: LinkText; text-underline-offset: 3px; }
-    footer { margin-top: 32px; font-size: 14px; }
-    @media (max-width: 480px) { body { padding: 24px 16px; } section { padding: 20px; } }
-  </style>
+  <link rel="stylesheet" href="assets/home.css">
+  <script src="assets/home.js" defer></script>
 </head>
 <body>
-  <header>
-    <h1>vLLM 学习笔记与交互演示</h1>
-    <p>从 Transformer 的逐步计算，到 vLLM 的调度、缓存与执行流程。</p>
-  </header>
-  <main>
-    <section aria-labelledby="transform-title">
-      <h2 id="transform-title">Transformer 结构与矩阵</h2>
-      <p>逐层查看 RMSNorm、QKV、因果注意力、残差、MLP 与 LM Head，并展开教学模型的真实矩阵计算。</p>
-      <nav aria-label="Transformer 项目">
-        <a href="transform/index.html">打开结构讲解</a>
-        <a href="transform/transformer-structure-explorer-matrices.html">打开矩阵计算</a>
-      </nav>
-    </section>
-    <section aria-labelledby="startup-title">
-      <h2 id="startup-title">vLLM-Ascend 启动流程</h2>
-      <p>从 vllm serve 到 HTTP 服务就绪，逐步查看 API Server、EngineCore 和两个 Worker 的初始化；对照编号清单理解模型分片、物理 KV 分配与调度器创建。</p>
-      <nav aria-label="vLLM-Ascend 启动项目">
-        <a href="vllm-ascend-startup/index.html">打开组件清单与 26 步启动流程</a>
-      </nav>
-    </section>
-    <section aria-labelledby="graph-title">
-      <h2 id="graph-title">vLLM-Ascend 图优化</h2>
-      <p>对照首次逐算子捕获与后续整图回放，展开 Python、C++、ACLNN 和 Runtime 调用，查看省去的 Host 调用链、保留的 NPU 计算与 FIA 参数更新。</p>
-      <nav aria-label="vLLM-Ascend 图优化项目">
-        <a href="vllm-ascend-graph/index.html">打开捕获、回放与底层调用对照</a>
-      </nav>
-    </section>
-    <section aria-labelledby="batching-title">
-      <h2 id="batching-title">静态批处理与连续批处理</h2>
-      <p>用同一组 A、B、C、D 请求对照固定成员批与每轮重新组批，逐步查看排队、Prefill、Decode、结束退出和 KV 释放。</p>
-      <nav aria-label="批处理项目">
-        <a href="batching/index.html">打开静态与连续批处理对比</a>
-      </nav>
-    </section>
-    <section aria-labelledby="request-lifecycle-title">
-      <h2 id="request-lifecycle-title">vLLM 请求完整生命周期</h2>
-      <p>跟随一个 V1 单卡流式请求，从 HTTP 接入、排队调度、Prefill 与两轮 Decode，到 SSE 输出和结束清理；通过 20 步查看 token、物理 KV 与块引用的变化。</p>
-      <nav aria-label="请求生命周期项目">
-        <a href="request-lifecycle/index.html">打开全局关系与 20 步请求流程</a>
-      </nav>
-    </section>
-    <section aria-labelledby="pd-title">
-      <h2 id="pd-title">vLLM PD 分离</h2>
-      <p>切换 V0 / V1，以 P、D 两侧的 Scheduler 和 Worker 为线索，逐步观察缓存匹配、KV 传输和请求恢复。</p>
-      <nav aria-label="PD 分离项目">
-        <a href="pd-disaggregation/index.html">打开 V0 / V1 动画</a>
-      </nav>
-    </section>
-    <section aria-labelledby="chunked-prefill-title">
-      <h2 id="chunked-prefill-title">Chunked prefill</h2>
-      <p>对照分块与整段 prefill，逐步追踪 CPU 调度、GPU 执行、KV 与输出 token。默认展示 B 的整段 prefill 持续占用前三个观察轮次，A / C 等待，第 4 轮才开始 Decode。</p>
-      <nav aria-label="Chunked prefill 项目">
-        <a href="chunked-prefill/index.html">打开两种调度策略与四轮流程</a>
-      </nav>
-    </section>
-    <section aria-labelledby="parallelism-title">
-      <h2 id="parallelism-title">vLLM 并行流程</h2>
-      <p>查看 TP、EP、SP、PP、CP、DP 六种单项并行，以及 TP+SP、DP+EP、DP+TP+PP 三种组合，默认打开 TP+SP。用 GPU 虚线框和矩阵追踪权重分配、计算与通信；DP 可对照训练梯度同步与 vLLM 推理请求分流。</p>
-      <nav aria-label="并行流程项目">
-        <a href="parallelism/index.html">打开六种并行与三种组合</a>
-      </nav>
-    </section>
-    <section aria-labelledby="eplb-dplb-title">
-      <h2 id="eplb-dplb-title">vLLM DPLB 与 EPLB</h2>
-      <p>用五章流程查看请求如何分配到 DP rank、队列统计如何反馈，以及专家副本的分配与放置；沿同一请求的多个模型步，追踪同步权重迁移、映射切换与继续生成。</p>
-      <nav aria-label="DPLB 与 EPLB 项目">
-        <a href="eplb-dplb/index.html">打开请求、专家与权重流程</a>
-      </nav>
-    </section>
-    <section aria-labelledby="communication-title">
-      <h2 id="communication-title">通信原语</h2>
-      <p>用具体数组观察 Send/Recv、Broadcast、Reduce、All-Reduce、All-Gather、Reduce-Scatter、All-to-All、Scatter、Gather，以及 Ring Attention 中固定 Q、K/V 环传与在线 softmax 累积。</p>
-      <nav aria-label="通信原语项目">
-        <a href="communication-primitives/index.html">打开通信原语流程</a>
-      </nav>
-    </section>
-  </main>
-  <footer>下载仓库后，可直接用浏览器打开本页。各演示的源码基线与适用范围见对应项目的 README。</footer>
+  <a class="skip-link" href="#catalog">跳到流程目录</a>
+  <div class="page">
+    <header class="page-header">
+      <a class="brand" href="index.html" aria-label="vLLM 学习笔记首页"><span class="brand-mark" aria-hidden="true">v</span> vLLM / 学习笔记</a>
+      <span class="header-note">源码流程 · 交互演示</span>
+    </header>
+    <div class="workspace">
+      <aside class="sidebar" hidden>
+        <p class="sidebar-label" id="module-label">学习模块</p>
+        <nav id="module-nav" aria-labelledby="module-label"></nav>
+        <p class="sidebar-note">从模型计算到推理系统，<br>按模块探索每一段流程。</p>
+      </aside>
+      <main id="catalog" tabindex="-1">
+        <header class="catalog-header">
+          <div>
+            <h1>学习流程目录</h1>
+            <p class="intro">从 Transformer 的逐步计算，到 vLLM 的调度、缓存与执行。</p>
+          </div>
+          <span class="catalog-count" id="catalog-count" hidden></span>
+        </header>
+        <div class="toolbar" hidden>
+          <div class="search-field">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+            <label class="sr-only" for="flow-search">搜索流程名称、内容或关键词</label>
+            <input id="flow-search" type="search" placeholder="搜索流程、关键词，例如 KV、TP、图回放…" autocomplete="off" aria-controls="flow-groups">
+          </div>
+          <button class="text-button" id="toggle-groups" type="button">收起全部</button>
+        </div>
+        <p class="result-status" id="result-status" role="status" aria-live="polite" hidden></p>
+        <!-- 新流程放入对应模块的 flow-list；模块导航、数量和搜索会自动更新。 -->
+        <div id="flow-groups">
+          <details class="module" id="model-basics" data-label="模型基础" open>
+            <summary><span class="module-number" aria-hidden="true">01</span><h2>模型基础</h2><span class="module-description">理解模型内部的计算</span><span class="module-count"></span></summary>
+            <ul class="flow-list">
+              <li><a class="flow" href="transform/index.html" data-keywords="Transformer RMSNorm QKV Attention 注意力 残差 MLP LM Head 模型结构">
+                <span class="flow-copy"><span class="flow-title">Transformer 结构讲解</span><span class="flow-description">逐层查看归一化、注意力、残差、MLP 与输出层。</span></span>
+                <span class="flow-tag">结构解析</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
+              <li><a class="flow" href="transform/transformer-structure-explorer-matrices.html" data-keywords="Transformer 矩阵 计算 RMSNorm QKV Attention MLP LM Head">
+                <span class="flow-copy"><span class="flow-title">Transformer 矩阵计算</span><span class="flow-description">展开教学模型的真实矩阵，逐步追踪数值变化。</span></span>
+                <span class="flow-tag">数值演示</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
+            </ul>
+          </details>
+          <details class="module" id="engine" data-label="引擎与调度" open>
+            <summary><span class="module-number" aria-hidden="true">02</span><h2>引擎与调度</h2><span class="module-description">从服务启动到请求执行</span><span class="module-count"></span></summary>
+            <ul class="flow-list">
+              <li><a class="flow" href="vllm-ascend-startup/index.html" data-keywords="vLLM Ascend vllm serve 启动 初始化 API Server EngineCore Worker TP KV Scheduler 调度器 NPU">
+                <span class="flow-copy"><span class="flow-title">vLLM-Ascend 启动流程</span><span class="flow-description">26 步串联服务启动、模型分片、KV 分配与调度器创建。</span></span>
+                <span class="flow-tag">源码流程</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
+              <li><a class="flow" href="request-lifecycle/index.html" data-keywords="vLLM V1 请求 生命周期 HTTP SSE 流式 API Server AsyncLLM EngineCore Scheduler Worker Prefill Decode KV 分词 调度 采样 释放">
+                <span class="flow-copy"><span class="flow-title">vLLM 请求完整生命周期</span><span class="flow-description">20 步追踪 HTTP 接入、调度采样、SSE 输出与 KV 引用释放。</span></span>
+                <span class="flow-tag">源码流程</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
+              <li><a class="flow" href="batching/index.html" data-keywords="vLLM V1 静态批处理 连续批处理 Static Batching Continuous Batching 请求 队列 调度 Prefill Decode KV 释放">
+                <span class="flow-copy"><span class="flow-title">静态批处理与连续批处理</span><span class="flow-description">对照固定批次与逐轮接入请求，观察调度、执行和 KV 释放。</span></span>
+                <span class="flow-tag">交互动画</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
+              <li><a class="flow" href="chunked-prefill/index.html" data-keywords="vLLM V0 V1 Chunked Prefill 分块 预填充 混合调度 prefill-first Decode token 预算 KV">
+                <span class="flow-copy"><span class="flow-title">Chunked Prefill</span><span class="flow-description">对照 V1 分块混合调度与 V0 历史 prefill 优先，追踪 KV 和输出变化。</span></span>
+                <span class="flow-tag">交互动画</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
+            </ul>
+          </details>
+          <details class="module" id="distributed" data-label="并行与通信" open>
+            <summary><span class="module-number" aria-hidden="true">03</span><h2>并行与通信</h2><span class="module-description">多设备间的计算与数据流</span><span class="module-count"></span></summary>
+            <ul class="flow-list">
+              <li><a class="flow" href="parallelism/index.html" data-keywords="vLLM TP EP SP PP CP DP 并行 张量 专家 序列 流水线 上下文 数据 训练 推理 分片 通信 GPU">
+                <span class="flow-copy"><span class="flow-title">vLLM 并行流程</span><span class="flow-description">六种单项并行与三种组合，追踪权重分片、计算和通信。</span></span>
+                <span class="flow-tag">交互动画</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
+              <li><a class="flow" href="communication-primitives/index.html" data-keywords="Send Recv Broadcast Reduce All-Reduce All-Gather Reduce-Scatter All-to-All Scatter Gather Ring Attention 通信 原语 环传 softmax">
+                <span class="flow-copy"><span class="flow-title">通信原语</span><span class="flow-description">用具体数组理解发送、归约、汇集、交换与 Ring Attention。</span></span>
+                <span class="flow-tag">交互动画</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
+              <li><a class="flow" href="eplb-dplb/index.html" data-keywords="vLLM DPLB EPLB DP EP MoE 负载均衡 请求分流 专家 副本 放置 权重 同步 迁移 dispatch combine P2P">
+                <span class="flow-copy"><span class="flow-title">vLLM DPLB 与 EPLB</span><span class="flow-description">追踪请求分流、专家副本放置与请求执行中的同步权重迁移。</span></span>
+                <span class="flow-tag">源码流程</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
+            </ul>
+          </details>
+          <details class="module" id="kv-cache" data-label="KV 缓存与传输" open>
+            <summary><span class="module-number" aria-hidden="true">04</span><h2>KV 缓存与传输</h2><span class="module-description">缓存复用与跨实例协作</span><span class="module-count"></span></summary>
+            <ul class="flow-list">
+              <li><a class="flow" href="pd-disaggregation/index.html" data-keywords="vLLM PD Prefill Decode 分离 V0 V1 Scheduler Worker Mooncake KV 缓存 匹配 传输 请求 恢复">
+                <span class="flow-copy"><span class="flow-title">vLLM PD 分离</span><span class="flow-description">对照 V0 / V1，观察 P、D 两侧的缓存匹配、KV 传输与请求恢复。</span></span>
+                <span class="flow-tag">交互动画</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
+            </ul>
+          </details>
+          <details class="module" id="optimization" data-label="性能优化" open>
+            <summary><span class="module-number" aria-hidden="true">05</span><h2>性能优化</h2><span class="module-description">理解执行开销与加速路径</span><span class="module-count"></span></summary>
+            <ul class="flow-list">
+              <li><a class="flow" href="vllm-ascend-graph/index.html" data-keywords="vLLM Ascend ACL Graph 图优化 图捕获 图回放 Python C++ ACLNN Runtime Host NPU FIA 动态 参数 融合">
+                <span class="flow-copy"><span class="flow-title">vLLM-Ascend 图优化</span><span class="flow-description">对照首次捕获与整图回放，展开底层调用和 FIA 参数更新。</span></span>
+                <span class="flow-tag">源码流程</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
+            </ul>
+          </details>
+        </div>
+        <div class="empty-state" id="empty-state" hidden>
+          <p>没有找到匹配的流程</p>
+          <span>试试其他关键词，或清除筛选查看全部内容。</span>
+          <button class="reset-button" id="reset-filters" type="button">查看全部流程</button>
+        </div>
+        <footer>各流程的源码基线与适用范围见对应项目的 README。</footer>
+      </main>
+    </div>
+  </div>
 </body>
 </html>

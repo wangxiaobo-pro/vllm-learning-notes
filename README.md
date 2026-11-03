@@ -19,54 +19,22 @@
 
 ```text
 vllm-learning-notes/
-├── README.md
-├── index.html                         # 项目导航
-├── vllm-ascend-startup/
-│   ├── README.md
-│   └── index.html                     # 组件启动清单与 26 步源码流程
-├── vllm-ascend-graph/
-│   ├── README.md
-│   ├── index.html                     # 捕获与回放、Host 调用与 NPU 任务对照
-│   └── source.html                    # 可编辑的可视化源片段
-├── transform/
-│   ├── README.md
-│   ├── index.html                     # Transformer 项目入口
-│   ├── transformer-structure-explorer.html
-│   └── transformer-structure-explorer-matrices.html
-├── batching/
-│   ├── README.md
-│   ├── index.html                     # 静态批处理 / 连续批处理 / 对比，支持离线交互
-│   └── source.html                    # 可编辑的可视化源片段
-├── request-lifecycle/
-│   ├── README.md
-│   ├── index.html                     # 请求全局关系与 20 步生命周期
-│   └── source.html                    # 可编辑的可视化源片段
-├── pd-disaggregation/
-│   ├── README.md
-│   └── index.html                     # V0 / V1 PD 分离交互动画
-├── chunked-prefill/
-│   ├── README.md
-│   ├── index.html                     # 两种调度策略与四轮推理流程
-│   └── source.html                    # 可编辑的可视化源片段
-├── parallelism/
-│   ├── README.md
-│   ├── index.html                     # 六种并行与三种组合，默认 TP+SP
-│   ├── matrix-examples.json           # 完整精度的数值算例
-│   ├── verify_matrices.py             # 独立算术与分片验算
-│   ├── combo-examples.json            # 三种组合的数值、通信组与 payload
-│   ├── verify_combinations.py         # 组合算术、所有权与传输验算
-│   ├── training-dp.json               # 三 GPU 训练 DP 算例
-│   └── verify_training_dp.py          # 全批次与分布式梯度等价验算
-├── eplb-dplb/
-│   ├── README.md
-│   ├── index.html                     # DPLB 与 EPLB 五章交互流程
-│   └── source.html                    # 可编辑的可视化源片段
-└── communication-primitives/
-    ├── README.md
-    ├── index.html                     # 通信原语、数组变化与 Ring Attention
-    ├── ring-attention-example.json    # K/V 环传与在线 softmax 数值
-    └── verify_ring_attention.py       # 逐轮状态与完整 attention 验算
+├── README.md                          # 项目说明与维护指南
+├── index.html                         # 按模块组织的紧凑流程目录
+├── assets/                            # 首页样式、搜索与模块导航脚本
+├── transform/                         # Transformer 结构讲解与矩阵计算
+├── vllm-ascend-startup/                # Ascend 服务启动与组件初始化
+├── request-lifecycle/                 # 请求接入、推理输出与结束清理
+├── batching/                          # 静态批处理与连续批处理对照
+├── chunked-prefill/                   # 分块 prefill 与历史整段调度对照
+├── parallelism/                       # 单项与组合并行的计算、分片和通信
+├── communication-primitives/          # 通信原语与 Ring Attention 数值演示
+├── eplb-dplb/                         # 请求负载均衡与专家放置、权重迁移
+├── pd-disaggregation/                 # Prefill / Decode 分离与 KV 传输
+└── vllm-ascend-graph/                 # Ascend 图捕获、回放与底层调用
 ```
+
+各项目目录中的 `index.html` 是浏览器入口，`README.md` 说明使用方式、源码基线与适用范围。部分项目还保留可编辑的 `source.html`、数值算例 `*.json` 和独立验算脚本 `verify_*.py`，具体用途见对应项目说明。
 
 ## 打开方式
 
@@ -75,3 +43,13 @@ vllm-learning-notes/
 GitHub 仓库中的 HTML 链接通常显示源码；本地演示需要用浏览器打开下载后的文件。
 
 学习内容对应各项目说明中注明的教学模型或源码版本。
+
+## 首页目录维护
+
+首页按「模型基础」「引擎与调度」「并行与通信」「KV 缓存与传输」「性能优化」组织流程，支持模块筛选、关键词搜索和模块折叠。每个流程使用紧凑列表入口；小屏幕会将侧栏切换为模块筛选按钮。
+
+新增流程时，在 `index.html` 对应模块的 `.flow-list` 中添加一个 `<li>`，沿用已有 `.flow` 链接结构，填写相对路径、名称、简短介绍和 `data-keywords`。导航和流程数量会自动统计，无需修改 JavaScript。
+
+新增模块时，复制一个 `details.module`，设置唯一的 `id`、`data-label`、模块序号和标题，再填入流程。模块导航同样会自动生成。新增项目后，请同步更新上方项目表格。
+
+首页不依赖网络或构建工具；请保留 `assets` 目录。即使禁用 JavaScript，仍可按模块浏览、折叠并打开全部流程。
