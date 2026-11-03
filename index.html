@@ -46,6 +46,13 @@
         <a href="vllm-ascend-graph/index.html">打开捕获、回放与底层调用对照</a>
       </nav>
     </section>
+    <section aria-labelledby="batching-title">
+      <h2 id="batching-title">静态批处理与连续批处理</h2>
+      <p>用同一组 A、B、C、D 请求对照固定成员批与每轮重新组批，逐步查看排队、Prefill、Decode、结束退出和 KV 释放。</p>
+      <nav aria-label="批处理项目">
+        <a href="batching/index.html">打开静态与连续批处理对比</a>
+      </nav>
+    </section>
     <section aria-labelledby="request-lifecycle-title">
       <h2 id="request-lifecycle-title">vLLM 请求完整生命周期</h2>
       <p>跟随一个 V1 单卡流式请求，从 HTTP 接入、排队调度、Prefill 与两轮 Decode，到 SSE 输出和结束清理；通过 20 步查看 token、物理 KV 与块引用的变化。</p>

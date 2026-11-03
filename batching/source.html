@@ -1,0 +1,291 @@
+<div id="cb-flow-v1">
+  <style>
+    #cb-flow-v1 { color:var(--foreground); width:100%; }
+    #cb-flow-v1 * { box-sizing:border-box; }
+    #cb-flow-v1 .cb-heading { padding-right:100px; margin-bottom:12px; }
+    #cb-flow-v1 .cb-heading h2 { margin:0 0 4px; }
+    #cb-flow-v1 .cb-sub { color:var(--muted-foreground); }
+    #cb-flow-v1 .cb-toolbar { margin:14px 0 10px; }
+    #cb-flow-v1 .cb-status { margin:8px 0; min-height:24px; }
+    #cb-flow-v1 .cb-diagram { width:100%; display:block; overflow:visible; }
+    #cb-flow-v1 .cb-diagram text { fill:var(--foreground); font-weight:400; }
+    #cb-flow-v1 .cb-diagram .cb-node-title { font-weight:500; }
+    #cb-flow-v1 .cb-diagram .cb-node-sub { fill:var(--muted-foreground); }
+    #cb-flow-v1 .cb-edge { stroke:var(--border); stroke-width:1.5; fill:none; }
+    #cb-flow-v1 .cb-edge.active { stroke:var(--viz-series-1); stroke-width:2; }
+    #cb-flow-v1 .cb-node { fill:var(--background); stroke:var(--border); stroke-width:1; }
+    #cb-flow-v1 .cb-node.active { fill:color-mix(in srgb,var(--viz-series-1) 10%,var(--background)); }
+    #cb-flow-v1 .cb-edge-label { fill:var(--background); stroke:var(--border); }
+    #cb-flow-v1 .cb-detail { margin:8px 0 16px; }
+    #cb-flow-v1 .cb-steps { display:grid; grid-template-columns:1fr 1fr; gap:9px 20px; padding:0; list-style:none; margin:8px 0 16px; }
+    #cb-flow-v1 .cb-steps li { min-width:0; }
+    #cb-flow-v1 .cb-step-title { font-weight:500; }
+    #cb-flow-v1 .cb-key { display:flex; flex-wrap:wrap; gap:8px 18px; margin:8px 0; }
+    #cb-flow-v1 .cb-key span { display:inline-flex; gap:6px; align-items:center; }
+    #cb-flow-v1 .cb-swatch { width:12px; height:12px; background:color-mix(in srgb,var(--viz-series-1) 24%,transparent); }
+    #cb-flow-v1 .cb-swatch.decode { background:color-mix(in srgb,var(--viz-series-2) 24%,transparent); }
+    #cb-flow-v1 .cb-matrix { display:grid; grid-template-columns:minmax(46px,.85fr) repeat(var(--rounds,4),minmax(0,1fr)); column-gap:3px; row-gap:6px; align-items:stretch; margin:10px 0; }
+    #cb-flow-v1 .cb-colhead, #cb-flow-v1 .cb-total { text-align:center; padding:5px 0; }
+    #cb-flow-v1 .cb-rowhead { align-self:center; padding-right:4px; }
+    #cb-flow-v1 .cb-rowhead strong { font-weight:500; }
+    #cb-flow-v1 .cb-rowhead small { display:block; }
+    #cb-flow-v1 .cb-cell { min-height:65px; padding:6px 1px; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:1px; text-align:center; }
+    #cb-flow-v1 .cb-cell.prefill { background:color-mix(in srgb,var(--viz-series-1) 16%,transparent); }
+    #cb-flow-v1 .cb-cell.decode { background:color-mix(in srgb,var(--viz-series-2) 16%,transparent); }
+    #cb-flow-v1 .cb-cell.empty { color:var(--muted-foreground); }
+    #cb-flow-v1 .cb-cell.waiting { background:color-mix(in srgb,var(--viz-series-3) 14%,transparent); }
+    #cb-flow-v1 .cb-cell.vacant { background:var(--muted); }
+    #cb-flow-v1 .cb-swatch.waiting { background:color-mix(in srgb,var(--viz-series-3) 24%,transparent); }
+    #cb-flow-v1 .cb-current { box-shadow:inset 0 -2px 0 var(--foreground); }
+    #cb-flow-v1 .cb-cell.cb-future { background:var(--muted); }
+    #cb-flow-v1 .cb-stage-done { font-weight:500; }
+    #cb-flow-v1 .cb-scope { margin-top:12px; }
+    #cb-flow-v1 details { margin-top:12px; }
+    #cb-flow-v1 summary { color:var(--muted-foreground); }
+    #cb-flow-v1 .cb-source-list { display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:8px; }
+    #cb-flow-v1 .cb-source-list a { overflow-wrap:anywhere; }
+    #cb-flow-v1 .cb-comparison { display:grid; grid-template-columns:minmax(0,1fr); gap:22px; margin:12px 0; }
+    #cb-flow-v1 .cb-comparison section { min-width:0; }
+    #cb-flow-v1 .cb-comparison h3 { margin:0 0 6px; }
+    #cb-flow-v1 .cb-panel-detail { margin:8px 0; min-height:44px; }
+    #cb-flow-v1 .cb-comparison-note { margin:10px 0; }
+    #cb-flow-v1 .cb-differences { margin-top:16px; }
+    @media(min-width:900px) { #cb-flow-v1 .cb-comparison { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } }
+    #cb-flow-v1 [hidden] { display:none !important; }
+    @media(max-width:450px) { #cb-flow-v1 .cb-steps { grid-template-columns:1fr; } #cb-flow-v1 .cb-heading { padding-right:80px; } }
+    @media(prefers-reduced-motion:no-preference) { #cb-flow-v1 .cb-current { animation:cb-step-in .3s ease-out; } @keyframes cb-step-in { from { transform:translateY(3px); } to { transform:translateY(0); } } }
+  </style>
+  <div class="cb-heading">
+    <h2>静态批处理与连续批处理</h2>
+    <div class="text-small cb-sub">同一组请求 · 固定成员开批 vs 每轮重新组批</div>
+  </div>
+  <div class="viz-controls"><label class="form-label" for="cb-view">查看方式 <select class="form-select" id="cb-view"><option value="compare">并排对比</option><option value="static">静态批处理</option><option value="continuous">连续批处理</option></select></label></div>
+  <div class="viz-controls cb-toolbar">
+    <button type="button" class="btn" data-action="overview" aria-pressed="true">全局关系</button>
+    <button type="button" class="btn" data-action="prev" disabled>上一步</button>
+    <button type="button" class="btn btn-primary" data-action="play">播放</button>
+    <button type="button" class="btn" data-action="next">下一步</button>
+  </div>
+  <div class="cb-status tabular-nums" aria-live="polite"></div>
+  <svg class="cb-diagram" role="img" aria-label="连续批处理的请求队列、CPU 调度器、GPU 和流式输出之间的循环"></svg>
+  <ol class="cb-steps"></ol>
+  <div class="cb-detail" hidden></div>
+  <div class="viz-row"><span>请求 × 调度轮次</span><span class="text-small cb-sub">R = 各自的调度轮次，并非同一时刻</span></div>
+  <div class="cb-key text-small"><span><i class="cb-swatch"></i>P：处理提示词</span><span><i class="cb-swatch decode"></i>D：处理上一个输出</span><span><i class="cb-swatch waiting"></i>等：已到达，等待准入</span><span>✓ 本轮结束</span></div>
+  <div class="cb-matrix tabular-nums" role="table" aria-label="四个请求在四轮中的输入和输出"></div>
+  <div class="cb-comparison" hidden></div>
+  <div class="cb-comparison-note text-small cb-sub" hidden>各侧 R2 前 C 到达、R3 前 D 到达。两侧轮次独立计数，列宽和播放节奏不代表真实耗时；连续侧完成后不再执行额外轮次。</div>
+  <div class="cb-differences" hidden>
+    <table class="table table-sm text-small"><thead><tr><th>比较</th><th>静态批处理</th><th>连续批处理</th></tr></thead><tbody>
+      <tr><td>新请求加入</td><td>当前整批结束后</td><td>每轮边界，预算允许时</td></tr>
+      <tr><td>短请求结束</td><td>本批空位不补</td><td>释放资源，下轮可补入</td></tr>
+      <tr><td>本例完成轮数</td><td>6 轮</td><td>4 轮</td></tr>
+      <tr><td>C / D 首输出</td><td>R4 / R4</td><td>R2 / R3</td></tr>
+    </tbody></table>
+  </div>
+  <div class="text-small cb-sub">P / D 后的数字 = 本轮输入 token 数；箭头后 = 新采样 token。</div>
+  <div class="cb-scope text-small cb-sub">教学设定：最多 6 个输入 token / 轮、3 个请求；KV 充足。两侧均处理 18 个有效输入 token、生成 10 个 token。</div>
+  <details>
+    <summary>实现依据与示例边界</summary>
+    <div class="cb-source-list text-small">
+      <a href="https://github.com/vllm-project/vllm/blob/v0.11.0/vllm/v1/engine/core.py#L250-L267" target="_blank" rel="noreferrer">v0.11.0 · EngineCore.step</a>
+      <a href="https://github.com/vllm-project/vllm/blob/v0.11.0/vllm/v1/core/sched/scheduler.py#L164-L201" target="_blank" rel="noreferrer">Scheduler.schedule</a>
+      <a href="https://github.com/vllm-project/vllm/blob/v0.11.0/vllm/v1/core/sched/scheduler.py#L837-L893" target="_blank" rel="noreferrer">结果更新与结束</a>
+      <a href="https://docs.vllm.ai/en/v0.11.0/configuration/optimization.html#chunked-prefill" target="_blank" rel="noreferrer">Chunked prefill</a>
+    </div>
+    <ul class="text-small cb-sub">
+      <li>静态侧为算法教学模型：AB 开批后锁定成员，不等满 3 个请求；整批结束后再开 CD。完成行释放 KV，空位不补。未统计 padding 或已结束行的无效计算。</li>
+      <li>静态侧也可逐 token 输出；准入规则与是否流式输出是两回事。这里不把静态批处理画成 vLLM V1 的实现分支。</li>
+      <li>到达时机按各侧轮次设置，用于解释调度机制，不是同一真实时间到达流的性能测试。4 轮对 6 轮不等于具体加速比。</li>
+      <li>V1 同步主路径；FCFS、普通文本生成、全注意力；无前缀复用、抢占、推测解码或流水线并行。</li>
+      <li>A / C 生成 3 个 token，B / D 生成 2 个 token 后停止；无提前 EOS。输入及输出均为教学符号。</li>
+      <li>开启 chunked prefill；本例提示词都能放入剩余预算，没有实际切块。P / D 是教学标签，V1 按待计算 token 统一调度。</li>
+      <li>KV 数表示已有 KV 的 token 数；实际显存按块分配。刚采样的 token 在下一轮作为输入时才写入自己的 KV。</li>
+      <li>图中的计划箭头传递调度元数据；GPU 使用本地 KV，没有在每轮传输整个 KV cache。名额与 KV 不足时，新请求仍需等待。</li>
+    </ul>
+  </details>
+</div>
+<script>
+(() => {
+  const root=document.getElementById('cb-flow-v1');
+  const svg=root.querySelector('.cb-diagram');
+  const matrix=root.querySelector('.cb-matrix');
+  const status=root.querySelector('.cb-status');
+  const detail=root.querySelector('.cb-detail');
+  const stepList=root.querySelector('.cb-steps');
+  const viewSelect=root.querySelector('#cb-view');
+  const comparison=root.querySelector('.cb-comparison');
+  const buttons=Object.fromEntries([...root.querySelectorAll('[data-action]')].map(b=>[b.dataset.action,b]));
+  const requests=[{id:'A',prompt:4,goal:3,arrival:0},{id:'B',prompt:2,goal:2,arrival:0},{id:'C',prompt:4,goal:3,arrival:1},{id:'D',prompt:2,goal:2,arrival:2}];
+  const continuousRounds=[
+    {arrivals:['A','B'],before:[],after:['A','B'],keepKV:6,priorKV:0,modelKV:6,items:[{id:'A',type:'P',n:4,out:'a₁',input:'p₁…p₄',done:false},{id:'B',type:'P',n:2,out:'b₁',input:'p₁…p₂',done:false}]},
+    {arrivals:['C'],before:['A','B'],after:['A','C'],keepKV:9,priorKV:6,modelKV:12,items:[{id:'A',type:'D',n:1,out:'a₂',input:'a₁',done:false},{id:'B',type:'D',n:1,out:'b₂',input:'b₁',done:true},{id:'C',type:'P',n:4,out:'c₁',input:'p₁…p₄',done:false}]},
+    {arrivals:['D'],before:['A','C'],after:['C','D'],keepKV:7,priorKV:9,modelKV:13,items:[{id:'A',type:'D',n:1,out:'a₃',input:'a₂',done:true},{id:'C',type:'D',n:1,out:'c₂',input:'c₁',done:false},{id:'D',type:'P',n:2,out:'d₁',input:'p₁…p₂',done:false}]},
+    {arrivals:[],before:['C','D'],after:[],keepKV:0,priorKV:7,modelKV:9,items:[{id:'C',type:'D',n:1,out:'c₃',input:'c₂',done:true},{id:'D',type:'D',n:1,out:'d₂',input:'d₁',done:true}]}
+  ];
+  const pick=(round,id)=>continuousRounds[round].items.find(item=>item.id===id);
+  const staticRounds=[
+    {arrivals:['A','B'],waiting:[],members:['A','B'],after:['A','B'],priorKV:0,modelKV:6,keepKV:6,items:[pick(0,'A'),pick(0,'B')]},
+    {arrivals:['C'],waiting:['C'],members:['A','B'],after:['A'],priorKV:6,modelKV:8,keepKV:5,items:[pick(1,'A'),pick(1,'B')]},
+    {arrivals:['D'],waiting:['C','D'],members:['A','B'],after:[],priorKV:5,modelKV:6,keepKV:0,items:[pick(2,'A')]},
+    {arrivals:[],waiting:[],members:['C','D'],after:['C','D'],priorKV:0,modelKV:6,keepKV:6,items:[pick(1,'C'),pick(2,'D')]},
+    {arrivals:[],waiting:[],members:['C','D'],after:['C'],priorKV:6,modelKV:8,keepKV:5,items:[pick(2,'C'),pick(3,'D')]},
+    {arrivals:[],waiting:[],members:['C','D'],after:[],priorKV:5,modelKV:6,keepKV:0,items:[pick(3,'C')]}
+  ];
+  const datasets={continuous:continuousRounds,static:staticRounds};
+  const labels={continuous:'连续批处理',static:'静态批处理',compare:'并排对比'};
+  const phases=[
+    {title:'入队与调度',brief:'Scheduler 选择请求、分配 KV → 形成每请求的 token 预算。'},
+    {title:'执行与采样',brief:'Worker 读取计划 → GPU 前向、写 KV，并采样下一个 token。'},
+    {title:'回传与更新',brief:'Scheduler 消费 token ID → 判停、移出已完成请求、释放 KV。'},
+    {title:'输出与下一轮',brief:'前端返回新 token；存活请求保留 → 下一轮重新组批。'}
+  ];
+  const names=a=>a.length?a.join('、'):'无';
+  let mode='compare',current=-1,timer=null;
+  const length=()=>mode==='continuous'?16:24;
+  const readState=s=>{
+    const v=s?.modelContent?.batchComparison,old=s?.modelContent?.continuousBatching;
+    if(v?.version===2&&Object.hasOwn(labels,v.view)&&Number.isInteger(v.step)&&v.step>=-1&&v.step<(v.view==='continuous'?16:24)){mode=v.view;current=v.step;}
+    else if(old?.version===1&&Number.isInteger(old.step)&&old.step>=-1&&old.step<16){mode=old.step<0?'compare':'continuous';current=old.step;}
+  };
+  readState(window.openai?.widgetState);
+  function save(){if(window.openai?.setWidgetState)Promise.resolve(window.openai.setWidgetState({modelContent:{batchComparison:{version:2,view:mode,step:current,round:current<0?null:Math.floor(current/4)+1,phase:current<0?null:current%4+1}},privateContent:null})).catch(()=>{});}
+  function stop(){if(timer){clearInterval(timer);timer=null;}buttons.play.textContent=current===length()-1?'重播':'播放';}
+  const escape=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+  function state(view=mode){
+    if(current<0)return{ri:-1,pi:-1,r:null};
+    const ri=Math.floor(current/4),pi=current%4;return{ri,pi,r:datasets[view==='static'?'static':'continuous'][ri]??null};
+  }
+  function drawDiagram(){
+    if(mode==='compare')return;
+    const {ri,pi,r}=state();
+    svg.setAttribute('aria-label',`${labels[mode]}的等待队列、调度器、GPU 和流式输出流程`);
+    const w=Math.max(250,Math.round(svg.getBoundingClientRect().width));
+    const narrow=w<550, gap=40;
+    let pos,h;
+    if(narrow){const nw=Math.min(240,w-72),x=(w-nw)/2;h=460;pos={queue:{x,y:8,w:nw,h:76},scheduler:{x,y:124,w:nw,h:86},gpu:{x,y:260,w:nw,h:86},client:{x,y:384,w:nw,h:68}};}
+    else {const side=(w-2*gap)*.27,center=w-2*side-2*gap;h=280;pos={queue:{x:0,y:18,w:side,h:92},scheduler:{x:side+gap,y:18,w:center,h:106},client:{x:w-side,y:18,w:side,h:92},gpu:{x:side+gap,y:194,w:center,h:80}};}
+    const q=pos.queue,s=pos.scheduler,g=pos.gpu,c=pos.client;
+    const cx=n=>n.x+n.w/2,cy=n=>n.y+n.h/2;
+    let edges;
+    if(narrow){edges=[
+      {n:1,d:`M ${cx(q)} ${q.y+q.h} V ${s.y}`,x:cx(q),y:104},
+      {n:2,d:`M ${cx(s)+42} ${s.y+s.h} V ${g.y}`,x:cx(s)+42,y:235},
+      {n:3,d:`M ${cx(g)-42} ${g.y} V ${s.y+s.h}`,x:cx(s)-42,y:235},
+      {n:4,d:`M ${s.x+s.w} ${cy(s)} H ${w-14} V ${cy(c)} H ${c.x+c.w}`,x:w-14,y:365}
+    ];}else{edges=[
+      {n:1,d:`M ${q.x+q.w} ${cy(q)} H ${s.x}`,x:q.x+q.w+gap/2,y:cy(q)},
+      {n:2,d:`M ${cx(s)+42} ${s.y+s.h} V ${g.y}`,x:cx(s)+42,y:159},
+      {n:3,d:`M ${cx(g)-42} ${g.y} V ${s.y+s.h}`,x:cx(g)-42,y:159},
+      {n:4,d:`M ${s.x+s.w} ${cy(c)} H ${c.x}`,x:s.x+s.w+gap/2,y:cy(c)}
+    ];}
+    let queueLines=['等待新请求','到达后进入 waiting'];
+    let schedulerLines=mode==='static'?['CPU · 调度器','锁定成员，整批结束再开批','KV 分配、结束与释放']:['CPU · Scheduler','每轮重新组批 / token 预算','KV 分配、结束与释放'];
+    let gpuLines=['GPU · Worker','输入 token → 新 token','KV 保留在设备侧'];
+    let clientLines=['前端 / 客户端','逐 token 接收结果'];
+    if(r){
+      queueLines=['新到请求',names(r.arrivals),!r.arrivals.length?'本轮无新请求':pi===0?'本轮调度边界接纳':'已进入本轮计划'];
+      if(mode==='static'){
+        const ended=pi>=2&&r.after.length===0;
+        queueLines=r.waiting.length?['等待队列',names(r.waiting),ended?'本批已结束，下轮准入':'本批未结束，暂不准入']:['等待队列','无等待请求',ended?'所有请求已完成':ri===0?'A、B 已开批':ri===3?'C、D 已开批':'本批继续执行'];
+      }
+      const running=pi>=2?r.after:r.items.map(i=>i.id);
+      const kv=pi===0?r.priorKV:pi===1?r.modelKV:r.keepKV;
+      schedulerLines=[mode==='static'?`固定批：${names(r.members)}`:'CPU · Scheduler',`存活：${names(running)}`,`已计算 KV：${kv} token`];
+      gpuLines=['GPU · Worker',r.items.map(i=>i.id+':'+i.type+i.n).join('  '),pi===0?'计划就绪，等待执行':pi===1?'前向完成 / 新 token 采样':'本轮计算已完成'];
+      clientLines=['前端 / 客户端',pi<3?'等待本轮结果':r.items.map(i=>i.out).join('、'),pi===3&&ri===datasets[mode].length-1?'所有请求结束':''];
+    }
+    const active=pi<0?[]:pi===0?['queue','scheduler']:pi===1?['scheduler','gpu']:pi===2?['gpu','scheduler']:['scheduler','client'];
+    let out=`<title>${labels[mode]}：${current<0?'全局关系':`第 ${ri+1} 轮，${phases[pi].title}`}</title><desc>① 检查等待队列并调度；② 调度计划传给 Worker 执行；③ token ID 回传调度器并更新状态；④ 向客户端输出，然后进入下一轮。静态侧只在整批结束后准入新请求。</desc><defs><marker id="cb-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M 0 0 L 7 3.5 L 0 7 Z" fill="var(--muted-foreground)"/></marker><marker id="cb-arrow-active" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M 0 0 L 7 3.5 L 0 7 Z" fill="var(--viz-series-1)"/></marker></defs>`;
+    const blocked=mode==='static'&&r?.waiting.length>0;
+    edges.forEach(e=>{const on=pi===e.n-1&&!(e.n===1&&blocked);out+=`<path class="cb-edge ${on?'active':''}" d="${e.d}" ${e.n===1&&blocked?'stroke-dasharray="3 3"':`marker-end="url(#cb-arrow${on?'-active':''})"`}/>`;});
+    const content={queue:queueLines,scheduler:schedulerLines,gpu:gpuLines,client:clientLines};
+    for(const [key,n] of Object.entries(pos)){
+      out+=`<rect class="cb-node ${active.includes(key)?'active':''}" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="5"/>`;
+      const lines=content[key].filter(Boolean),start=cy(n)-(lines.length-1)*10;
+      lines.forEach((line,i)=>out+=`<text class="${i===0?'cb-node-title':'cb-node-sub text-small'}" x="${cx(n)}" y="${start+i*20}" text-anchor="middle" dominant-baseline="middle">${escape(line)}</text>`);
+    }
+    edges.forEach(e=>{if(pi>=0&&pi!==e.n-1)return;out+=`<circle class="cb-edge-label" cx="${e.x}" cy="${e.y}" r="11"/><text x="${e.x}" y="${e.y}" text-anchor="middle" dominant-baseline="central">${e.n}</text>`;
+      const label=[blocked?'等待':'准入','计划','token ID','输出'][e.n-1];
+      const horizontal=!narrow&&(e.n===1||e.n===4);
+      const left=e.n===3||(narrow&&e.n===4);
+      out+=`<text class="text-small cb-node-sub" x="${horizontal?e.x:e.x+(left?-16:16)}" y="${horizontal?e.y+25:e.y}" text-anchor="${horizontal?'middle':left?'end':'start'}" dominant-baseline="middle">${label}</text>`;
+    });
+    svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.style.height=h+'px';svg.innerHTML=out;
+  }
+  function renderMatrix(target,view,compare=false){
+    const {ri,pi}=state(view),rounds=datasets[view],count=compare?6:rounds.length;
+    target.style.setProperty('--rounds',count);
+    target.setAttribute('aria-label',`${labels[view]}，${rounds.length}轮，四个请求的有效输入与输出`);
+    const rowStart='<div role="row" style="display:contents">';
+    let out=rowStart+'<div role="columnheader" class="cb-rowhead text-small cb-sub">请求<br>入→出</div>';
+    for(let i=0;i<count;i++)out+=`<div role="columnheader" class="cb-colhead ${ri===i&&i<rounds.length?'cb-current':''}">R${i+1}</div>`;
+    out+='</div>';
+    requests.forEach(req=>{
+      out+=rowStart+`<div role="rowheader" class="cb-rowhead"><strong>${req.id}</strong><small class="text-small cb-sub">${req.prompt}→${req.goal}</small></div>`;
+      const first=rounds.findIndex(r=>r.items.some(v=>v.id===req.id));
+      for(let i=0;i<count;i++){
+        const r=rounds[i],item=r?.items.find(v=>v.id===req.id),future=ri>=0&&i>ri;
+        const isExecuted=current<0||i<ri||(i===ri&&pi>=1),isUpdated=current<0||i<ri||(i===ri&&pi>=2);
+        const cls=`${future?'cb-future ':''}${ri===i&&r?'cb-current ':''}`;
+        if(item){
+          const output=future?'待调度':isExecuted?`→${item.out}`:'待计算',done=item.done&&isUpdated;
+          out+=`<div role="cell" data-request="${req.id}" data-round="${i+1}" class="cb-cell ${item.type==='P'?'prefill':'decode'} ${cls}" aria-label="${req.id}，R${i+1}，${item.type==='P'?'Prefill':'Decode'}输入${item.n}个token，${future?'后续预览，尚未执行':isExecuted?'采样'+item.out:'待执行'}${done?'，完成':''}"><span>${item.type}${item.n}${done?' ✓':''}</span><span class="text-small">${output}</span></div>`;
+        }else{
+          const waiting=!!r&&i>=req.arrival&&i<first,vacant=view==='static'&&r?.members.includes(req.id)&&i>first;
+          const label=!r?'—':i<req.arrival?'未到达':waiting?'等':vacant?'空位':'已结束';
+          out+=`<div role="cell" data-request="${req.id}" data-round="${i+1}" class="cb-cell empty text-small ${waiting?'waiting ':''}${vacant?'vacant ':''}${cls}" aria-label="${req.id}，R${i+1}，${!r?'本侧已完成，无额外调度':waiting?'已到达，等待当前固定批结束':vacant?'请求已结束，空位不补':label}"><span>${label}</span>${vacant?'<span>不补</span>':''}</div>`;
+        }
+      }
+      out+='</div>';
+    });
+    out+=rowStart+'<div class="cb-total text-small cb-sub" role="rowheader">有效<br>输入</div>';
+    for(let i=0;i<count;i++)out+=`<div role="cell" class="cb-total text-small ${ri===i&&i<rounds.length?'cb-current':''}">${rounds[i]?rounds[i].items.reduce((s,v)=>s+v.n,0)+'/6':'—'}</div>`;
+    target.innerHTML=out+'</div>';
+  }
+  function selectedDetail(view=mode){
+    const {ri,pi,r}=state(view);if(!r)return current<0?'':`本侧示例已在 R${datasets[view].length} 完成；没有额外调度。`;
+    const used=r.items.reduce((s,i)=>s+i.n,0),finished=r.items.filter(i=>i.done).map(i=>i.id);
+    if(pi===0){
+      if(view==='static')return `① 固定批 ${names(r.members)}；${r.waiting.length?names(r.waiting)+' 等待整批结束':'无请求排队'}。本轮有效输入 ${used}/6。`;
+      return `① ${r.arrivals.length?names(r.arrivals)+' 入队':'无新请求'}；调度 ${names(r.items.map(i=>i.id))}，输入 ${used}/6，名额 ${r.items.length}/3。`;
+    }
+    if(pi===1)return '② '+r.items.map(i=>`${i.id}：${i.input} → ${i.out}`).join('；')+'。';
+    if(pi===2)return `③ ${finished.length?names(finished)+' 完成并释放 KV；':'无请求结束；'}存活 ${names(r.after)}，保留 ${r.keepKV} 个 token 的 KV。`;
+    const prefix=`④ 返回 ${r.items.map(i=>i.out).join('、')}；`;
+    if(ri===datasets[view].length-1)return prefix+'所有请求完成。';
+    if(view==='static')return prefix+(r.after.length===0?'本批全部完成，下轮才开 C、D 批。':r.waiting.length?'本批尚未结束，等待请求继续排队。':'固定成员批继续，结束行不补新请求。');
+    return prefix+(ri===1?'B 退出，下一轮 D 加入，A 继续执行。':ri===0?'下一轮 C 加入现有的 A、B。':'下一轮仅 C、D 继续。');
+  }
+  function renderComparison(){
+    comparison.innerHTML=['static','continuous'].map(view=>`<section data-view="${view}" aria-label="${labels[view]}"><h3>${labels[view]} · ${datasets[view].length} 轮</h3><div class="text-small cb-sub">${view==='static'?'① 锁定批 → ② 执行 → ③ 完成行不补 → ④ 整批结束再开批':'① 每轮组批 → ② 执行 → ③ 完成即退出 → ④ 下轮可接新请求'}</div><div class="cb-panel-detail">${current<0?(view==='static'?'AB：R1–R3；CD：R4–R6。C、D 等待 AB 整批结束。':'C 在 R2 加入；B 完成后，D 在 R3 加入，A 继续。'):selectedDetail(view)}</div><div class="cb-matrix tabular-nums" role="table"></div></section>`).join('');
+    for(const section of comparison.querySelectorAll('section'))renderMatrix(section.querySelector('.cb-matrix'),section.dataset.view,true);
+  }
+  function render(){
+    const {ri,pi}=state(),isCompare=mode==='compare';viewSelect.value=mode;
+    buttons.overview.setAttribute('aria-pressed',String(current<0));
+    buttons.prev.disabled=current<=0;buttons.next.disabled=current===length()-1;
+    if(!timer)buttons.play.textContent=current===length()-1?'重播':'播放';
+    status.textContent=current<0?(isCompare?'同样 18 个有效输入、10 个输出；对比准入与排队。':'① 调度 → ② 执行 → ③ 更新 → ④ 输出；每轮重复'):`${labels[mode]} · R${ri+1} / ${length()/4} · ${pi+1} / 4 ${phases[pi].title}`;
+    svg.hidden=isCompare;svg.style.display=isCompare?'none':'block';stepList.hidden=isCompare||current>=0;detail.hidden=isCompare||current<0;
+    matrix.hidden=isCompare;comparison.hidden=!isCompare;
+    root.querySelector('.cb-comparison-note').hidden=!isCompare;root.querySelector('.cb-differences').hidden=!isCompare;
+    stepList.innerHTML=phases.map((p,i)=>{const brief=mode==='static'&&i===0?'调度器在开批时锁定成员 → 批内循环期间新请求留在队列。':mode==='static'&&i===3?'返回新 token → 本批未完则继续；全部完成才开下一批。':p.brief;return `<li><span class="cb-step-title">${i+1} · ${p.title}</span><div class="text-small cb-sub">${brief}</div></li>`;}).join('');
+    detail.textContent=isCompare?'':selectedDetail();
+    if(isCompare)renderComparison();else{drawDiagram();renderMatrix(matrix,mode);}
+  }
+  viewSelect.addEventListener('change',()=>{stop();mode=viewSelect.value;current=Math.min(current,length()-1);render();save();});
+  buttons.overview.addEventListener('click',()=>{stop();current=-1;render();save();});
+  buttons.prev.addEventListener('click',()=>{stop();current=Math.max(0,current-1);render();save();});
+  buttons.next.addEventListener('click',()=>{stop();current=Math.min(length()-1,current+1);render();save();});
+  buttons.play.addEventListener('click',()=>{
+    if(timer){stop();return;}
+    if(current<0||current===length()-1)current=0;
+    render();save();buttons.play.textContent='暂停';
+    timer=setInterval(()=>{if(current>=length()-1){stop();return;}current++;render();save();if(current===length()-1)stop();},1800);
+  });
+  window.addEventListener('openai:set_globals',event=>{if(event.detail?.globals?.widgetState!==undefined){const before=mode+':'+current;readState(event.detail.globals.widgetState);if(before!==mode+':'+current){stop();render();}}});
+  new ResizeObserver(drawDiagram).observe(svg);
+  render();
+})();
+</script>
