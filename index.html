@@ -39,6 +39,13 @@
         <a href="vllm-ascend-startup/index.html">打开组件清单与 26 步启动流程</a>
       </nav>
     </section>
+    <section aria-labelledby="graph-title">
+      <h2 id="graph-title">vLLM-Ascend 图优化</h2>
+      <p>对照首次逐算子捕获与后续整图回放，展开 Python、C++、ACLNN 和 Runtime 调用，查看省去的 Host 调用链、保留的 NPU 计算与 FIA 参数更新。</p>
+      <nav aria-label="vLLM-Ascend 图优化项目">
+        <a href="vllm-ascend-graph/index.html">打开捕获、回放与底层调用对照</a>
+      </nav>
+    </section>
     <section aria-labelledby="pd-title">
       <h2 id="pd-title">vLLM PD 分离</h2>
       <p>切换 V0 / V1，以 P、D 两侧的 Scheduler 和 Worker 为线索，逐步观察缓存匹配、KV 传输和请求恢复。</p>

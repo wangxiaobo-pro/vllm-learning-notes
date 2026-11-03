@@ -1,0 +1,482 @@
+<style>
+#ascend-op-detail { color:var(--foreground); }
+#ascend-op-detail .od-gap { margin-top:calc(var(--font-size-base) * 1); }
+#ascend-op-detail .od-smallgap { margin-top:calc(var(--font-size-base) * .5); }
+#ascend-op-detail .od-chart { display:block; width:100%; }
+#ascend-op-detail .od-chart text { fill:var(--foreground); font-family:inherit; }
+#ascend-op-detail .od-chart .secondary { fill:var(--muted-foreground); }
+#ascend-op-detail .od-chart .scope { fill:color-mix(in srgb,var(--viz-series-1) 2%,var(--background)); stroke:var(--border); stroke-width:1; }
+#ascend-op-detail .od-chart .node { fill:var(--background); stroke:var(--border); stroke-width:1; }
+#ascend-op-detail .od-chart .existing { fill:color-mix(in srgb,var(--viz-series-3) 10%,var(--background)); }
+#ascend-op-detail .od-chart .event { fill:color-mix(in srgb,var(--viz-series-5) 10%,var(--background)); }
+#ascend-op-detail .od-chart .view { fill:none; stroke-dasharray:3 4; }
+#ascend-op-detail .od-chart .active { stroke:var(--viz-series-1); stroke-width:2; }
+#ascend-op-detail .od-chart .new-fusion { fill:color-mix(in srgb,var(--viz-series-2) 12%,var(--background)); }
+#ascend-op-detail .od-chart .line { fill:none; stroke:var(--muted-foreground); stroke-width:1.3; }
+#ascend-op-detail .od-chart .dependency { stroke:var(--viz-series-5); stroke-dasharray:5 4; }
+#ascend-op-detail .od-chart .residual { stroke:var(--viz-series-3); }
+#ascend-op-detail .od-chart .group { fill:none; stroke:var(--viz-series-5); stroke-width:1; stroke-dasharray:4 4; }
+#ascend-op-detail .od-chart .label-bg { fill:var(--background); }
+#ascend-op-detail .od-chart .arrow { fill:var(--muted-foreground); }
+#ascend-op-detail .od-chart .number { fill:var(--muted); }
+#ascend-op-detail .od-chart .number-on { fill:var(--viz-series-1); }
+#ascend-op-detail .od-chart .number-text-on { fill:var(--primary-foreground); }
+#ascend-op-detail .od-chart .weight { font-weight:500; }
+#ascend-op-detail .od-legend { display:flex; flex-wrap:wrap; gap:calc(var(--font-size-base) * 1); }
+#ascend-op-detail .od-legend span { display:inline-flex; align-items:center; gap:6px; }
+#ascend-op-detail .od-swatch { width:12px; height:12px; background:var(--muted); }
+#ascend-op-detail .od-swatch.existing { background:var(--viz-series-3); }
+#ascend-op-detail .od-swatch.event { background:var(--viz-series-5); }
+#ascend-op-detail .od-swatch.fusion { background:var(--viz-series-2); }
+#ascend-op-detail .od-sources { overflow-wrap:anywhere; }
+#ascend-op-detail pre { white-space:pre-wrap; overflow-wrap:anywhere; }
+#ascend-op-detail .od-source-list li { margin-top:calc(var(--font-size-base) * .5); }
+#ascend-op-detail summary { padding-block:calc(var(--font-size-base) * .5); }
+#ascend-op-detail .od-top { padding-right:90px; }
+#ascend-op-detail .od-chart .captured { fill:color-mix(in srgb,var(--viz-series-1) 7%,var(--background)); }
+#ascend-op-detail .od-chart .stage-active { stroke:var(--viz-series-1); stroke-width:2; }
+#ascend-op-detail .od-chart .record-line { stroke:var(--viz-series-1); }
+#ascend-op-detail .od-chart .task-line { stroke:var(--viz-series-3); }
+@media(max-width:480px){#ascend-op-detail .od-top {padding-right:0;}}
+</style>
+<div id="ascend-op-detail">
+  <h2>首次捕获与后续回放：逐算子底层调用对照</h2>
+  <div class="text-small text-muted od-smallgap od-top">Qwen2 中间 decoder 层 · TP=1 · BF16 未量化 · MRV1 FULL · A2/A3 普通 KV 布局</div>
+  <details class="od-gap" id="od-layers-expanded">
+  <summary class="cursor-interaction">补充：AddRMSNorm 的完整 Python → C++ → ACLNN 调用链</summary>
+  <div id="od-call-layers" class="od-gap"></div>
+  <div class="text-small od-smallgap">其他普通算子同样复用已捕获任务，但底层入口各异：GEMM 走线性算子后端，Triton RoPE 走 Triton launcher；不能都写成同一个 aclnn API。</div>
+  <h3 class="od-gap">保留的 Host 调用：动态 Attention 更新</h3>
+  <div id="od-update-calls" class="od-smallgap"></div>
+  <details class="od-gap">
+    <summary class="cursor-interaction">真实调用源码与边界</summary>
+    <pre><code># 普通算子：eager / capture 时走这条 Host 链
+input_layernorm(x, residual)
+  → torch.ops._C_ascend.npu_add_rms_norm_bias(...)
+  → C++ npu_add_rms_norm_bias(...)
+  → EXEC_NPU_CMD(aclnnAddRmsNormBias, ...)
+  → aclnnAddRmsNormBiasGetWorkspaceSize(...)
+  → OpCommand.SetCustomHandler(acl_call).Run()
+  → aclnnAddRmsNormBias(workspace, size, executor, stream)
+
+# 已有图：replay 分支不再 self.runnable(...)
+graph.replay()
+  → NPUGraph::replay()
+  → c10_npu::acl::AclmdlRIExecuteAsync(model_ri, stream)
+  → CANN aclmdlRIExecuteAsync(model_ri, stream)</code></pre>
+    <div class="text-small od-sources">layernorm.py:94；torch_binding.cpp:3134；add_rms_norm_bias_torch_adpt.h:46–49；op_api_common.h:705–766；acl_graph.py:213、298–319；updatable_graph.py:72–76；NPUGraph.cpp:265–279；AclInterface.cpp:1125–1136。</div>
+    <div class="text-small od-smallgap">CANN 内部具体 launch 接口未在这条开源调用链中暴露；一个算子 API 可能对应多个 kernel / 设备任务。这里展示 Host 调用与设备执行边界，未测量 kernel 数量。</div>
+  </details>
+  </details>
+  <details class="od-gap" id="od-runs-expanded" open>
+  <summary class="cursor-interaction">两次完整流程与底层调用</summary>
+  <div class="viz-controls od-gap">
+    <button class="btn" type="button" id="od-both" aria-pressed="true">两次完整对照</button>
+    <button class="btn" type="button" id="od-stage-prev" disabled>上一步</button>
+    <button class="btn btn-primary" type="button" id="od-stage-next">逐步看两次过程</button>
+    <span class="text-small tabular-nums" id="od-stage-count">7 步</span>
+  </div>
+  <div id="od-stage-detail" class="od-smallgap" aria-live="polite"></div>
+  <div id="od-two-runs" class="od-gap"></div>
+  <div class="text-small text-muted od-smallgap">此处放大一层；FULL graph 覆盖 Embedding → 所有 decoder 层 → FinalNorm。vLLM 启动时通常先预热，再用 dummy batch 捕获。</div>
+  <div class="text-small text-muted od-smallgap">10 个计算 API 分组仅用于讲解，不等于 10 个物理 kernel。split/view 不单列为 kernel；必要拷贝与事件依赖仍在图内。</div>
+  <details class="od-gap">
+    <summary class="cursor-interaction">7 步完整过程与捕获依据</summary>
+    <ol id="od-stage-list"></ol>
+    <div class="text-small od-sources">acl_graph.py:210、318；updatable_graph.py:72、126；torch_npu/NPUGraph.cpp:212、238、279。</div>
+    <div class="text-small od-smallgap"><a href="https://www.hiascend.com/doc_center/source/zh/CANNCommunityEdition/910/API/runtimeapi/aclcppdevg_03_1782.html" target="_blank" rel="noopener noreferrer">CANN：捕获任务先存入图实例，ExecuteAsync 时执行</a></div>
+  </details>
+  </details>
+  <details class="od-gap" id="od-expanded">
+  <summary class="cursor-interaction">展开单层：算子源码、残差旁路与 Attention 更新</summary>
+  <div class="viz-controls od-gap">
+    <label class="form-label">执行阶段
+      <select class="form-select" id="od-mode">
+        <option value="capture">Capture：调用算子，录制设备任务</option>
+        <option value="replay">Replay：换本轮输入，复用设备任务</option>
+      </select>
+    </label>
+  </div>
+  <div class="viz-controls od-gap">
+    <button class="btn" type="button" id="od-all" aria-pressed="true">全部算子</button>
+    <button class="btn" type="button" id="od-prev" disabled>上一步</button>
+    <button class="btn btn-primary" type="button" id="od-next">逐算子查看</button>
+    <span class="text-small tabular-nums" id="od-count">12 组</span>
+  </div>
+  <div class="od-smallgap" id="od-status" aria-live="polite"></div>
+  <div class="od-gap" id="od-operators"></div>
+  <div class="od-legend text-small od-gap">
+    <span><i class="od-swatch existing" aria-hidden="true"></i>模型 / CustomOp 已有融合</span>
+    <span><i class="od-swatch event" aria-hidden="true"></i>事件 / 可更新 Attention</span>
+    <span><i class="od-swatch" aria-hidden="true"></i>其他计算；虚框为 view</span>
+  </div>
+  <details class="od-gap" id="od-code-details">
+    <summary class="cursor-interaction">当前算子的真实调用与数据</summary>
+    <div id="od-code-label"></div>
+    <pre><code id="od-code"></code></pre>
+    <div class="text-small od-sources" id="od-source"></div>
+  </details>
+  <h3 class="od-gap">Capture 结束后保存的是句柄与引用</h3>
+  <div id="od-storage" class="od-smallgap"></div>
+  <details class="od-smallgap">
+    <summary class="cursor-interaction">完整编号调用与源码</summary>
+    <ol id="od-source-list" class="od-source-list"></ol>
+  </details>
+  </details>
+  <hr class="od-gap">
+  <div class="od-smallgap">本图节省的是每轮完整模型的逐算子分派与下发；NPU 仍执行图中的计算，图本身不会把所有 kernel 合成一个。</div>
+  <details class="od-gap" id="od-fusion-expanded">
+  <summary class="cursor-interaction">另外两类优化：已有算子融合与条件性 FX 融合</summary>
+  <div class="text-small od-smallgap">已有融合：AddRMSNorm、SwiGLU、合并 QKV / Gate-Up 在 eager 也存在。以下 FX 规则是独立量化分支。</div>
+  <h3 class="od-gap">② FX 融合前后：Norm + 动态量化</h3>
+  <div class="text-small text-muted od-smallgap">独立 W8A8_DYNAMIC 规则示例 · norm bias 为 Tensor · 假设匹配条件满足 · 不是上方 BF16 路径的实测命中</div>
+  <div class="od-smallgap" id="od-fusion"></div>
+  <details class="od-smallgap">
+    <summary class="cursor-interaction">替换规则与生效条件</summary>
+    <pre><code>before: npu_add_rms_norm_bias → npu_dynamic_quant
+after:  npu_add_rms_norm_dynamic_quant(..., beta=bias)
+return: output[0], output[3], output[2]
+        quantized_x, scale, residual_sum</code></pre>
+    <div class="text-small od-sources">norm_quant_fusion_pass.py:220、240、365；graph_fusion_pass_manager.py:58；base_pattern.py:56。需 dtype / eps / 硬件 / custom-op / stream 等条件满足。普通 Qwen2 的 bias=None 变体是否命中，需检查实际编译图。</div>
+  </details>
+  </details>
+  <div class="text-small text-muted od-gap">编号表示已核实的 API / 设备工作分组，不是物理 kernel 数；split/view 通常无独立核，contiguous 可能产生拷贝。精确任务与融合覆盖需 NPU trace。</div>
+  <div class="text-small text-muted od-smallgap">教学形状：T=2、H=4096、Q=32×128、K/V=8×128、FFN 维 I；无 QK norm / SWA / LoRA / 推测解码。Triton RoPE 路径，缺失时转 npu_mrope。</div>
+  <div class="text-small text-muted od-smallgap">静态源码：vllm-ascend 94e3e25f8 · vllm 295c062db8 · 未执行 NPU 推理或性能测量</div>
+</div>
+<script>
+(() => {
+ const root=document.getElementById('ascend-op-detail');
+ const el=id=>root.querySelector('#'+id), ns='http://www.w3.org/2000/svg';
+ const measure=document.createElement('canvas').getContext('2d');
+ const ops=[
+  {title:'输入残差 + RMSNorm',call:'input_layernorm(x, r₀)',api:'_C_ascend.npu_add_rms_norm_bias',data:'x,r₀:[2,4096] → normalized,r₁',tag:'existing',detail:'中间层 residual 非空：一个 AddRMSNorm API 同时输出归一化结果和 r₁=x+r₀。',code:'x, _, residual = torch.ops._C_ascend.npu_add_rms_norm_bias(\n    x, residual, self.weight, self.bias, self.variance_epsilon\n)\n# C++ → aclnnAddRmsNormBias；本例 self.bias=None',src:'qwen2.py:302 → ops/layernorm.py:94 → csrc/moe/add_rms_norm_bias/add_rms_norm_bias_torch_adpt.h:49'},
+  {title:'QKV 合并投影 GEMM',call:'self_attn.qkv_proj',api:'vllm.unquantized_gemm → F.linear',data:'[2,4096] → qkv:[2,6144]；含 bias',tag:'existing',detail:'Q/K/V 权重已合并；QKV bias 作为 F.linear 参数传入，不另画成一个确定的 bias kernel。',code:'qkv, _ = self.qkv_proj(hidden_states)\n# quant_method.apply → torch.ops.vllm.unquantized_gemm\nreturn torch.nn.functional.linear(x, weight, bias)',src:'qwen2.py:157、213 → ops/linear.py:133 → ops/linear.py:49'},
+  {title:'Q / K / V 切片与 view',call:'qkv.split(..., dim=-1)',api:'张量别名 / 形状元数据',data:'Q:[2,4096]；K,V:[2,1024]',tag:'view',detail:'split/view 不是一个确定的设备 kernel；Q/K 切片不连续时，下一步 contiguous 会真正复制数据。',code:'q, k, v = qkv.split(\n    [self.q_size, self.kv_size, self.kv_size], dim=-1\n)\n# Attention 前 view 为 Q:[2,32,128]，K/V:[2,8,128]',src:'qwen2.py:214 → vllm/model_executor/layers/attention/attention.py:533'},
+  {title:'Q / K RoPE 与所需拷贝',call:'rotary_emb(positions,q,k)',api:'vllm.npu_rotary_embedding',data:'contiguous（需要时）→ _triton_rope',tag:'normal',detail:'只旋转 Q、K；V 沿旁路送入缓存。Triton 可用时启动 _triton_rope，否则使用 npu_mrope。',code:'q, k = self.rotary_emb(positions, q, k)\n# rope_forward_oot → rope_forward_triton\nif not q.is_contiguous(): q = q.contiguous()\nif not k.is_contiguous(): k = k.contiguous()\n# _triton_rope[(n_row,)](...)',src:'qwen2.py:232 → ops/rotary_embedding.py:216 → ops/triton/rope.py:575、599'},
+  {title:'把本轮 K / V 写入 KV cache',call:'attn → reshape_and_cache',api:'torch_npu.npu_scatter_pa_kv_cache',data:'本轮 K,V + slot_mapping → 持久缓存',tag:'normal',detail:'KV 写入也在 FULL 图里：每轮 replay 都重新写入本轮 K/V，随后 FIA 读取历史加当前缓存。',code:'torch_npu.npu_scatter_pa_kv_cache(\n    key=key.contiguous(), value=value.contiguous(),\n    key_cache=key_cache, value_cache=value_cache,\n    slot_mapping=slot_mapping.contiguous(), cache_mode="Norm"\n)',src:'attention/attention_v1.py:1359、1228 → device/device_op.py:166'},
+  {title:'图内事件等待与复位',call:'register_task(operation,...)',api:'ExternalEvent.wait → reset',data:'本层更新完成后，才放行 FIA',tag:'event',detail:'capture 将 wait/reset 录入图。replay 时等待更新流 record；这是设备依赖，不是旧结果缓存。',code:'event = torch.npu.ExternalEvent()\nevent.wait(stream)\nevent.reset(stream)\ntorch.npu.graph_task_group_begin(stream)',src:'compilation/updatable_graph.py:126'},
+  {title:'可更新 FIA task group',call:'full_graph_fia → register_task',api:'npu_fused_infer_attention_score.out',data:'Q + KV cache + block_table + lengths',tag:'event',detail:'FULL + 普通 head_dim 走 FIA；其内部完成 Attention 计算，但不能把 QKᵀ/softmax/PV 当成已确认的独立 ACL 节点。',code:'register_task(\n    torch_npu.npu_fused_infer_attention_score.out,\n    {"query": query, "key": key_cache_view, "value": value_cache_view,\n     "actual_seq_lengths": [1, 2],\n     "actual_seq_lengths_kv": [101, 201],\n     "block_table": block_table, "workspace": workspace,\n     "out": [output_view, softmax_lse]},\n    FIAParamProvider(...)\n)\n# 以上长度是本轮教学值；capture 时使用 dummy metadata。',src:'attention/attention_v1.py:650、720、897；compilation/updatable_graph.py:130'},
+  {title:'Attention 输出投影',call:'self_attn.o_proj',api:'vllm.unquantized_gemm → F.linear',data:'[2,4096] → a:[2,4096]；无 bias',tag:'normal',detail:'O 投影仍执行矩阵乘；TP=1 没有这一投影之后的跨 rank all-reduce。',code:'attn_output = self.attn(q, k, v)\noutput, _ = self.o_proj(attn_output)\n# F.linear(x, weight, bias=None)',src:'qwen2.py:166、233、234 → ops/linear.py:49'},
+  {title:'Attention 残差 + RMSNorm',call:'post_attention_layernorm',api:'_C_ascend.npu_add_rms_norm_bias',data:'a + r₁ → normalized,r₂',tag:'existing',detail:'第一次 Norm 的 residual 沿旁路到这里：r₂=r₁+a；归一化输出继续送入 FFN。',code:'hidden_states, residual = self.post_attention_layernorm(\n    hidden_states, residual\n)\n# → npu_add_rms_norm_bias → aclnnAddRmsNormBias',src:'qwen2.py:309 → ops/layernorm.py:94'},
+  {title:'Gate / Up 合并投影 GEMM',call:'mlp.gate_up_proj',api:'vllm.unquantized_gemm → F.linear',data:'[2,4096] → gate_up:[2,2I]',tag:'existing',detail:'MergedColumnParallelLinear 已把 Gate/Up 合并；这不是 ACL capture 才产生的融合。',code:'gate_up, _ = self.gate_up_proj(x)\n# 两组 projection 的权重已合并；bias=False',src:'qwen2.py:91、112 → ops/linear.py:49'},
+  {title:'SiLU × Up：SwiGLU',call:'mlp.act_fn(gate_up)',api:'torch_npu.npu_swiglu',data:'gate_up:[2,2I] → activated:[2,I]',tag:'existing',detail:'Ascend CustomOp 原本就用一个 npu_swiglu API；eager 也不会按此处源码发出三个独立 Python 算子。',code:'class AscendSiluAndMul(SiluAndMul):\n    def forward_oot(self, x):\n        out = torch_npu.npu_swiglu(x)\n        return out',src:'qwen2.py:113 → ops/activation.py:37'},
+  {title:'Down 投影 GEMM',call:'mlp.down_proj',api:'vllm.unquantized_gemm → F.linear',data:'[2,I] → m:[2,4096]；无 bias',tag:'normal',detail:'层末没有额外 residual add；返回 m 和 r₂，下一层开头才把两者相加。',code:'x, _ = self.down_proj(x)\nreturn x\n# decoder 返回 hidden_states, residual\n# 下一 decoder 层 input_layernorm(m, r₂)',src:'qwen2.py:114、311 → ops/linear.py:49'}
+ ];
+ let current=-1, mode='capture', stage=-1, previousWidth=0;
+ const stages=[
+   '① 准备捕获：启动预热已完成；dummy batch 写入固定 buffer，然后 capture_begin。',
+   '② 逐算子录制：Host 走模型 callable，逐项发出算子调用；捕获流任务暂存入图，不立即执行。',
+   '③ 保存图：capture_end 产生可回放实例 g，保存设备任务、依赖与复用地址。',
+   '④ 准备下一次：匹配已捕获的形状 / 图键；将新 token、positions 等写入原 buffer。',
+   '⑤ 整图提交：graph.replay() 调用 AclmdlRIExecuteAsync(g)，省去完整模型的逐算子调用链。',
+   '⑥ 动态 Attention：更新流刷新本轮 FIA 任务组参数并 record；图内 event 等待满足后继续 FIA。',
+   '⑦ 设备完成计算：同一批 kernel 按依赖执行，写入本轮输出；后续 logits / sampling 消费结果。'
+ ];
+ function S(tag,attrs={},text){const e=document.createElementNS(ns,tag);Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,String(v)));if(text!==undefined)e.textContent=text;return e;}
+ function sizes(small=false){const c=getComputedStyle(root);return {font:(small?Math.max(11,parseFloat(c.fontSize)-2):parseFloat(c.fontSize))+'px '+c.fontFamily,lh:parseFloat(c.lineHeight)||26};}
+ function lines(text,w,small=false){measure.font=sizes(small).font;const out=[];let row='';for(const token of text.match(/[A-Za-z0-9]+_?|[^\x00-\x7F]|./g)||[]){const units=measure.measureText(token).width>w?[...token]:[token];for(const u of units){if(row&&measure.measureText(row+u).width>w){out.push(row.trimEnd());row='';}if(row||u.trim())row+=u;}}if(row)out.push(row);return out;}
+ function text(g,value,x,y,w,small=false,cls=''){const a=lines(value,w,small),e=S('text',{x,y,class:(small?'text-small ':'')+cls});a.forEach((v,i)=>e.append(S('tspan',{x,dy:i?sizes().lh:0},v)));g.append(e);return a.length*sizes().lh;}
+ function label(g,value,x,y,w,small=true,cls=''){const a=lines(value,w,small);measure.font=sizes(small).font;const tw=Math.max(...a.map(t=>measure.measureText(t).width));g.append(S('rect',{x:x-3,y:y-sizes().lh+5,width:tw+6,height:a.length*sizes().lh,class:'label-bg'}));return text(g,value,x,y,w,small,cls);}
+ function base(name,w){const svg=S('svg',{class:'od-chart',width:w,role:'img','aria-label':name});svg.append(S('title',{},name));const defs=S('defs'),m=S('marker',{id:'od-'+name.replace(/[^a-z]/g,'')+'-arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:6,markerHeight:6,orient:'auto'});m.append(S('path',{d:'M0 0L10 5L0 10Z',class:'arrow'}));defs.append(m);svg.append(defs);svg.marker=m.id;return svg;}
+ function path(svg,d,cls='line',arrow=true){svg.append(S('path',{d,class:cls,...(arrow?{'marker-end':'url(#'+svg.marker+')'}:{})}));}
+ function finish(svg,w,h,dest){svg.setAttribute('height',h);svg.setAttribute('viewBox',`0 0 ${w} ${h}`);el(dest).replaceChildren(svg);}
+ function box(svg,b,title,api,data,cls='',number=null){
+   const group=S('g',{'data-op':number===null?'':number});group.append(S('rect',{x:b.x,y:b.y,width:b.w,height:b.h,rx:6,class:'node '+cls}));
+   let tx=b.x+12,tw=b.w-24;
+   if(number!==null){group.append(S('circle',{cx:b.x+23,cy:b.y+24,r:12,class:current===number?'number-on':'number'}));group.append(S('text',{x:b.x+23,y:b.y+29,'text-anchor':'middle',class:'text-small '+(current===number?'number-text-on':'')},number+1));tx=b.x+43;tw=b.w-55;}
+   let y=b.y+29;y+=text(group,title,tx,y,tw,false,'weight');
+   if(api)y+=text(group,api,b.x+12,y,b.w-24,true,'secondary');
+   if(data)text(group,data,b.x+12,y,b.w-24,true);
+   svg.append(group);
+ }
+ function bh(w,title,api,data,number=false){return 18+(lines(title,w-(number?55:24)).length+lines(api,w-24,true).length+lines(data,w-24,true).length)*sizes().lh;}
+ function drawCallLayers(){
+   const w=Math.floor(el('od-call-layers').getBoundingClientRect().width);if(!w)return;
+   const svg=base('calllayers',w),paired=w>=680,gap=28,pw=paired?(w-gap-4)/2:w-4;
+   const rows=[
+     [
+       ['① Host：模型调用','self.runnable(...)','进入层 forward → input_layernorm'],
+       ['② Host：Python 算子','torch.ops._C_ascend.npu_add_rms_norm_bias','每次执行到此算子，都触发分派'],
+       ['③ Host：C++ 适配','npu_add_rms_norm_bias → EXEC_NPU_CMD','创建输出 Tensor、转换参数描述符'],
+       ['④ Host：算子 API','aclnnAddRmsNormBias','GetWorkspaceSize → OpCommand → ACLNN 执行入口'],
+       ['⑤ Runtime：逐算子下发','该算子的设备任务','GEMM、RoPE 等也各走自己的 Host 调用链'],
+       ['⑥ NPU：执行计算','AddRMSNorm → 后续算子','完成本轮输入的设备计算']
+     ],
+     [
+       ['① Host：命中已有图','entry.aclgraph','跳过图内完整 self.runnable(...)'],
+       ['② Host：Python 图接口','graph.replay()','本张图一次 replay；不是每算子一次'],
+       ['③ Host：C++ 图接口','NPUGraph::replay()','取已捕获的 model_ri 与当前 stream'],
+       ['④ Host：整图 API','aclmdlRIExecuteAsync(g, stream)','一次异步提交这张图'],
+       ['⑤ Runtime：按图调度','已捕获的任务及依赖','普通任务不回调左侧 Python / ACLNN 链'],
+       ['⑥ NPU：计算仍然保留','AddRMSNorm → GEMM → RoPE → …','图内各 kernel / 任务继续执行']
+     ]
+   ];
+   const heights=rows[0].map((d,i)=>Math.max(bh(pw,...d),bh(pw,...rows[1][i])));
+   let bottom=0;
+   rows.forEach((data,run)=>{
+     const x=paired?2+run*(pw+gap):2;let y=(paired?0:bottom)+24;
+     y+=text(svg,run===0?'无图：每次走算子的 Host 链':'有图：一次图接口替代普通调用链',x,y,pw,false,'weight');
+     y+=text(svg,run===0?'以一次 AddRMSNorm 调用为例':'已捕获、图键与输入地址匹配',x,y,pw,true,'secondary')+18;
+     const bs=[];
+     data.forEach((d,i)=>{
+       if(i===5){y+=text(svg,'异步边界：Host 提交 → NPU 执行',x,y+4,pw,true,'weight')+18;}
+       bs.push({x,y,w:pw,h:heights[i]});y+=heights[i]+30;
+     });
+     bs.forEach((b,i)=>{
+       if(i<data.length-1){
+         const mid=b.x+b.w/2;
+         if(i===4){path(svg,`M${mid},${b.y+b.h}V${b.y+b.h+15}`,run===0?'line':'line record-line');path(svg,`M${mid},${bs[i+1].y-14}V${bs[i+1].y}`,run===0?'line':'line record-line');}
+         else path(svg,`M${mid},${b.y+b.h}V${bs[i+1].y}`,run===0?'line':'line record-line');
+       }
+       box(svg,b,...data[i],i===5?'existing':run===1?'captured':'');
+     });
+     y+=text(svg,run===0?'Capture 也走此 Host 链；任务先暂存入 g。':'省去普通算子 Host 链；保留 NPU 计算。',x,y,pw,true,'weight');
+     bottom=Math.max(bottom,y+36);
+   });
+   finish(svg,w,bottom,'od-call-layers');
+ }
+ function drawUpdateCalls(){
+   const w=Math.floor(el('od-update-calls').getBoundingClientRect().width);if(!w)return;
+   const svg=base('updatecalls',w),wide=w>=680,cols=wide?3:1,gap=28,nw=(w-4-(cols-1)*gap)/cols;
+   const data=[
+     ['① 先提交整张图','graph.replay()','图内 FIA 需等待本轮更新事件'],
+     ['② 更新组内 FIA 算子','graph.update → operation(**kwargs)','update_begin → 算子 API → update_end'],
+     ['③ 放行图内 FIA','event.record(update_stream)','图内 wait 满足后，执行更新后的 FIA']
+   ];
+   let y=24;y+=text(svg,'本例非 ENPU FULL：先 resolve_tasks 解析本轮参数，再 replay → update。',2,y,w-4,true)+16;
+   let bottom=y;const bs=[];
+   const h=Math.max(...data.map(d=>bh(nw,...d)));
+   data.forEach((d,i)=>{bs.push({x:2+(wide?i*(nw+gap):0),y:wide?y:y+i*(h+30),w:nw,h});});
+   bs.forEach((b,i)=>{box(svg,b,...data[i],'event');if(i<2){if(wide)path(svg,`M${b.x+b.w},${b.y+b.h/2}H${bs[i+1].x}`,'line dependency');else path(svg,`M${b.x+b.w/2},${b.y+b.h}V${bs[i+1].y}`,'line dependency');}bottom=Math.max(bottom,b.y+b.h);});
+   y=bottom+30;y+=text(svg,'因此：普通已捕获算子跳过 Host 链；可更新 Attention 仍调用算子接口来更新任务。',2,y,w-4,true,'weight');
+   y+=text(svg,'图外的输入 copy、metadata 准备，以及本例 replay 前的同步也仍保留。',2,y+8,w-4,true,'secondary')+8;
+   finish(svg,w,y+12,'od-update-calls');
+ }
+ function drawTwoRuns(){
+   const w=Math.floor(el('od-two-runs').getBoundingClientRect().width);if(!w)return;
+   const svg=base('tworuns',w),paired=w>=680,gap=28,pw=paired?(w-gap-4)/2:w-4;
+   const taskNames=[
+     ['AddRMSNorm','归一化(x+r₀)；r₁'],
+     ['QKV GEMM','合并投影：x → Q,K,V'],
+     ['RoPE','旋转 Q/K；V 走旁路'],
+     ['KV scatter','把本轮 K/V 写入缓存'],
+     ['FIA Attention','event wait/reset → FIA'],
+     ['O GEMM','Attention 输出投影'],
+     ['AddRMSNorm','归一化(a+r₁)；r₂'],
+     ['Gate/Up GEMM','合并两路 FFN 投影'],
+     ['SwiGLU','SiLU(gate) × up'],
+     ['Down GEMM','输出 m；返回 m 和 r₂']
+   ];
+   const hostCalls=[
+     ['input_layernorm','→ C++ / EXEC_NPU_CMD','→ aclnnAddRmsNormBias'],
+     ['qkv_proj','→ unquantized_gemm','→ F.linear'],
+     ['rotary_emb','→ rope_forward_oot','→ _triton_rope'],
+     ['reshape_and_cache','→ DeviceOperator','→ npu_scatter_pa_kv_cache'],
+     ['full_graph_fia','→ register_task','→ npu_fused_infer_attention_score.out'],
+     ['o_proj','→ unquantized_gemm','→ F.linear'],
+     ['post_attention_layernorm','→ C++ / EXEC_NPU_CMD','→ aclnnAddRmsNormBias'],
+     ['gate_up_proj','→ unquantized_gemm','→ F.linear'],
+     ['act_fn','→ AscendSiluAndMul','→ torch_npu.npu_swiglu'],
+     ['down_proj','→ unquantized_gemm','→ F.linear']
+   ];
+   const replayCalls=[['⑤ graph.replay()','→ NPUGraph::replay()','→ aclmdlRIExecuteAsync'],...Array.from({length:3},()=>['省去此算子的','Host 调用链']),['⑥ graph.update()','→ FIA API 更新参数','→ event.record()'],...Array.from({length:5},()=>['省去此算子的','Host 调用链'])];
+   const inputData=[['① dummy 输入 x₀','固定 buffer @P · T=2','预热已完成；用于录制形状'],['④ 本轮输入 x₁','同一 buffer @P · T=2','新 token / positions / metadata']];
+   const beginData=[['① capture_begin()','','进入捕获流'],['复用已经保存的图 g','','形状 / 图键匹配后进入 replay']];
+   const endData=[['③ capture_end() → g','','保存任务、依赖与地址引用'],['⑦ 本轮输出 @Y','','hidden_states → logits / sampling']];
+   const inputH=Math.max(...inputData.map(d=>bh(pw,...d))),beginH=Math.max(...beginData.map(d=>bh(pw,...d)));
+   const hostW=Math.floor(pw*.42),taskX=hostW+24,taskW=pw-taskX-10;
+   const taskHs=taskNames.map(d=>bh(taskW,d[0],'',d[1]));
+   const callHeight=arr=>arr.reduce((h,s)=>h+lines(s,hostW,true).length*sizes().lh,0);
+   const rowHs=taskHs.map((h,i)=>Math.max(h,callHeight(hostCalls[i])+12,callHeight(replayCalls[i])+12));
+   const endH=Math.max(...endData.map(d=>bh(pw,...d)));
+   let bottom=0;
+   [0,1].forEach(run=>{
+     const x=paired?2+run*(pw+gap):2,top=paired?0:bottom;
+     let y=top+24;
+     y+=text(svg,run===0?'第一次：逐算子调用来录图':'第二次及以后：整图提交',x,y,pw,false,'weight');
+     y+=text(svg,run===0?'CPU 逐算子发出 launch 请求':'CPU 复用同一图实例 g',x,y,pw,true,'secondary')+16;
+     const input={x,y,w:pw,h:inputH};box(svg,input,...inputData[run],stage===(run===0?0:3)?'stage-active':'');
+     y+=inputH+28;path(svg,`M${x+pw/2},${y-28}V${y}`);
+     const begin={x,y,w:pw,h:beginH};box(svg,begin,...beginData[run],stage===(run===0?0:4)?'stage-active':'');
+     y+=beginH+40;
+     const hostHeading=run===0?'Host：每项调用后端':'Host：仅图接口 / 更新';
+     const taskHeading=run===0?'② 录入图 g 的任务':'NPU：执行图内任务';
+     const headingH=Math.max(text(svg,hostHeading,x,y,hostW,true,'weight'),text(svg,taskHeading,x+taskX,y,pw-taskX,true,'weight'));
+     y+=headingH+18;
+     const graphTop=y-10,bs=taskNames.map((d,i)=>{const b={x:x+taskX,y:y+(rowHs[i]-taskHs[i])/2,w:taskW,h:taskHs[i],rowY:y,rowH:rowHs[i]};y+=rowHs[i]+28;return b;});
+     const last=bs.at(-1),graphBottom=last.y+last.h+12;
+     svg.append(S('rect',{x:x+taskX-8,y:graphTop,width:taskW+16,height:graphBottom-graphTop,rx:6,class:'scope'}));
+     bs.forEach((b,i)=>{if(i<bs.length-1)path(svg,`M${b.x+b.w/2},${b.y+b.h}V${bs[i+1].y}`,run===0?'line record-line':'line task-line');});
+     bs.forEach((b,i)=>{
+       const active=run===0?stage===1:stage===6||(stage===5&&i===4);
+       box(svg,b,taskNames[i][0],'',taskNames[i][1],(run===0?'captured':'existing')+(active?' stage-active':''));
+       const calls=run===0?hostCalls[i]:replayCalls[i];
+       let cy=b.rowY+(b.rowH-callHeight(calls))/2+sizes().lh-5;
+       calls.forEach((line,j)=>{cy+=text(svg,line,x,cy,hostW,true,run===1&&i!==0&&i!==4?'secondary':j===0?'weight':'');});
+       if(run===0||i===0||i===4)path(svg,`M${x+hostW+4},${b.y+b.h/2}H${b.x-9}`,run===1&&i===4?'line dependency':'line record-line');
+     });
+     y=graphBottom+32;
+     path(svg,`M${last.x+last.w/2},${last.y+last.h}V${y}`);
+     box(svg,{x,y,w:pw,h:endH},...endData[run],stage===(run===0?2:6)?'stage-active':'');
+     y+=endH+28;
+     y+=text(svg,run===0?'捕获流任务先被记录，尚未在设备执行。':'一次图启动 ≠ 一个 kernel；上述计算仍全部发生。',x,y,pw,true,'weight');
+     y+=text(svg,run===0?'每个算子有各自的后端调用链；图保存其设备任务。':'FIA 仍调用接口更新参数；普通算子的 Host 链跳过。',x,y+8,pw,true,'secondary')+8;
+     bottom=Math.max(bottom,y+36);
+   });
+   finish(svg,w,bottom,'od-two-runs');
+ }
+ function updateStages(){
+   el('od-both').setAttribute('aria-pressed',String(stage<0));el('od-stage-prev').disabled=stage<=0;el('od-stage-next').disabled=stage===6;
+   el('od-stage-next').textContent=stage<0?'逐步看两次过程':'下一步';el('od-stage-count').textContent=stage<0?'7 步':`${stage+1} / 7`;
+   el('od-stage-detail').textContent=stage<0?'同形状、可换内容的两次输入：首次逐项录制；后续更新输入并整图执行。':stages[stage];
+   drawTwoRuns();
+ }
+ function drawOperators(){
+   const w=Math.floor(el('od-operators').getBoundingClientRect().width);if(!w)return;
+   const svg=base('operators',w), narrow=w<600, hostW=narrow?0:Math.min(205,w*.28), dx=narrow?18:hostW+42, nw=w-dx-65;
+   let y=24;
+   y+=text(svg,mode==='capture'?'图外：预热已完成 → 固定 buffer 的 dummy batch（T=2）':'图外：写入 A/B 新 token、positions=[100,200]、本轮 metadata',2,y,w-4,true);
+   y+=16;
+   y+=text(svg,'FULL 模型 forward：Embedding → decoder 层 × L → FinalNorm',2,y,w-4,false,'weight');
+   y+=text(svg,'下方放大中间第 i 层；第一层 residual=None 时改用 npu_rms_norm',2,y,w-4,true,'secondary');
+   y+=22;
+   if(!narrow)text(svg,mode==='capture'?'主机：实际调用路径':'主机：图提交与参数更新',2,y,hostW,false,'weight');
+   text(svg,mode==='capture'?'捕获范围：torch.npu.graph(g)':'同一张图：执行当前输入的计算',dx,y,w-dx-4,false,'weight');
+   y+=34;
+   const scopeTop=y-14, boxes=[], callRows=[];
+   const attnLabel='FX 的 opaque Attention 内部：KV 写入 + 事件 + FIA';
+   let attnLabelY=0;
+   ops.forEach((op,i)=>{
+     if(i===4){attnLabelY=y+4;y+=lines(attnLabel,w-dx-6,true).length*sizes().lh+24;}
+     if(narrow){
+       const replayLabel=i===0?'graph.replay()':i===5?'update_stream：参数更新 + record':null;
+       const call=mode==='capture'?op.call:replayLabel;
+       if(call)callRows.push({value:call,x:dx,y,w:nw});
+       y+=Math.max(lines(op.call,nw,true).length,lines(replayLabel||'',nw,true).length)*sizes().lh+8;
+     }
+     const h=bh(nw,op.title,op.api,op.data,true);
+     boxes.push({x:dx,y,w:nw,h});y+=h+34;
+   });
+   const bottom=boxes.at(-1).y+boxes.at(-1).h;
+   svg.append(S('rect',{x:dx-12,y:scopeTop,width:w-dx+8,height:bottom-scopeTop+20,rx:8,class:'scope'}));
+   const attnTop=attnLabelY-18,attnBottom=boxes[6].y+boxes[6].h+10;
+   svg.append(S('rect',{x:dx-7,y:attnTop,width:nw+14,height:attnBottom-attnTop,rx:6,class:'group'}));
+   // Device order is distinct from the CPU call-to-implementation arrows.
+   boxes.forEach((b,i)=>{if(i<boxes.length-1){const next=boxes[i+1];path(svg,`M${b.x+b.w/2},${b.y+b.h}V${next.y}`);}});
+   // r1 bypasses the attention branch; r2 bypasses the MLP branch.
+   const rail=w-14, a=boxes[0], b=boxes[8], c=boxes[11];
+   const returnY=bottom+46, returnH=bh(nw,'返回两个引用（无相加）','(m, r₂)','下一层开头才执行 m + r₂');
+   path(svg,`M${a.x+a.w},${a.y+a.h/2}H${rail}V${b.y+b.h/2}H${b.x+b.w}`,'line residual');
+   label(svg,'r₁',rail-18,a.y+a.h/2+30,30,true);
+   path(svg,`M${b.x+b.w},${b.y+b.h/2+18}H${rail}V${returnY+returnH/2}H${c.x+c.w}`,'line residual');
+   label(svg,'r₂',rail-18,b.y+b.h/2+50,30,true);
+   // V skips RoPE and joins the cache write; Q and K take the central path.
+   const vRail=w-39, vs=boxes[2], vt=boxes[4];
+   path(svg,`M${vs.x+vs.w},${vs.y+vs.h/2}H${vRail}V${vt.y+vt.h/2}H${vt.x+vt.w}`,'line');
+   label(svg,'V',vRail-7,vs.y+vs.h/2+30,20,true);
+   if(!narrow){
+     if(mode==='capture')boxes.forEach((b,i)=>{
+       let cy=b.y+30;text(svg,ops[i].call,2,cy,hostW,true);
+       path(svg,`M${hostW+6},${b.y+b.h/2}H${dx-1}`,'line');
+       label(svg,String(i+1),hostW+13,b.y+b.h/2-5,22,true);
+     });
+     else {
+       const t=boxes[0];text(svg,'graph.replay()',2,t.y+25,hostW,false,'weight');
+       text(svg,'AclmdlRIExecuteAsync',2,t.y+55,hostW,true);
+       path(svg,`M${hostW+6},${t.y+t.h/2}H${dx-1}`);
+       text(svg,'已绕过逐算子 Python forward',2,boxes[2].y+30,hostW,true,'secondary');
+       const e=boxes[5];let ey=e.y+18;
+       ey+=text(svg,'update_stream',2,ey,hostW,false,'weight');
+       ey+=text(svg,'task_update_begin → operation(new_kwargs) → task_update_end',2,ey,hostW,true);
+       ey+=text(svg,'event.record()',2,ey,hostW,true);
+       path(svg,`M${hostW+6},${e.y+e.h/2}H${dx-1}`,'line dependency');
+       text(svg,'KV 长度 [101,201]；下一轮 [102,202]',2,boxes[7].y+30,hostW,true);
+     }
+   }
+   callRows.forEach(r=>label(svg,r.value,r.x,r.y,r.w,true,'secondary'));
+   boxes.forEach((b,i)=>box(svg,b,ops[i].title,ops[i].api,ops[i].data,ops[i].tag+(current===i?' active':''),i));
+   label(svg,attnLabel,dx,attnLabelY,w-dx-6,true);
+   path(svg,`M${dx+nw/2},${bottom}V${returnY}`);
+   box(svg,{x:dx,y:returnY,w:nw,h:returnH},'返回两个引用（无相加）','(m, r₂)','下一层开头才执行 m + r₂','view');
+   y=returnY+returnH+39;
+   y+=text(svg,mode==='capture'?'下一层 → 最终输出 Tensor 引用':'下一层 → 最终 hidden_states',2,y,w-4,false,'weight');
+   y+=text(svg,mode==='capture'?'设备任务暂存入图；返回 Tensor 引用不代表已产生计算结果。':'图外：hidden_states[logits_indices] → compute_logits → sampling',2,y,w-4,true);
+   if(mode==='replay')y+=text(svg,'非 ENPU FULL：replay 前同步上一轮主流；replay 提交后更新本轮 FIA 参数。',2,y+8,w-4,true,'secondary')+8;
+   finish(svg,w,y+10,'od-operators');
+ }
+ function drawStorage(){
+   const w=Math.floor(el('od-storage').getBoundingClientRect().width);if(!w)return;const svg=base('storage',w);
+   const data=[
+    ['entry.aclgraph','UpdatableGraph → runtime model_ri','NPU 工作与依赖的可回放句柄'],
+    ['graph.tasks[]','operation + kwargs + provider','每次 Attention 的 handle / event'],
+    ['entry.output','输出 Tensor 的复用引用','图执行写入本轮 hidden_states'],
+    ['capture_resources','FIA workspace 等工作区','临时计算内存；不是 KV cache']
+   ];
+   let y=20;y+=text(svg,'AclmdlRICaptureBegin → 执行 callable → AclmdlRICaptureEnd',2,y,w-4,true);
+   y+=text(svg,'输入 / 权重 / KV cache 保持持久存储；图复用地址，不保存输入值快照。',2,y,w-4,true,'secondary')+18;
+   const cols=w>=600?2:1,gap=18,nw=(w-gap*(cols-1)-4)/cols;
+   for(let i=0;i<data.length;i+=cols){const h=Math.max(...data.slice(i,i+cols).map(d=>bh(nw,...d)));for(let j=0;j<cols&&i+j<data.length;j++)box(svg,{x:2+j*(nw+gap),y,w:nw,h},...data[i+j]);y+=h+18;}
+   finish(svg,w,y,'od-storage');
+ }
+ function drawFusion(){
+   const w=Math.floor(el('od-fusion').getBoundingClientRect().width);if(!w)return;const svg=base('fusion',w),wide=w>=600;
+   const gap=28,pw=wide?(w-gap-4)/2:w-4;
+   let maxBottom=0;
+   const before=[
+    ['Add + RMSNorm (+ bias)','_C_ascend.npu_add_rms_norm_bias','x,residual,weight,beta → n,r'],
+    ['中间归一化结果 n','BF16 [2,H]','由前一个 API 产生，供后一个读取'],
+    ['动态量化','npu.npu_dynamic_quant','n → quantized_x, pertoken_scale'],
+    ['量化矩阵乘','npu.npu_quant_matmul','int8 x + scale + weight → BF16']
+   ];
+   const after=[
+    ['Norm + Quant 融合','npu.npu_add_rms_norm_dynamic_quant','x,residual,weight,beta → q,s,r'],
+    ['对齐三个输出','out[0]=q · out[3]=s · out[2]=r','量化值、scale、residual 保持契约'],
+    ['量化矩阵乘仍保留','npu.npu_quant_matmul','q + s + weight → BF16']
+   ];
+   const panels=[{x:2,title:'融合前：两个前处理 API + Matmul',data:before},{x:wide?pw+gap+2:2,title:'融合后：一个前处理 API + Matmul',data:after}];
+   panels.forEach((p,pi)=>{
+     let y=pi===1&&!wide?maxBottom+32:25;
+     y+=text(svg,p.title,p.x,y,pw,false,'weight')+20;
+     const bs=[];
+     p.data.forEach((d,i)=>{const h=bh(pw-34,...d);bs.push({x:p.x,y,w:pw-34,h});y+=h+38;});
+     bs.forEach((b,i)=>{if(i<bs.length-1){path(svg,`M${b.x+b.w/2},${b.y+b.h}V${bs[i+1].y}`);label(svg,String(i+2),b.x+b.w/2+9,b.y+b.h+25,20,true);}});
+     const rail=p.x+pw-9,from=bs[0],end=bs.at(-1);
+     path(svg,`M${from.x+from.w},${from.y+from.h/2}H${rail}V${end.y+end.h+24}H${p.x+pw/2}`,'line residual');
+     label(svg,'r',rail-9,from.y+from.h/2+30,20,true);
+     bs.forEach((b,i)=>box(svg,b,...p.data[i],pi===1&&i===0?'new-fusion':pi===0&&i===1?'view':''));
+     y=end.y+end.h+58;
+     y+=text(svg,'residual r 继续交给下一段残差路径',p.x,y,pw,true,'secondary');
+     if(pi===1)y+=text(svg,'消除两 API 之间传递完整 n 的边；Matmul 没有被吞入融合。',p.x,y+10,pw,true)+10;
+     maxBottom=Math.max(maxBottom,y);
+   });
+   finish(svg,w,maxBottom+12,'od-fusion');
+ }
+ function save(){if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{view:'two-runs',stage:stage<0?'all':stage+1,mode,operator:current<0?'all':current+1},privateContent:{version:3,stage,mode,current}}).catch(()=>{});}
+ function update(){
+   el('od-mode').value=mode;el('od-all').setAttribute('aria-pressed',String(current<0));el('od-prev').disabled=current<=0;el('od-next').disabled=current===ops.length-1;
+   el('od-next').textContent=current<0?'逐算子查看':'下一步';el('od-count').textContent=current<0?'12 组':`${current+1} / 12`;
+   el('od-status').textContent=current<0?(mode==='capture'?'主机执行 callable；捕获流上的设备任务及依赖被记录，暂不执行。':'新 token 写入原地址；图中计算执行，FIA 参数按本轮 metadata 更新。'):ops[current].detail;
+   const op=ops[current<0?0:current];el('od-code-label').textContent=(current<0?'示例 1：':'当前 '+(current+1)+'：')+op.title;el('od-code').textContent=op.code;el('od-source').textContent=op.src;
+   drawOperators();
+ }
+ function restore(state){const s=state?.privateContent;if(![2,3].includes(s?.version))return;mode=s.mode==='replay'?'replay':'capture';current=Number.isInteger(s.current)?Math.max(-1,Math.min(11,s.current)):-1;stage=Number.isInteger(s.stage)?Math.max(-1,Math.min(6,s.stage)):-1;update();updateStages();}
+ el('od-both').addEventListener('click',()=>{stage=-1;updateStages();save();});
+ el('od-stage-next').addEventListener('click',()=>{stage=Math.min(6,stage+1);updateStages();save();});
+ el('od-stage-prev').addEventListener('click',()=>{stage=Math.max(0,stage-1);updateStages();save();});
+ stages.forEach(s=>{const li=document.createElement('li');li.textContent=s.slice(2);el('od-stage-list').append(li);});
+ el('od-expanded').addEventListener('toggle',()=>{if(el('od-expanded').open){update();drawStorage();}});
+ el('od-runs-expanded').addEventListener('toggle',()=>{if(el('od-runs-expanded').open)drawTwoRuns();});
+ el('od-layers-expanded').addEventListener('toggle',()=>{if(el('od-layers-expanded').open){drawCallLayers();drawUpdateCalls();}});
+ el('od-fusion-expanded').addEventListener('toggle',()=>{if(el('od-fusion-expanded').open)drawFusion();});
+ el('od-mode').addEventListener('change',e=>{mode=e.target.value;update();save();});
+ el('od-all').addEventListener('click',()=>{current=-1;update();save();});
+ el('od-next').addEventListener('click',()=>{current=Math.min(11,current+1);update();save();});
+ el('od-prev').addEventListener('click',()=>{current=Math.max(0,current-1);update();save();});
+ const list=el('od-source-list');ops.forEach((op,i)=>{const li=document.createElement('li'),b=document.createElement('button'),d=document.createElement('div'),c=document.createElement('code');b.className='btn btn-ghost';b.type='button';b.textContent=op.title;b.addEventListener('click',()=>{current=i;el('od-code-details').open=true;update();save();});d.textContent=op.detail;c.className='text-small od-sources';c.textContent=op.src;li.append(b,d,c);list.append(li);});
+ window.addEventListener('openai:set_globals',e=>{if(e.detail?.globals?.widgetState)restore(e.detail.globals.widgetState);});
+ el('od-runs-expanded').after(el('od-layers-expanded'));
+ new ResizeObserver(()=>{const w=Math.floor(root.getBoundingClientRect().width);if(w!==previousWidth){previousWidth=w;drawCallLayers();drawUpdateCalls();drawTwoRuns();drawOperators();drawStorage();drawFusion();}}).observe(root);
+ drawCallLayers();drawUpdateCalls();update();updateStages();drawStorage();drawFusion();restore(window.openai?.widgetState);
+})();
+</script>
