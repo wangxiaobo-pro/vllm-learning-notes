@@ -1846,9 +1846,14 @@ html&gt;body{padding:0}&lt;/style&gt;
     &lt;span id=&quot;cp-counter&quot; class=&quot;text-small tabular-nums&quot; aria-live=&quot;polite&quot;&gt;0 / 3 · 全局关系&lt;/span&gt;
   &lt;/div&gt;
   &lt;div class=&quot;cp-legend text-small&quot;&gt;
-    &lt;span&gt;&lt;i class=&quot;cp-remote&quot;&gt;&lt;/i&gt;跨 rank 的语义数据流&lt;/span&gt;
-    &lt;span&gt;&lt;i class=&quot;cp-local&quot;&gt;&lt;/i&gt;本地贡献 / 复制&lt;/span&gt;
+    &lt;span&gt;&lt;i class=&quot;cp-swatch cp-done&quot;&gt;&lt;/i&gt;已完成&lt;/span&gt;
+    &lt;span&gt;&lt;i class=&quot;cp-swatch cp-active&quot;&gt;&lt;/i&gt;当前执行&lt;/span&gt;
+    &lt;span&gt;&lt;i class=&quot;cp-swatch cp-pending&quot;&gt;&lt;/i&gt;未执行&lt;/span&gt;
+    &lt;span&gt;&lt;i class=&quot;cp-swatch cp-overview-state&quot;&gt;&lt;/i&gt;全局展示&lt;/span&gt;
+    &lt;span&gt;&lt;i class=&quot;cp-remote&quot;&gt;&lt;/i&gt;跨 rank&lt;/span&gt;
+    &lt;span&gt;&lt;i class=&quot;cp-local&quot;&gt;&lt;/i&gt;本地计算 / 复制&lt;/span&gt;
   &lt;/div&gt;
+  &lt;div id=&quot;cp-stage-hint&quot; class=&quot;text-small text-muted&quot;&gt;&lt;/div&gt;
   &lt;svg id=&quot;cp-diagram&quot; role=&quot;img&quot; aria-label=&quot;三个 rank 的输入、通信或归约过程与输出&quot;&gt;&lt;/svg&gt;
   &lt;div id=&quot;cp-detail&quot; class=&quot;text-small&quot; aria-live=&quot;polite&quot;&gt;&lt;/div&gt;
   &lt;div id=&quot;cp-boundary&quot; class=&quot;text-small text-muted&quot;&gt;语义示例，不表示 NCCL 固定的 ring / tree 或实际执行先后；SUM 框不代表中转 rank。&lt;/div&gt;
@@ -1870,12 +1875,22 @@ html&gt;body{padding:0}&lt;/style&gt;
   &lt;/section&gt;
 &lt;/div&gt;
 &lt;style&gt;
-  #communication-primitives { display:flex; flex-direction:column; gap:calc(var(--font-size-base) * .75); color:var(--foreground); }
+  #communication-primitives { display:flex; flex-direction:column; gap:calc(var(--font-size-base) * .75); color:var(--foreground);
+    --cp-done-color:var(--viz-series-3); --cp-done-fill:color-mix(in srgb,var(--viz-series-3) 14%,var(--background));
+    --cp-active-color:var(--viz-series-1); --cp-active-fill:color-mix(in srgb,var(--viz-series-1) 24%,var(--background));
+    --cp-pending-color:color-mix(in srgb,var(--muted-foreground) 50%,var(--border)); --cp-pending-fill:color-mix(in srgb,var(--muted) 65%,var(--background));
+    --cp-overview-color:var(--viz-series-2); --cp-overview-fill:color-mix(in srgb,var(--viz-series-2) 10%,var(--background));
+  }
   #communication-primitives .cp-heading { display:flex; flex-direction:column; gap:calc(var(--font-size-base) * .25); padding-right:90px; }
   #communication-primitives .cp-legend { display:flex; flex-wrap:wrap; gap:calc(var(--font-size-base) * .8); }
   #communication-primitives .cp-legend span { display:inline-flex; align-items:center; gap:calc(var(--font-size-base) * .35); }
-  #communication-primitives .cp-legend i { display:inline-block; width:22px; height:0; border-top:2px solid var(--viz-series-1); }
+  #communication-primitives .cp-legend i { display:inline-block; width:22px; height:0; border-top:2px solid var(--muted-foreground); }
   #communication-primitives .cp-legend .cp-local { border-top-style:dashed; border-top-color:var(--muted-foreground); }
+  #communication-primitives .cp-legend .cp-swatch { width:16px; height:12px; border:0; border-radius:3px; }
+  #communication-primitives .cp-done { background:var(--cp-done-color); }
+  #communication-primitives .cp-active { background:var(--cp-active-color); }
+  #communication-primitives .cp-pending { background:var(--cp-pending-color); }
+  #communication-primitives .cp-overview-state { background:var(--cp-overview-color); }
   #cp-diagram { display:block; width:100%; overflow:visible; }
   #cp-diagram text { fill:var(--foreground); font-size:12px; font-weight:400; }
   #cp-diagram .cp-title { font-weight:500; }
@@ -1912,6 +1927,24 @@ function renderRingAttention({svg,width,step=0,mask=&#x27;causal&#x27;,data,anim
   const s=Math.max(0,Math.min(7,Number(step)||0)),mode=mask===&#x27;full&#x27;?&#x27;full&#x27;:&#x27;causal&#x27;,mobile=W&lt;700;
   const C={remote:&#x27;var(--viz-series-1)&#x27;,local:&#x27;var(--muted-foreground)&#x27;,text:&#x27;var(--foreground)&#x27;,bg:&#x27;var(--background)&#x27;,border:&#x27;var(--border)&#x27;};
   const keys=[&#x27;q&#x27;,&#x27;kv&#x27;,&#x27;core&#x27;,&#x27;state&#x27;,&#x27;out&#x27;],activeSteps={q:[1],kv:[1,3,5],core:[2,4,6],state:[2,4,6],out:[7]};
+  // CSS variables keep this renderer usable without the host&#x27;s stage helpers.
+  const stageStyle=state=&gt;{
+    const tokens={done:&#x27;--viz-series-3&#x27;,active:&#x27;--viz-series-1&#x27;,pending:&#x27;--muted-foreground&#x27;,overview:&#x27;--viz-series-2&#x27;};
+    const labels={done:&#x27;已完成&#x27;,active:&#x27;当前执行&#x27;,pending:&#x27;未执行&#x27;,overview:&#x27;全局流程&#x27;};
+    const accent=&#x27;var(--cp-&#x27;+state+&#x27;-color, var(&#x27;+tokens[state]+&#x27;))&#x27;;
+    const fallback=state===&#x27;pending&#x27;?&#x27;var(--muted)&#x27;:&#x27;color-mix(in srgb, var(&#x27;+tokens[state]+&#x27;) 12%, var(--background))&#x27;;
+    return {fill:&#x27;var(--cp-&#x27;+state+&#x27;-fill, &#x27;+fallback+&#x27;)&#x27;,stroke:accent,accent,label:labels[state]};
+  };
+  const nodeStage=(key,view=s)=&gt;{
+    if(view===0)return &#x27;overview&#x27;;
+    if(key===&#x27;q&#x27;)return view===1?&#x27;active&#x27;:&#x27;done&#x27;;
+    if(key===&#x27;kv&#x27;)return [1,3,5].includes(view)?&#x27;active&#x27;:&#x27;done&#x27;;
+    if(key===&#x27;core&#x27;||key===&#x27;state&#x27;)return view===7?&#x27;done&#x27;:[2,4,6].includes(view)?&#x27;active&#x27;:&#x27;pending&#x27;;
+    return view===7?&#x27;active&#x27;:&#x27;pending&#x27;;
+  };
+  const remoteStage=(view=s)=&gt;view===0?&#x27;overview&#x27;:[3,5].includes(view)?&#x27;active&#x27;:view&gt;=4?&#x27;done&#x27;:&#x27;pending&#x27;;
+  const stageLabel=(key,state)=&gt;state===&#x27;pending&#x27;&amp;&amp;(key===&#x27;core&#x27;||key===&#x27;state&#x27;)?&#x27;本轮待执行&#x27;:stageStyle(state).label;
+  const STATUS_ROW_HEIGHT=20;
   const fmt=v=&gt;v===null||v===-Infinity?&#x27;−∞&#x27;:Number.isInteger(v)?String(v):String(Number(Number(v).toFixed(4)));
   const vector=v=&gt;&#x27;[&#x27;+(Array.isArray(v[0])?v[0]:v).map(fmt).join(&#x27;, &#x27;)+&#x27;]&#x27;;
   const source=(r,t)=&gt;(r-t+3)%3;
@@ -1949,7 +1982,7 @@ function renderRingAttention({svg,width,step=0,mask=&#x27;causal&#x27;,data,anim
   const direction=&#x27;K/V 环方向：GPU 0 → 1 → 2 → 0；Q 与 O 始终留在本地&#x27;;
   const directionLines=wrap(direction,W-24),top=directionLines.length*16+(mobile?30:66);
   function cardHeight(c){
-    return 14+wrap(c.title,cardW-18).length*16+4+wrap(c.layer,cardW-18).length*16+8+
+    return 14+STATUS_ROW_HEIGHT+wrap(c.title,cardW-18).length*16+4+wrap(c.layer,cardW-18).length*16+8+
       c.rows.reduce((n,row)=&gt;n+wrap(row,cardW-18).length*18,0)+8+wrap(c.note,cardW-18).length*16+10;
   }
   // Reserve the maximum content height across both masks and all steps: no layout jumps.
@@ -1974,23 +2007,24 @@ function renderRingAttention({svg,width,step=0,mask=&#x27;causal&#x27;,data,anim
     const e=create(&#x27;text&#x27;,{x,y,&#x27;font-size&#x27;:12,&#x27;font-family&#x27;:options.mono?&#x27;ui-monospace, Consolas, monospace&#x27;:&#x27;system-ui, sans-serif&#x27;,fill:options.fill||C.text,&#x27;text-anchor&#x27;:&#x27;middle&#x27;,&#x27;font-weight&#x27;:options.bold?500:400},undefined,parent);
     if(options.layer)e.setAttribute(&#x27;data-layer-tag&#x27;,value);
     if(options.value)e.setAttribute(&#x27;data-ring-value&#x27;,true);
+    if(options.stage)e.setAttribute(&#x27;data-stage-label&#x27;,value);
     const lines=wrap(value,maxWidth);lines.forEach((line,i)=&gt;create(&#x27;tspan&#x27;,{x,dy:i?options.lineHeight||16:0},line,e));return lines.length*(options.lineHeight||16);
   }
   const defs=create(&#x27;defs&#x27;),markerPrefix=&#x27;ring-attention-&#x27;;
-  for(const kind of [&#x27;remote&#x27;,&#x27;local&#x27;]){
-    const marker=create(&#x27;marker&#x27;,{id:markerPrefix+kind,viewBox:&#x27;0 0 8 8&#x27;,refX:7,refY:4,markerWidth:7,markerHeight:7,orient:&#x27;auto&#x27;},undefined,defs);
-    create(&#x27;path&#x27;,{d:&#x27;M1 1 L7 4 L1 7&#x27;,fill:&#x27;none&#x27;,stroke:C[kind],&#x27;stroke-width&#x27;:1.4},undefined,marker);
+  for(const state of [&#x27;overview&#x27;,&#x27;pending&#x27;,&#x27;active&#x27;,&#x27;done&#x27;]){
+    const marker=create(&#x27;marker&#x27;,{id:markerPrefix+state,viewBox:&#x27;0 0 8 8&#x27;,refX:7,refY:4,markerWidth:7,markerHeight:7,orient:&#x27;auto&#x27;},undefined,defs);
+    create(&#x27;path&#x27;,{d:&#x27;M1 1 L7 4 L1 7&#x27;,fill:&#x27;none&#x27;,stroke:stageStyle(state).accent,&#x27;stroke-width&#x27;:1.4},undefined,marker);
   }
   const remoteEdges=create(&#x27;g&#x27;,{&#x27;data-ring-remotes&#x27;:true}),rankLayer=create(&#x27;g&#x27;,{&#x27;data-ring-devices&#x27;:true}),labelLayer=create(&#x27;g&#x27;,{&#x27;data-ring-labels&#x27;:true}),packetLayer=create(&#x27;g&#x27;,{&#x27;data-ring-packets&#x27;:true});
   text(W/2,16,direction,W-24,labelLayer,{fill:C.local});
-  function badge(x,y,value,parent,widthHint){
-    const bw=widthHint||Math.max(24,textWidth(value)+12);
-    create(&#x27;rect&#x27;,{x:x-bw/2,y:y-10,width:bw,height:20,rx:10,fill:C.bg,stroke:C.border},undefined,parent);
-    text(x,y+4,value,bw-6,parent,{fill:C.local});
+  function badge(x,y,value,parent,widthHint,state){
+    const bw=widthHint||Math.max(24,textWidth(value)+12),style=state?stageStyle(state):{fill:C.bg,stroke:C.border,accent:C.local};
+    create(&#x27;rect&#x27;,{x:x-bw/2,y:y-10,width:bw,height:20,rx:10,fill:style.fill,stroke:style.stroke},undefined,parent);
+    text(x,y+4,value,bw-6,parent,{fill:style.accent});
   }
   function edge(d,from,to,kind,steps,owner,parent,attrs={}){
-    const active=s===0||steps.includes(s);
-    const e=create(&#x27;path&#x27;,Object.assign({d,fill:&#x27;none&#x27;,stroke:C[kind],&#x27;stroke-width&#x27;:active?1.8:1.1,&#x27;stroke-opacity&#x27;:active?1:.55,&#x27;stroke-dasharray&#x27;:kind===&#x27;local&#x27;?&#x27;4 4&#x27;:&#x27;none&#x27;,&#x27;marker-end&#x27;:&#x27;url(#&#x27;+markerPrefix+kind+&#x27;)&#x27;,&#x27;data-ring-edge&#x27;:from+&#x27;--&#x27;+to,&#x27;data-edge-kind&#x27;:kind,&#x27;data-edge-steps&#x27;:steps.join(&#x27;,&#x27;),&#x27;data-edge-from&#x27;:from,&#x27;data-edge-to&#x27;:to,&#x27;data-owner-rank&#x27;:owner},attrs),undefined,parent);
+    const stage=kind===&#x27;remote&#x27;?remoteStage():nodeStage(to.endsWith(&#x27;-out&#x27;)?&#x27;out&#x27;:&#x27;core&#x27;),style=stageStyle(stage);
+    const e=create(&#x27;path&#x27;,Object.assign({d,fill:&#x27;none&#x27;,stroke:style.accent,&#x27;stroke-width&#x27;:stage===&#x27;active&#x27;?1.8:1.3,&#x27;stroke-opacity&#x27;:stage===&#x27;pending&#x27;?.65:1,&#x27;stroke-dasharray&#x27;:kind===&#x27;local&#x27;?&#x27;4 4&#x27;:&#x27;none&#x27;,&#x27;marker-end&#x27;:&#x27;url(#&#x27;+markerPrefix+stage+&#x27;)&#x27;,&#x27;data-stage-state&#x27;:stage,&#x27;data-ring-edge&#x27;:from+&#x27;--&#x27;+to,&#x27;data-edge-kind&#x27;:kind,&#x27;data-edge-steps&#x27;:steps.join(&#x27;,&#x27;),&#x27;data-edge-from&#x27;:from,&#x27;data-edge-to&#x27;:to,&#x27;data-owner-rank&#x27;:owner},attrs),undefined,parent);
     return e;
   }
   for(const rank of ranks){
@@ -2004,33 +2038,36 @@ function renderRingAttention({svg,width,step=0,mask=&#x27;causal&#x27;,data,anim
     for(const [a,b,steps] of [[kv,core,[2,4,6]],[core,state,[2,4,6]],[state,out,[7]]])
       edge(&#x27;M&#x27;+(a.x+a.w/2)+&#x27; &#x27;+(a.y+a.h)+&#x27; V&#x27;+b.y,a.id,b.id,&#x27;local&#x27;,steps,rank.r,local);
     rank.cards.forEach(c=&gt;{
-      const hot=s===0||activeSteps[c.key].includes(s);
-      const node=create(&#x27;g&#x27;,{&#x27;data-node&#x27;:c.id,&#x27;data-node-layer&#x27;:c.layer,&#x27;data-node-x&#x27;:c.x,&#x27;data-node-y&#x27;:c.y,&#x27;data-node-width&#x27;:c.w,&#x27;data-node-height&#x27;:c.h,&#x27;data-node-owner&#x27;:&#x27;rank&#x27;+rank.r},undefined,cardsGroup);
-      create(&#x27;rect&#x27;,{x:c.x,y:c.y,width:c.w,height:c.h,rx:7,fill:C.bg,stroke:hot?C.local:C.border,&#x27;stroke-width&#x27;:hot?1.5:1},undefined,node);
+      const stage=nodeStage(c.key),style=stageStyle(stage);
+      const node=create(&#x27;g&#x27;,{&#x27;data-node&#x27;:c.id,&#x27;data-stage-state&#x27;:stage,&#x27;data-node-layer&#x27;:c.layer,&#x27;data-node-x&#x27;:c.x,&#x27;data-node-y&#x27;:c.y,&#x27;data-node-width&#x27;:c.w,&#x27;data-node-height&#x27;:c.h,&#x27;data-node-owner&#x27;:&#x27;rank&#x27;+rank.r},undefined,cardsGroup);
+      create(&#x27;rect&#x27;,{x:c.x,y:c.y,width:c.w,height:c.h,rx:7,fill:style.fill,stroke:style.stroke,&#x27;stroke-width&#x27;:stage===&#x27;active&#x27;?1.5:1},undefined,node);
+      create(&#x27;rect&#x27;,{x:c.x+1,y:c.y+7,width:3,height:c.h-14,rx:1.5,fill:style.accent,&#x27;data-stage-accent&#x27;:true},undefined,node);
       let y=c.y+18;
+      text(c.x+c.w/2,y,stageLabel(c.key,stage),c.w-18,node,{fill:style.accent,stage:true});y+=STATUS_ROW_HEIGHT;
       y+=text(c.x+c.w/2,y,c.title,c.w-18,node,{bold:true})+4;
       y+=text(c.x+c.w/2,y,c.layer,c.w-18,node,{fill:C.local,layer:true})+8;
       c.rows.forEach(row=&gt;{y+=text(c.x+c.w/2,y,row,c.w-18,node,{mono:true,value:true,lineHeight:18});});
       y+=8;text(c.x+c.w/2,y,c.note,c.w-18,node,{fill:C.local});
       const numbers=c.key===&#x27;q&#x27;?&#x27;1&#x27;:c.key===&#x27;kv&#x27;?&#x27;1·3·5&#x27;:c.key===&#x27;out&#x27;?&#x27;7&#x27;:&#x27;2·4·6&#x27;;
-      badge(c.x+c.w-28,c.y-10,s&gt;0&amp;&amp;activeSteps[c.key].includes(s)?String(s):numbers,node,56);
+      badge(c.x+c.w-28,c.y-10,s&gt;0&amp;&amp;activeSteps[c.key].includes(s)?String(s):numbers,node,56,stage);
     });
   }
   const remotePaths=[];
   function remoteLabel(x,y,r,target,vertical){
+    const stage=remoteStage(),style=stageStyle(stage);
     const origins=[source(r,0),source(r,1)],current=s===3?0:s===5?1:null;
     const value=current===null?&#x27;3·5 · GPU&#x27;+r+&#x27;→&#x27;+target:String(s)+&#x27; · GPU&#x27;+r+&#x27;→&#x27;+target;
     const payload=current===null?&#x27;③ KV&#x27;+origins[0]+&#x27; / ⑤ KV&#x27;+origins[1]:&#x27;已发出 KV&#x27;+origins[current];
     if(vertical){
       const lines=current===null?[&#x27;3&#x27;,&#x27;KV&#x27;+origins[0],&#x27;5&#x27;,&#x27;KV&#x27;+origins[1]]:[String(s),&#x27;KV&#x27;+origins[current]];
       const h=lines.length*16+12;
-      const box=create(&#x27;g&#x27;,{&#x27;data-ring-edge-label&#x27;:r+&#x27;-&#x27;+target},undefined,labelLayer);
-      create(&#x27;rect&#x27;,{x:x-17,y:y-h/2,width:34,height:h,rx:9,fill:C.bg,stroke:C.remote},undefined,box);
-      lines.forEach((line,i)=&gt;text(x,y-h/2+17+i*16,line,30,box,{fill:C.remote}));
+      const box=create(&#x27;g&#x27;,{&#x27;data-ring-edge-label&#x27;:r+&#x27;-&#x27;+target,&#x27;data-stage-state&#x27;:stage},undefined,labelLayer);
+      create(&#x27;rect&#x27;,{x:x-17,y:y-h/2,width:34,height:h,rx:9,fill:style.fill,stroke:style.stroke},undefined,box);
+      lines.forEach((line,i)=&gt;text(x,y-h/2+17+i*16,line,30,box,{fill:style.accent}));
     }else{
-      const box=create(&#x27;g&#x27;,{&#x27;data-ring-edge-label&#x27;:r+&#x27;-&#x27;+target},undefined,labelLayer),bw=Math.min(mobile?W-90:208,W-24);
-      create(&#x27;rect&#x27;,{x:x-bw/2,y:y-22,width:bw,height:44,rx:7,fill:C.bg,stroke:C.border},undefined,box);
-      text(x,y-5,value,bw-12,box,{fill:C.remote});text(x,y+12,payload,bw-12,box,{fill:C.remote});
+      const box=create(&#x27;g&#x27;,{&#x27;data-ring-edge-label&#x27;:r+&#x27;-&#x27;+target,&#x27;data-stage-state&#x27;:stage},undefined,labelLayer),bw=Math.min(mobile?W-90:208,W-24);
+      create(&#x27;rect&#x27;,{x:x-bw/2,y:y-22,width:bw,height:44,rx:7,fill:style.fill,stroke:style.stroke},undefined,box);
+      text(x,y-5,value,bw-12,box,{fill:style.accent});text(x,y+12,payload,bw-12,box,{fill:style.accent});
     }
   }
   for(let r=0;r&lt;3;r++){
@@ -2048,7 +2085,7 @@ function renderRingAttention({svg,width,step=0,mask=&#x27;causal&#x27;,data,anim
       const rail=W-18;
       d=&#x27;M&#x27;+(a.x+a.w)+&#x27; &#x27;+ay+&#x27; H&#x27;+rail+&#x27; V&#x27;+by+&#x27; H&#x27;+(b.x+b.w);
       label=[W/2,ranks[r].y+frameH+44,false];
-      badge(rail,label[1],s===3||s===5?String(s):&#x27;3·5&#x27;,labelLayer,32);
+      badge(rail,label[1],s===3||s===5?String(s):&#x27;3·5&#x27;,labelLayer,32,remoteStage());
     }else{
       const rail=18;
       d=&#x27;M&#x27;+a.x+&#x27; &#x27;+ay+&#x27; H&#x27;+rail+&#x27; V&#x27;+by+&#x27; H&#x27;+b.x;
@@ -2062,11 +2099,11 @@ function renderRingAttention({svg,width,step=0,mask=&#x27;causal&#x27;,data,anim
   if(animate&amp;&amp;!reducedMotion&amp;&amp;(s===3||s===5)&amp;&amp;typeof requestAnimationFrame===&#x27;function&#x27;){
     remotePaths.forEach(({path,r,target,origin},index)=&gt;{
       if(typeof path.getTotalLength!==&#x27;function&#x27;)return;
-      const pw=Math.min(166,W-24),ph=68,packet=create(&#x27;g&#x27;,{&#x27;data-ring-packet&#x27;:true,&#x27;data-ring-packet-from&#x27;:r,&#x27;data-ring-packet-to&#x27;:target,&#x27;data-ring-packet-origin&#x27;:origin,&#x27;aria-hidden&#x27;:&#x27;true&#x27;},undefined,packetLayer);
-      create(&#x27;rect&#x27;,{x:-pw/2,y:-ph/2,width:pw,height:ph,rx:7,fill:C.bg,stroke:C.remote,&#x27;stroke-width&#x27;:1.5},undefined,packet);
-      text(0,-17,&#x27;KV&#x27;+origin+&#x27; → GPU&#x27;+target,pw-12,packet,{fill:C.remote,bold:true});
+      const packetStyle=stageStyle(&#x27;active&#x27;),pw=Math.min(166,W-24),ph=68,packet=create(&#x27;g&#x27;,{&#x27;data-ring-packet&#x27;:true,&#x27;data-stage-state&#x27;:&#x27;active&#x27;,&#x27;data-ring-packet-from&#x27;:r,&#x27;data-ring-packet-to&#x27;:target,&#x27;data-ring-packet-origin&#x27;:origin,&#x27;aria-hidden&#x27;:&#x27;true&#x27;},undefined,packetLayer);
+      create(&#x27;rect&#x27;,{x:-pw/2,y:-ph/2,width:pw,height:ph,rx:7,fill:packetStyle.fill,stroke:packetStyle.stroke,&#x27;stroke-width&#x27;:1.5},undefined,packet);
+      text(0,-17,&#x27;KV&#x27;+origin+&#x27; → GPU&#x27;+target,pw-12,packet,{fill:packetStyle.accent,bold:true});
       text(0,2,&#x27;K = &#x27;+vector(data.K[origin]),pw-12,packet,{mono:true});text(0,21,&#x27;V = &#x27;+vector(data.V[origin]),pw-12,packet,{mono:true});
-      const dot=create(&#x27;circle&#x27;,{r:4,fill:C.remote,&#x27;data-ring-motion-point&#x27;:true},undefined,packet);
+      const dot=create(&#x27;circle&#x27;,{r:4,fill:packetStyle.accent,&#x27;data-ring-motion-point&#x27;:true},undefined,packet);
       const total=path.getTotalLength(),start=performance.now()+index*35;
       const place=t=&gt;{const p=path.getPointAtLength(total*t),x=Math.max(pw/2+4,Math.min(W-pw/2-4,p.x)),y=Math.max(ph/2+4,Math.min(height-ph/2-4,p.y));packet.setAttribute(&#x27;transform&#x27;,&#x27;translate(&#x27;+x+&#x27; &#x27;+y+&#x27;)&#x27;);dot.setAttribute(&#x27;cx&#x27;,p.x-x);dot.setAttribute(&#x27;cy&#x27;,p.y-y);};
       place(0);
@@ -2144,9 +2181,17 @@ if(typeof module!==&#x27;undefined&#x27;&amp;&amp;module.exports)module.exports=
   function label(x,y,value,css=&#x27;&#x27;,anchor=&#x27;middle&#x27;,parent=svg) {
     return element(&#x27;text&#x27;,{x,y,&#x27;text-anchor&#x27;:anchor,class:css},parent,value);
   }
+  function stageStatus(steps) {
+    return step===0?&#x27;overview&#x27;:steps.includes(step)?&#x27;active&#x27;:steps.some(s=&gt;s&lt;step)?&#x27;done&#x27;:&#x27;pending&#x27;;
+  }
+  function stageStyle(state) {
+    const type=state===&#x27;inactive&#x27;?&#x27;pending&#x27;:state;
+    return {fill:&#x27;var(--cp-&#x27;+type+&#x27;-fill)&#x27;,stroke:&#x27;var(--cp-&#x27;+type+&#x27;-color)&#x27;,label:{done:&#x27;已完成&#x27;,active:&#x27;当前执行&#x27;,pending:&#x27;未执行&#x27;,overview:&#x27;全局流程&#x27;,inactive:&#x27;不适用&#x27;}[state]};
+  }
   function badge(x,y,value,ref) {
+    const paint=stageStyle(stageStatus([value]));
     const group=element(&#x27;g&#x27;,{&#x27;data-number-ref&#x27;:ref,&#x27;aria-label&#x27;:&#x27;步骤 &#x27;+value});
-    element(&#x27;rect&#x27;,{x:x-9,y:y-9,width:18,height:18,rx:9,fill:&#x27;var(--background)&#x27;,stroke:&#x27;var(--border)&#x27;},group);
+    element(&#x27;rect&#x27;,{x:x-9,y:y-9,width:18,height:18,rx:9,fill:paint.fill,stroke:paint.stroke},group);
     label(x,y+4,value,&#x27;cp-title&#x27;,&#x27;middle&#x27;,group);
   }
   function visibleOutput(config,rank) {
@@ -2195,19 +2240,19 @@ if(typeof module!==&#x27;undefined&#x27;&amp;&amp;module.exports)module.exports=
     element(&#x27;title&#x27;,{},svg,config.name+&#x27;，&#x27;+(step===0?&#x27;全局关系&#x27;:&#x27;第 &#x27;+step+&#x27; 步&#x27;));
     element(&#x27;desc&#x27;,{},svg,config.note+&#x27; 左列是原始输入，右列是各 rank 的接收结果。&#x27;);
     const defs=element(&#x27;defs&#x27;);
-    [&#x27;active&#x27;,&#x27;idle&#x27;,&#x27;local&#x27;].forEach(type=&gt;{
+    [&#x27;active&#x27;,&#x27;done&#x27;,&#x27;pending&#x27;,&#x27;overview&#x27;].forEach(type=&gt;{
       const marker=element(&#x27;marker&#x27;,{id:&#x27;cp-arrow-&#x27;+type,viewBox:&#x27;0 0 10 10&#x27;,refX:9,refY:5,markerWidth:5,markerHeight:5,orient:&#x27;auto&#x27;},defs);
-      element(&#x27;path&#x27;,{d:&#x27;M 0 1 L 9 5 L 0 9 Z&#x27;,fill:type===&#x27;active&#x27;?&#x27;var(--viz-series-1)&#x27;:type===&#x27;local&#x27;?&#x27;var(--muted-foreground)&#x27;:&#x27;var(--border)&#x27;},marker);
+      element(&#x27;path&#x27;,{d:&#x27;M 0 1 L 9 5 L 0 9 Z&#x27;,fill:stageStyle(type).stroke},marker);
     });
     label(left+boxWidth/2,18,&#x27;原始输入&#x27;,&#x27;cp-title&#x27;);
     label(right+boxWidth/2,18,&#x27;接收 / 输出&#x27;,&#x27;cp-title&#x27;);
     const arrowBadges=[];
     function edge(id,x1,y1,x2,y2,number,local=false) {
       const active=step===0||step===number;
-      const type=active?(local?&#x27;local&#x27;:&#x27;active&#x27;):&#x27;idle&#x27;;
+      const type=stageStatus([number]),paint=stageStyle(type);
       const mid=(x1+x2)/2;
       const path=&#x27;M &#x27;+x1+&#x27; &#x27;+y1+&#x27; C &#x27;+mid+&#x27; &#x27;+y1+&#x27;, &#x27;+mid+&#x27; &#x27;+y2+&#x27;, &#x27;+x2+&#x27; &#x27;+y2;
-      element(&#x27;path&#x27;,{d:path,fill:&#x27;none&#x27;,stroke:type===&#x27;active&#x27;?&#x27;var(--viz-series-1)&#x27;:type===&#x27;local&#x27;?&#x27;var(--muted-foreground)&#x27;:&#x27;var(--border)&#x27;,&#x27;stroke-width&#x27;:active?1.8:1,&#x27;stroke-dasharray&#x27;:local?&#x27;4 3&#x27;:&#x27;none&#x27;,&#x27;marker-end&#x27;:&#x27;url(#cp-arrow-&#x27;+type+&#x27;)&#x27;,&#x27;data-edge&#x27;:id,&#x27;data-step&#x27;:number});
+      element(&#x27;path&#x27;,{d:path,fill:&#x27;none&#x27;,stroke:paint.stroke,&#x27;stroke-width&#x27;:type===&#x27;active&#x27;?2:1.3,&#x27;stroke-dasharray&#x27;:local?&#x27;4 3&#x27;:&#x27;none&#x27;,&#x27;marker-end&#x27;:&#x27;url(#cp-arrow-&#x27;+type+&#x27;)&#x27;,&#x27;data-edge&#x27;:id,&#x27;data-step&#x27;:number,&#x27;data-stage-state&#x27;:type});
       if(active){
         const t=operation===&#x27;alltoall&#x27;?.8:.2;
         const tx=(1-t)**3*x1+3*(1-t)**2*t*mid+3*(1-t)*t*t*mid+t**3*x2;
@@ -2240,22 +2285,28 @@ if(typeof module!==&#x27;undefined&#x27;&amp;&amp;module.exports)module.exports=
         const values=output?visibleOutput(config,rank):config.inputs[rank];
         const participated=operation!==&#x27;send&#x27;||rank&lt;2;
         const filled=output&amp;&amp;values!==null&amp;&amp;!values.includes(&#x27;·&#x27;);
-        const group=element(&#x27;g&#x27;,{&#x27;data-rank&#x27;:rank,&#x27;data-side&#x27;:output?&#x27;output&#x27;:&#x27;input&#x27;});
-        element(&#x27;rect&#x27;,{x,y,width:boxWidth,height:110,rx:7,fill:filled?&#x27;color-mix(in srgb, var(--viz-series-1) 9%, transparent)&#x27;:&#x27;var(--muted)&#x27;,stroke:&#x27;var(--border)&#x27;,&#x27;stroke-width&#x27;:1,opacity:participated?1:.5},group);
+        const relevant=participated&amp;&amp;values!==null;
+        const outputSteps=config.kind===&#x27;sum&#x27;?[3,config.flows.length]:[...config.links.filter(e=&gt;e.to===rank).map(e=&gt;e.step),config.flows.length];
+        const state=relevant?stageStatus(output?outputSteps:[1]):&#x27;inactive&#x27;,paint=stageStyle(state);
+        const group=element(&#x27;g&#x27;,{&#x27;data-rank&#x27;:rank,&#x27;data-side&#x27;:output?&#x27;output&#x27;:&#x27;input&#x27;,&#x27;data-stage-state&#x27;:state});
+        element(&#x27;rect&#x27;,{x,y,width:boxWidth,height:110,rx:7,fill:paint.fill,stroke:state===&#x27;active&#x27;?paint.stroke:&#x27;var(--border)&#x27;,&#x27;stroke-width&#x27;:state===&#x27;active&#x27;?1.8:1},group);
+        element(&#x27;rect&#x27;,{x:x+1,y:y+8,width:3,height:94,rx:1.5,fill:paint.stroke},group);
         label(x+boxWidth/2,y+22,&#x27;rank &#x27;+rank+(config.root===rank?&#x27; · root&#x27;:&#x27;&#x27;),&#x27;cp-title&#x27;,&#x27;middle&#x27;,group);
         let status=output?(values===null?&#x27;无接收结果&#x27;:filled?&#x27;有效结果&#x27;:&#x27;等待 / 部分到达&#x27;):(values===null?&#x27;不提供输入&#x27;:&#x27;输入数组&#x27;);
         if(!participated)status=&#x27;不参与&#x27;;
         label(x+boxWidth/2,y+42,status,&#x27;cp-muted&#x27;,&#x27;middle&#x27;,group);
         arrayLabel(x+boxWidth/2,y+75,values,boxWidth-12,group);
+        label(x+boxWidth/2,y+99,paint.label,&#x27;cp-muted&#x27;,&#x27;middle&#x27;,group);
         if(!output&amp;&amp;(step===0||step===1)&amp;&amp;values!==null)badge(x+12,y+97,1,&#x27;input-&#x27;+rank);
         if(output&amp;&amp;(step===0||step===config.flows.length)&amp;&amp;config.outputs[rank]!==null)badge(x+boxWidth-12,y+97,config.flows.length,&#x27;output-&#x27;+rank);
       });
     });
     if(config.kind===&#x27;sum&#x27;){
       const shown=step===0||step&gt;=2;
-      element(&#x27;rect&#x27;,{x:centerX-sumWidth/2,y:centerY-60,width:sumWidth,height:120,rx:7,fill:&#x27;var(--background)&#x27;,stroke:&#x27;var(--border)&#x27;,&#x27;stroke-width&#x27;:1});
+      const state=stageStatus([2]),paint=stageStyle(state);
+      element(&#x27;rect&#x27;,{x:centerX-sumWidth/2,y:centerY-60,width:sumWidth,height:120,rx:7,fill:paint.fill,stroke:state===&#x27;active&#x27;?paint.stroke:&#x27;var(--border)&#x27;,&#x27;stroke-width&#x27;:state===&#x27;active&#x27;?1.8:1,&#x27;data-stage-state&#x27;:state});
       label(centerX,centerY-37,&#x27;SUM&#x27;,&#x27;cp-title&#x27;);
-      label(centerX,centerY-17,&#x27;语义运算&#x27;,&#x27;cp-muted&#x27;);
+      label(centerX,centerY-17,paint.label,&#x27;cp-muted&#x27;);
       arrayLabel(centerX,centerY+9,shown?config.sum:config.sum.map(()=&gt;&#x27;·&#x27;),sumWidth-6,svg);
       label(centerX,centerY+44,&#x27;非中转 rank&#x27;,&#x27;cp-muted&#x27;);
     }
@@ -2266,6 +2317,7 @@ if(typeof module!==&#x27;undefined&#x27;&amp;&amp;module.exports)module.exports=
   }
   function updateControls(config) {
     select.value=operation;
+    root.querySelector(&#x27;#cp-stage-hint&#x27;).textContent=step===0?&#x27;全局展示完整路径，不表示这些阶段已执行。&#x27;:operation===&#x27;ring&#x27;?&#x27;循环按本轮着色：新 K/V 到达后，计算阶段回到“本轮待执行”；上一轮累计数值保留。&#x27;:&#x27;颜色对应当前讲解步骤；实线为跨 rank 数据流，虚线为本地操作。&#x27;;
     counter.textContent=step+&#x27; / &#x27;+config.flows.length+&#x27; · &#x27;+(step===0?&#x27;全局关系&#x27;:config.flows[step-1][0]);
     detail.textContent=(operation===&#x27;ring&#x27;?(mask===&#x27;causal&#x27;?&#x27;Causal：只看 key ≤ query。&#x27;:&#x27;Full：可看全部 key。&#x27;):&#x27;&#x27;)+(step===0?config.note:config.flows[step-1][1]);
     previous.disabled=step===0;next.disabled=step===config.flows.length;

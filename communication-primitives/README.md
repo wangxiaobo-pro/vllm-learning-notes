@@ -4,6 +4,8 @@
 
 包括 Send / Recv、Broadcast、Reduce、All-Reduce、All-Gather、Reduce-Scatter、All-to-All、Scatter、Gather，以及 Ring Attention 通信机制。页面可离线打开，支持窄屏、系统浅色 / 深色主题；浏览器允许时会在本机保存当前选择、掩码与步骤。
 
+阶段颜色同时应用于节点背景、侧边色条和箭头：绿色表示已完成，蓝色表示当前执行，灰色表示未执行，并配状态文字。第 0 步使用橙色展示全局路径，不表示所有阶段已执行。Ring Attention 按本轮着色：新 K/V 到达后，计算与累计节点回到“本轮待执行”，节点内仍保留上一轮的累计数值。
+
 ## 示例与边界
 
 - 固定 3 个 ranks，使用小数组和等长分块；归约算子固定为 SUM。root 类操作选 rank 1；点对点示例为 rank 0 向 rank 1 发送，rank 2 不参与。
