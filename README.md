@@ -1,18 +1,32 @@
-# Transformer 结构学习可视化
+# vLLM 学习笔记与交互演示
 
-这是一个面向初学者的 Transformer / LLM 交互式学习资料，用小型 decoder-only 模型串起输入、RMSNorm、QKV 投影、因果注意力、残差、MLP 和 LM Head。
+按学习主题整理的 Transformer / vLLM 可视化项目。每个项目独立存放，包含可在浏览器中打开的 HTML 页面与使用说明。
 
-## 页面内容
+## 项目目录
 
-- **结构讲解页**（`transformer-structure-explorer.html`）：从完整模型进入多层 Block、单层 Block 和内部模块，了解每一步做什么、为什么这样做。
-- **真实矩阵页**（`transformer-structure-explorer-matrices.html`）：使用固定教学参数实际计算各模块的输入与输出。数值默认折叠，点击矩阵标题展开或收起；名称和维度始终可见。
-- 两页顶部可以相互切换，支持自动播放、暂停和“上一步 / 下一步”，同步高亮当前阶段。
-- 真实矩阵页可切换 Batch、样本、注意力头和高亮位置；切换查看范围时保留矩阵的展开状态。可进一步进入计算步骤和权重矩阵页面。
+| 项目 | 内容 | 说明 | HTML 入口 |
+| --- | --- | --- | --- |
+| Transformer 结构与矩阵 | 模型结构、注意力、MLP、逐步矩阵计算 | [transform](transform/README.md) | [transform/index.html](transform/index.html) |
+| vLLM PD 分离 | V0 / V1、P / D、Scheduler / Worker、Mooncake 缓存匹配与传输 | [pd-disaggregation](pd-disaggregation/README.md) | [pd-disaggregation/index.html](pd-disaggregation/index.html) |
+
+```text
+vllm-learning-notes/
+├── README.md
+├── index.html                         # 项目导航
+├── transform/
+│   ├── README.md
+│   ├── index.html                     # Transformer 项目入口
+│   ├── transformer-structure-explorer.html
+│   └── transformer-structure-explorer-matrices.html
+└── pd-disaggregation/
+    ├── README.md
+    └── index.html                     # V0 / V1 PD 分离交互动画
+```
 
 ## 打开方式
 
-下载整个仓库并解压，保持三个 HTML 文件在同一目录，双击 `index.html` 即可进入结构讲解页。也可以直接打开任一学习页面。GitHub 的文件预览只显示源码，需要下载后用浏览器打开。
+下载或克隆整个仓库，保持目录结构，使用浏览器打开根目录的 `index.html`，再选择项目。也可以直接打开各子目录中的 `index.html`。
 
-真实矩阵页使用 T=4、d=8、2 个注意力头、8 词词表的小模型。这是未训练的教学模型，数字来自同一条真实计算链，生成的词不代表语言能力；界面显示 3 位小数，计算使用未舍入数值。
+GitHub 仓库中的 HTML 链接通常显示源码；本地演示需要用浏览器打开下载后的文件。
 
-页面不包含图片或模型权重下载。真实矩阵页完全自包含；结构讲解页的核心流程也支持离线查看。
+学习内容对应各项目说明中注明的教学模型或源码版本。

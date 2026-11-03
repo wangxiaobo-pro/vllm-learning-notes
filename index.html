@@ -1,13 +1,45 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="0; url=transformer-structure-explorer.html">
-<title>Transformer 结构学习可视化</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>vLLM 学习笔记与交互演示</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { max-width: 860px; margin: 0 auto; padding: 48px 24px; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.7; background: Canvas; color: CanvasText; }
+    h1 { margin: 0 0 12px; font-size: clamp(24px, 4vw, 34px); }
+    h2 { margin: 0 0 8px; font-size: 21px; }
+    p { margin: 0 0 16px; }
+    main { display: grid; gap: 24px; margin-top: 32px; }
+    section { padding: 24px; border: 1px solid color-mix(in srgb, CanvasText 20%, Canvas); border-radius: 12px; }
+    nav { display: flex; flex-wrap: wrap; gap: 12px 24px; }
+    a { color: LinkText; text-underline-offset: 3px; }
+    footer { margin-top: 32px; font-size: 14px; }
+    @media (max-width: 480px) { body { padding: 24px 16px; } section { padding: 20px; } }
+  </style>
 </head>
 <body>
-<p><a href="transformer-structure-explorer.html">打开结构讲解页</a></p>
-<p><a href="transformer-structure-explorer-matrices.html">打开真实矩阵页</a></p>
+  <header>
+    <h1>vLLM 学习笔记与交互演示</h1>
+    <p>从 Transformer 的逐步计算，到 vLLM 的调度、缓存与执行流程。</p>
+  </header>
+  <main>
+    <section aria-labelledby="transform-title">
+      <h2 id="transform-title">Transformer 结构与矩阵</h2>
+      <p>逐层查看 RMSNorm、QKV、因果注意力、残差、MLP 与 LM Head，并展开教学模型的真实矩阵计算。</p>
+      <nav aria-label="Transformer 项目">
+        <a href="transform/index.html">打开结构讲解</a>
+        <a href="transform/transformer-structure-explorer-matrices.html">打开矩阵计算</a>
+      </nav>
+    </section>
+    <section aria-labelledby="pd-title">
+      <h2 id="pd-title">vLLM PD 分离</h2>
+      <p>切换 V0 / V1，以 P、D 两侧的 Scheduler 和 Worker 为线索，逐步观察缓存匹配、KV 传输和请求恢复。</p>
+      <nav aria-label="PD 分离项目">
+        <a href="pd-disaggregation/index.html">打开 V0 / V1 动画</a>
+      </nav>
+    </section>
+  </main>
+  <footer>下载仓库后，可直接用浏览器打开本页。各演示的源码基线与适用范围见对应项目的 README。</footer>
 </body>
 </html>
