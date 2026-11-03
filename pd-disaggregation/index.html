@@ -1833,6 +1833,11 @@ html&gt;body{padding:0}&lt;/style&gt;
   &lt;/div&gt;
   &lt;svg id=&quot;vmp-diagram&quot; role=&quot;img&quot; aria-label=&quot;P、D 两侧各有 Scheduler 与 Worker；Scheduler 管理块和状态，Worker 通过 Mooncake 传输 KV。&quot;&gt;&lt;/svg&gt;
   &lt;div id=&quot;vmp-detail&quot; class=&quot;text-small&quot; aria-live=&quot;polite&quot;&gt;V0：远端匹配与等待发生在 Worker；SimpleBuffer + MooncakePipe。&lt;/div&gt;
+  &lt;section id=&quot;vmp-overview&quot; aria-labelledby=&quot;vmp-flow-title&quot;&gt;
+    &lt;h3 id=&quot;vmp-flow-title&quot;&gt;完整流程 · 对照图中序号&lt;/h3&gt;
+    &lt;p id=&quot;vmp-flow-note&quot; class=&quot;text-small text-muted&quot;&gt;&lt;/p&gt;
+    &lt;ol id=&quot;vmp-flow-list&quot;&gt;&lt;/ol&gt;
+  &lt;/section&gt;
 &lt;/div&gt;
 &lt;style&gt;
   #vllm-mooncake-pd { display: flex; flex-direction: column; gap: calc(var(--font-size-base) * .7); color: var(--foreground); }
@@ -1847,6 +1852,12 @@ html&gt;body{padding:0}&lt;/style&gt;
   #vmp-diagram .vmp-node-title { font-weight:500; }
   #vmp-diagram .vmp-subtle { fill:var(--muted-foreground); }
   #vmp-detail { min-height:calc(var(--font-size-base) * 2); overflow-wrap:anywhere; }
+  #vmp-overview { margin-top:calc(var(--font-size-base) * .5); }
+  #vmp-overview[hidden] { display:none; }
+  #vmp-flow-note { margin-top:calc(var(--font-size-base) * .35); }
+  #vmp-flow-list { display:grid; gap:calc(var(--font-size-base) * .65); margin:calc(var(--font-size-base) * .8) 0 0; padding-left:calc(var(--font-size-base) * 1.7); }
+  #vmp-flow-list li { padding-left:calc(var(--font-size-base) * .2); overflow-wrap:anywhere; }
+  #vmp-flow-list strong { font-weight:500; }
   @media (max-width:440px) { #vllm-mooncake-pd .vmp-heading { padding-right:0; } }
 &lt;/style&gt;
 &lt;script&gt;
@@ -1862,31 +1873,63 @@ html&gt;body{padding:0}&lt;/style&gt;
   const baseline = root.querySelector(&#x27;#vmp-baseline&#x27;);
   const payload = root.querySelector(&#x27;#vmp-payload&#x27;);
   const example = root.querySelector(&#x27;#vmp-example&#x27;);
+  const overview = root.querySelector(&#x27;#vmp-overview&#x27;);
+  const flowNote = root.querySelector(&#x27;#vmp-flow-note&#x27;);
+  const flowList = root.querySelector(&#x27;#vmp-flow-list&#x27;);
   const ns = &#x27;http://www.w3.org/2000/svg&#x27;;
   const v1Stages = [
-    {name:&#x27;全局关系&#x27;, active:[&#x27;ps&#x27;,&#x27;pw&#x27;,&#x27;ds&#x27;,&#x27;dw&#x27;], edges:[&#x27;routeP&#x27;,&#x27;routeD&#x27;,&#x27;pdown&#x27;,&#x27;ddown&#x27;,&#x27;request&#x27;,&#x27;data&#x27;,&#x27;pup&#x27;,&#x27;dup&#x27;], ps:[&#x27;分配源 blocks&#x27;,&#x27;保留 / 释放请求占用&#x27;], pw:[&#x27;Prefill → KV tensor&#x27;,&#x27;按 transfer_id 找源块&#x27;], ds:[&#x27;本地命中 → 远端缺口&#x27;,&#x27;分配目标 blocks&#x27;], dw:[&#x27;发出取数请求&#x27;,&#x27;接收 KV → 模型执行&#x27;], detail:&#x27;同一请求：D 已缓存 16 tokens，还需要从 P 获取 48 tokens。&#x27;},
+    {name:&#x27;全局关系&#x27;, active:[&#x27;ps&#x27;,&#x27;pw&#x27;,&#x27;ds&#x27;,&#x27;dw&#x27;], edges:[&#x27;routeP&#x27;,&#x27;routeD&#x27;,&#x27;pdown&#x27;,&#x27;ddown&#x27;,&#x27;request&#x27;,&#x27;data&#x27;,&#x27;pup&#x27;,&#x27;dup&#x27;,&#x27;complete&#x27;], ps:[&#x27;分配源 blocks&#x27;,&#x27;保留 / 释放请求占用&#x27;], pw:[&#x27;Prefill → KV tensor&#x27;,&#x27;按 transfer_id 找源块&#x27;], ds:[&#x27;本地命中 → 远端缺口&#x27;,&#x27;分配目标 blocks&#x27;], dw:[&#x27;发出取数请求&#x27;,&#x27;接收 KV → 模型执行&#x27;], detail:&#x27;同一请求：D 已缓存 16 tokens，还需要从 P 获取 48 tokens。&#x27;},
     {name:&#x27;Proxy 同时推进 P / D&#x27;, active:[&#x27;ps&#x27;,&#x27;ds&#x27;], edges:[&#x27;routeP&#x27;,&#x27;routeD&#x27;], ps:[&#x27;do_remote_decode = True&#x27;,&#x27;max_tokens = 1&#x27;], pw:[&#x27;设备 KV 已预分配&#x27;,&#x27;等待调度&#x27;], ds:[&#x27;do_remote_prefill = True&#x27;,&#x27;持有 P 的连接信息&#x27;], dw:[&#x27;设备 KV 已预分配&#x27;,&#x27;等待调度&#x27;], detail:&#x27;两条请求共享 transfer_id=xfer-R；下面展示一种合法交错顺序，并非强制串行。&#x27;},
     {name:&#x27;本地命中 + 远端缺口&#x27;, active:[&#x27;ps&#x27;,&#x27;pw&#x27;,&#x27;ds&#x27;], edges:[&#x27;pdown&#x27;], ps:[&#x27;分配 P blocks&#x27;,&#x27;建立待发送记录&#x27;], pw:[&#x27;Prefill 计算中&#x27;,&#x27;KV 尚未声明 ready&#x27;], ds:[&#x27;本地 hash 命中：16&#x27;,&#x27;远端可加载：48 / 异步&#x27;], dw:[&#x27;本地前缀已存在&#x27;,&#x27;其余 KV 尚未接收&#x27;], detail:&#x27;D：get_num_new_matched_tokens() 返回 (64−16, True)；声明预期远端量，不查询 Store。&#x27;},
     {name:&#x27;D 分配目标与下发元数据&#x27;, active:[&#x27;ds&#x27;,&#x27;dw&#x27;], edges:[&#x27;ddown&#x27;], ps:[&#x27;P 请求运行中&#x27;,&#x27;源 blocks 已分配&#x27;], pw:[&#x27;Prefill 计算中&#x27;,&#x27;KV 尚未声明 ready&#x27;], ds:[&#x27;分配目标：31、32、33&#x27;,&#x27;状态：等待远端 KV&#x27;], dw:[&#x27;收到 connector metadata&#x27;,&#x27;目标块已分配 / 无有效 KV&#x27;], detail:&#x27;update_state_after_alloc() → build_connector_meta()；D 进入 WAITING_FOR_REMOTE_KVS。&#x27;},
     {name:&#x27;D Worker 发起取数&#x27;, active:[&#x27;dw&#x27;,&#x27;pw&#x27;], edges:[&#x27;request&#x27;], ps:[&#x27;P 请求运行中&#x27;,&#x27;等待计算结果&#x27;], pw:[&#x27;收到 xfer-R&#x27;,&#x27;等待 ready 事件&#x27;], ds:[&#x27;状态：等待远端 KV&#x27;,&#x27;本请求暂不执行模型&#x27;], dw:[&#x27;定位 P Worker&#x27;,&#x27;发送目标地址与 block IDs&#x27;], detail:&#x27;start_load_kv() → bootstrap 定位 → ZMQ：transfer_id + D 的目标块、base addresses。&#x27;},
     {name:&#x27;P 完成计算并保留源块&#x27;, active:[&#x27;pw&#x27;,&#x27;ps&#x27;], edges:[&#x27;pup&#x27;,&#x27;pdown&#x27;], ps:[&#x27;request_finished()&#x27;,&#x27;delay_free_blocks = True&#x27;], pw:[&#x27;源块：7、8、9、10&#x27;,&#x27;metadata → ready.set()&#x27;], ds:[&#x27;状态：等待远端 KV&#x27;,&#x27;目标 blocks 保持占用&#x27;], dw:[&#x27;等待传输完成&#x27;,&#x27;目标 KV 尚未有效&#x27;], detail:&#x27;P 完成 max_tokens=1；后续调度元数据带回源 block IDs，Worker 发布 ready。&#x27;},
-    {name:&#x27;按 transfer_id 配对&#x27;, active:[&#x27;pw&#x27;,&#x27;dw&#x27;], edges:[&#x27;request&#x27;], ps:[&#x27;源 blocks 保留中&#x27;,&#x27;尚未收到发送完成&#x27;], pw:[&#x27;xfer-R → 源 blocks&#x27;,&#x27;选择未命中尾部：8、9、10&#x27;], ds:[&#x27;目标 blocks 保留中&#x27;,&#x27;尚未收到接收完成&#x27;], dw:[&#x27;xfer-R → 目标 blocks&#x27;,&#x27;目标：31、32、33&#x27;], detail:&#x27;P 按 transfer_id 关联同一请求，再按 token 顺序和布局生成 src_ptr / dst_ptr / length。&#x27;},
+    {name:&#x27;按 transfer_id 配对&#x27;, active:[&#x27;pw&#x27;,&#x27;dw&#x27;], edges:[], ps:[&#x27;源 blocks 保留中&#x27;,&#x27;尚未收到发送完成&#x27;], pw:[&#x27;xfer-R → 源 blocks&#x27;,&#x27;选择未命中尾部：8、9、10&#x27;], ds:[&#x27;目标 blocks 保留中&#x27;,&#x27;尚未收到接收完成&#x27;], dw:[&#x27;xfer-R → 目标 blocks&#x27;,&#x27;目标：31、32、33&#x27;], detail:&#x27;P 按 transfer_id 关联同一请求，再按 token 顺序和布局生成 src_ptr / dst_ptr / length。&#x27;},
     {name:&#x27;Mooncake 搬运 KV&#x27;, active:[&#x27;pw&#x27;,&#x27;dw&#x27;], edges:[&#x27;data&#x27;], ps:[&#x27;源 blocks 保留中&#x27;,&#x27;数据不经过 Scheduler&#x27;], pw:[&#x27;Transfer Engine WRITE&#x27;,&#x27;8→31 · 9→32 · 10→33&#x27;], ds:[&#x27;状态：等待远端 KV&#x27;,&#x27;尚未消费完成结果&#x27;], dw:[&#x27;48 tokens 的 KV 到达&#x27;,&#x27;本地 16 tokens 保持复用&#x27;], detail:&#x27;P 的后台发送线程调用 batch_transfer_sync_write()；控制请求由 D 发起，字节由 P 写入 D。&#x27;},
     {name:&#x27;完成通知回到 Scheduler&#x27;, active:[&#x27;ps&#x27;,&#x27;pw&#x27;,&#x27;ds&#x27;,&#x27;dw&#x27;], edges:[&#x27;complete&#x27;,&#x27;pup&#x27;,&#x27;dup&#x27;], ps:[&#x27;收到 finished_sending&#x27;,&#x27;可以解除源块占用&#x27;], pw:[&#x27;发送完成&#x27;,&#x27;返回传输结果&#x27;], ds:[&#x27;收到 finished_recving&#x27;,&#x27;后续 schedule 恢复请求&#x27;], dw:[&#x27;收到 P 的完成响应&#x27;,&#x27;返回传输结果&#x27;], detail:&#x27;Worker 汇总完成结果：P 反馈 finished_sending；D 收齐所需响应后反馈 finished_recving。&#x27;},
     {name:&#x27;D 接续计算；P 解除占用&#x27;, active:[&#x27;ps&#x27;,&#x27;ds&#x27;,&#x27;dw&#x27;], edges:[&#x27;ddown&#x27;], ps:[&#x27;释放本请求 block 引用&#x27;,&#x27;可继续保留为前缀缓存&#x27;], pw:[&#x27;本次交接完成&#x27;,&#x27;继续处理其他请求&#x27;], ds:[&#x27;等待远端 → WAITING&#x27;,&#x27;完整命中：computed=63&#x27;], dw:[&#x27;重算最后一个输入 token&#x27;,&#x27;得到 logits → 采样与 Decode&#x27;], detail:&#x27;普通全注意力路径会重算 prompt 末 token；此示例不会从 P 的 HTTP 响应接收首 token。&#x27;}
   ];
   const v0Stages = [
-    {name:&#x27;全局关系&#x27;,active:[&#x27;ps&#x27;,&#x27;pw&#x27;,&#x27;ds&#x27;,&#x27;dw&#x27;],edges:[&#x27;routeP&#x27;,&#x27;routeD&#x27;,&#x27;pdown&#x27;,&#x27;ddown&#x27;,&#x27;request&#x27;,&#x27;data&#x27;,&#x27;dup&#x27;],ps:[&#x27;普通请求调度&#x27;,&#x27;分配 P 的 KV blocks&#x27;],pw:[&#x27;SimpleBuffer 缓存副本&#x27;,&#x27;tokens + ROI 匹配&#x27;],ds:[&#x27;按普通 Prefill 调度&#x27;,&#x27;没有 Scheduler Connector&#x27;],dw:[&#x27;forward 前同步 recv&#x27;,&#x27;完整命中可跳过 forward&#x27;],detail:&#x27;V0：远端匹配与等待发生在 Worker；SimpleBuffer + MooncakePipe，未启用 Mooncake Store。&#x27;},
+    {name:&#x27;全局关系&#x27;,active:[&#x27;ps&#x27;,&#x27;pw&#x27;,&#x27;ds&#x27;,&#x27;dw&#x27;],edges:[&#x27;routeP&#x27;,&#x27;routeD&#x27;,&#x27;pdown&#x27;,&#x27;pup&#x27;,&#x27;ddown&#x27;,&#x27;request&#x27;,&#x27;data&#x27;,&#x27;dup&#x27;,&#x27;complete&#x27;],ps:[&#x27;普通请求调度&#x27;,&#x27;分配 P 的 KV blocks&#x27;],pw:[&#x27;SimpleBuffer 缓存副本&#x27;,&#x27;tokens + ROI 匹配&#x27;],ds:[&#x27;按普通 Prefill 调度&#x27;,&#x27;没有 Scheduler Connector&#x27;],dw:[&#x27;forward 前同步 recv&#x27;,&#x27;完整命中可跳过 forward&#x27;],detail:&#x27;V0：远端匹配与等待发生在 Worker；SimpleBuffer + MooncakePipe，未启用 Mooncake Store。&#x27;},
     {name:&#x27;P 调度并执行 Prefill&#x27;,active:[&#x27;ps&#x27;,&#x27;pw&#x27;],edges:[&#x27;routeP&#x27;,&#x27;pdown&#x27;],ps:[&#x27;分配 KV blocks&#x27;,&#x27;提交模型输入&#x27;],pw:[&#x27;ModelRunner.execute_model&#x27;,&#x27;Prefill 生成 KV 与 hidden&#x27;],ds:[&#x27;D 请求尚未提交&#x27;,&#x27;普通调度器&#x27;],dw:[&#x27;等待 D 请求&#x27;,&#x27;尚未执行 recv&#x27;],detail:&#x27;P 的普通 Scheduler 下发模型输入；Worker 运行完整 Prefill。示例按先 P 后 D 的顺序展示。&#x27;},
     {name:&#x27;P 把结果放入查找缓冲&#x27;,active:[&#x27;pw&#x27;],edges:[&#x27;pup&#x27;],ps:[&#x27;接收普通模型执行结果&#x27;,&#x27;沿常规请求生命周期处理&#x27;],pw:[&#x27;gather KV；clone 副本&#x27;,&#x27;insert(tokens, ROI, K, V, H)&#x27;],ds:[&#x27;D 请求尚未提交&#x27;,&#x27;普通调度器&#x27;],dw:[&#x27;尚无远端 KV&#x27;,&#x27;本地设备缓存已初始化&#x27;],detail:&#x27;send_kv_caches_and_hidden_states() → SimpleBuffer.insert()；缓冲持有独立副本，满时可产生背压。&#x27;},
     {name:&#x27;D 仍按普通 Prefill 调度&#x27;,active:[&#x27;ds&#x27;,&#x27;dw&#x27;],edges:[&#x27;routeD&#x27;,&#x27;ddown&#x27;],ps:[&#x27;P 的 Prefill 请求已完成&#x27;,&#x27;无远端接收状态机&#x27;],pw:[&#x27;查找缓冲保留结果&#x27;,&#x27;后台 handler 等待查询&#x27;],ds:[&#x27;分配 D 的 KV blocks&#x27;,&#x27;提交完整 prompt 模型输入&#x27;],dw:[&#x27;进入 execute_model&#x27;,&#x27;forward 前调用 recv 接口&#x27;],detail:&#x27;V0 Scheduler 不先计算远端命中量；recv_kv_caches_and_hidden_states() 位于 Worker 执行路径。&#x27;},
     {name:&#x27;D 发出 tokens / ROI 查询&#x27;,active:[&#x27;dw&#x27;,&#x27;pw&#x27;],edges:[&#x27;request&#x27;],ps:[&#x27;普通请求调度&#x27;,&#x27;不参与远端匹配&#x27;],pw:[&#x27;drop_select_handler&#x27;,&#x27;接收 tokens + ROI&#x27;],ds:[&#x27;等待本轮执行结果&#x27;,&#x27;没有 WAITING_FOR_REMOTE_KVS&#x27;],dw:[&#x27;SimpleBuffer.drop_select&#x27;,&#x27;同步等待返回结果&#x27;],detail:&#x27;D 发送查询 token 与 ROI 掩码；drop_select() 阻塞等待，不是 Scheduler 异步挂起该请求。&#x27;},
-    {name:&#x27;P 按 token 前缀匹配&#x27;,active:[&#x27;pw&#x27;],edges:[&#x27;request&#x27;],ps:[&#x27;普通请求调度&#x27;,&#x27;不参与缓冲查找&#x27;],pw:[&#x27;_matches(tokens[ROI])&#x27;,&#x27;匹配后 popleft 取走条目&#x27;],ds:[&#x27;等待本轮执行结果&#x27;,&#x27;没有远端命中 token 计数&#x27;],dw:[&#x27;仍在 recv 等待&#x27;,&#x27;尚未获得模型输入 KV&#x27;],detail:&#x27;P 遍历 SimpleBuffer 比较 token 前缀；无匹配时等待缓冲更新，不会立即返回 cache miss。&#x27;},
+    {name:&#x27;P 按 token 前缀匹配&#x27;,active:[&#x27;pw&#x27;],edges:[],ps:[&#x27;普通请求调度&#x27;,&#x27;不参与缓冲查找&#x27;],pw:[&#x27;_matches(tokens[ROI])&#x27;,&#x27;匹配后 popleft 取走条目&#x27;],ds:[&#x27;等待本轮执行结果&#x27;,&#x27;没有远端命中 token 计数&#x27;],dw:[&#x27;仍在 recv 等待&#x27;,&#x27;尚未获得模型输入 KV&#x27;],detail:&#x27;P 遍历 SimpleBuffer 比较 token 前缀；无匹配时等待缓冲更新，不会立即返回 cache miss。&#x27;},
     {name:&#x27;MooncakePipe 传输结果&#x27;,active:[&#x27;pw&#x27;,&#x27;dw&#x27;],edges:[&#x27;data&#x27;,&#x27;complete&#x27;],ps:[&#x27;普通请求调度&#x27;,&#x27;不转发 KV 数据&#x27;],pw:[&#x27;序列化 → managed buffer&#x27;,&#x27;发布源地址；等待 ACK&#x27;],ds:[&#x27;等待本轮执行结果&#x27;,&#x27;不转发 KV 数据&#x27;],dw:[&#x27;TE：transfer_sync_read&#x27;,&#x27;反序列化 → 接收 tensors&#x27;],detail:&#x27;P 的缓冲副本 → 字节 staging → D 主动 READ；返回 tokens、ROI、K、V、hidden，并回 ACK。&#x27;},
     {name:&#x27;D 写入本地 paged KV&#x27;,active:[&#x27;dw&#x27;],edges:[],ps:[&#x27;本轮 P 任务已完成&#x27;,&#x27;可继续调度其他请求&#x27;],pw:[&#x27;缓冲条目已被取走&#x27;,&#x27;传输临时内存按 ACK 回收&#x27;],ds:[&#x27;等待本轮执行结果&#x27;,&#x27;D blocks 已提前分配&#x27;],dw:[&#x27;按 slot_mapping 写入 KV&#x27;,&#x27;接收 hidden states&#x27;],detail:&#x27;SimpleConnector 把收到的 K/V 写入 D 的本地 paged cache；这条旧路径包含 staging 与复制。&#x27;},
     {name:&#x27;完整命中：跳过 Prefill forward&#x27;,active:[&#x27;dw&#x27;],edges:[],ps:[&#x27;普通请求调度&#x27;,&#x27;无需远端完成回调&#x27;],pw:[&#x27;本次交接完成&#x27;,&#x27;查找条目已消耗&#x27;],ds:[&#x27;等待普通模型输出&#x27;,&#x27;没有独立 recv 完成集合&#x27;],dw:[&#x27;64 tokens + hidden 完整&#x27;,&#x27;bypass_model_exec = True&#x27;],detail:&#x27;该示例 KV 与 hidden 均完整，ModelRunner 跳过模型 forward；若已返回的数据不完整，则回退计算。&#x27;},
     {name:&#x27;D 计算 logits 并继续生成&#x27;,active:[&#x27;ds&#x27;,&#x27;dw&#x27;],edges:[&#x27;dup&#x27;,&#x27;ddown&#x27;],ps:[&#x27;继续处理其他请求&#x27;,&#x27;常规 KV 生命周期&#x27;],pw:[&#x27;临时传输副本已回收&#x27;,&#x27;原 paged KV 按常规管理&#x27;],ds:[&#x27;接收采样结果&#x27;,&#x27;下一轮进入 Decode 调度&#x27;],dw:[&#x27;hidden → logits → sample&#x27;,&#x27;后续 token 在 D 持续生成&#x27;],detail:&#x27;V0 此路径可利用接收的 hidden 计算 logits；V1 直接 PD 示例只传 KV，需重算 prompt 末 token。&#x27;}
   ];
+  const overviewFlows = {
+    v0: [
+      [&#x27;入口 → P Scheduler → P Worker&#x27;, &#x27;提交 P 请求；普通调度分配 KV blocks，Worker 运行 Prefill，生成 KV 与 hidden states。&#x27;],
+      [&#x27;P Worker 内部；P Worker → P Scheduler&#x27;, &#x27;gather 并 clone 结果，insert(tokens, ROI, K, V, hidden) 放入 SimpleBuffer；向 Scheduler 返回普通模型输出。&#x27;],
+      [&#x27;入口 → D Scheduler → D Worker&#x27;, &#x27;P 请求结束后提交 D；D 仍按普通 Prefill 分配 blocks、下发完整 prompt。&#x27;],
+      [&#x27;D Worker → P Worker&#x27;, &#x27;drop_select() 发送 tokens / ROI 查询；D Worker 阻塞等待返回。&#x27;],
+      [&#x27;P Worker 内部&#x27;, &#x27;扫描 SimpleBuffer，按 ROI 过滤后的 token 前缀匹配；匹配后 popleft() 取走条目，无匹配时等待。&#x27;],
+      [&#x27;P Worker → D Worker；D → P ACK&#x27;, &#x27;MooncakePipe 序列化结果并公布源地址；D 发起 READ，获取 KV 与 hidden 等数据，再回 ACK。&#x27;],
+      [&#x27;D Worker 内部&#x27;, &#x27;反序列化得到 tensors，按本地 slot_mapping 把 K/V 写入 paged KV cache。&#x27;],
+      [&#x27;D Worker 内部&#x27;, &#x27;本例 KV 与 hidden 完整命中，设置 bypass_model_exec=True，跳过 Prefill forward。&#x27;],
+      [&#x27;D Worker → D Scheduler → D Worker&#x27;, &#x27;利用 hidden 计算 logits 并采样，返回普通输出；后续正常调度 Decode。传输临时缓冲按 ACK 回收。&#x27;]
+    ],
+    v1: [
+      [&#x27;Proxy → P Scheduler / D Scheduler&#x27;, &#x27;同时推进 P、D 两条请求，共用 transfer_id；D 请求携带 P 的 bootstrap 地址与 engine ID。&#x27;],
+      [&#x27;P Scheduler → P Worker；D Scheduler 内部&#x27;, &#x27;P 分配源 blocks 并开始 Prefill；D 先检查本地前缀命中，再声明预期可从远端加载的 token 数。&#x27;],
+      [&#x27;D Scheduler → D Worker&#x27;, &#x27;D 分配目标 blocks，下发 connector metadata；请求进入 WAITING_FOR_REMOTE_KVS，暂不执行该请求的模型计算。&#x27;],
+      [&#x27;D Worker → P Worker&#x27;, &#x27;通过 bootstrap 定位 P Worker，再发送 transfer_id、D 目标 block IDs、base addresses 与布局信息。&#x27;],
+      [&#x27;P Worker → P Scheduler → P Worker&#x27;, &#x27;P 完成 Prefill；request_finished() 延迟释放源 blocks，后续 metadata 携带源块信息，Worker 设置 ready。&#x27;],
+      [&#x27;P Worker 内部&#x27;, &#x27;按 transfer_id 关联此前收到的取数请求，等待源 KV ready，并构造 src_ptr、dst_ptr 和 length。&#x27;],
+      [&#x27;P Worker → D Worker&#x27;, &#x27;P 后台线程调用 Mooncake batch_transfer_sync_write()，把缺少的 KV 写入 D 的目标 buffer。&#x27;],
+      [&#x27;P → D 完成响应；各 Worker → 各自 Scheduler&#x27;, &#x27;P 返回传输完成；两侧分别反馈 finished_sending / finished_recving。D 收齐必要响应后才视为接收完成。&#x27;],
+      [&#x27;P Scheduler 内部；D Scheduler → D Worker&#x27;, &#x27;P 解除本请求的源块占用；D 恢复调度，本例重算 prompt 末 token 得到 logits，然后采样并继续 Decode。&#x27;]
+    ]
+  };
+  const edgeSteps = {
+    v0:{routeP:[1],routeD:[3],pdown:[1],pup:[2],ddown:[3,9],dup:[9],request:[4],data:[6],complete:[6]},
+    v1:{routeP:[1],routeD:[1],pdown:[2,5],pup:[5,8],ddown:[3,9],dup:[8],request:[4],data:[7],complete:[8]}
+  };
+  const localSteps = {v0:{pw:[2,5],dw:[7,8]},v1:{ps:[9],ds:[2],pw:[6]}};
   let version = &#x27;v0&#x27;;
   let stages = v0Stages;
   let step = 0;
@@ -1928,6 +1971,29 @@ html&gt;body{padding:0}&lt;/style&gt;
     el(&#x27;path&#x27;,{d,fill:&#x27;none&#x27;,stroke:color,&#x27;stroke-width&#x27;:kind===&#x27;data&#x27;?3:1.5,
       &#x27;stroke-dasharray&#x27;:kind===&#x27;data&#x27;?&#x27;none&#x27;:&#x27;5 4&#x27;,&#x27;marker-end&#x27;:`url(#vmp-${active?kind:&#x27;idle&#x27;}-arrow)`,&#x27;data-edge&#x27;:id});
   }
+  function numberBadge(x,y,numbers,reference,local=false) {
+    const visible=step===0?numbers:numbers.filter(number=&gt;number===step);
+    if(!visible.length)return;
+    const value=visible.join(&#x27;·&#x27;);
+    const width=visible.length&gt;1?34:20;
+    const group=el(&#x27;g&#x27;,{&#x27;data-number-ref&#x27;:reference,&#x27;data-step-numbers&#x27;:visible.join(&#x27;,&#x27;),role:&#x27;img&#x27;,&#x27;aria-label&#x27;:`${local?&#x27;节点内动作&#x27;:&#x27;箭头&#x27;}，步骤 ${visible.join(&#x27;、&#x27;)}`});
+    el(&#x27;rect&#x27;,{x:x-width/2,y:y-10,width,height:20,rx:10,fill:&#x27;var(--background)&#x27;,stroke:&#x27;var(--border)&#x27;,&#x27;stroke-width&#x27;:1},group);
+    el(&#x27;text&#x27;,{x,y:y+4,&#x27;text-anchor&#x27;:&#x27;middle&#x27;,&#x27;font-weight&#x27;:500},group,value);
+  }
+  function updateOverview() {
+    overview.hidden=step!==0;
+    if(step!==0)return;
+    flowNote.textContent=(version===&#x27;v1&#x27;?&#x27;P / D 并行推进；编号为讲解步骤，展示一种合法交错顺序。&#x27;:&#x27;本例按先 P 后 D 展示。&#x27;)+&#x27;同号对应同一步，节点内序号表示本地动作。&#x27;;
+    flowList.replaceChildren();
+    overviewFlows[version].forEach(([actor,action],index)=&gt;{
+      const item=document.createElement(&#x27;li&#x27;);
+      item.dataset.flowStep=String(index+1);
+      const title=document.createElement(&#x27;strong&#x27;);
+      title.textContent=actor+&#x27;：&#x27;;
+      item.append(title,document.createTextNode(action));
+      flowList.append(item);
+    });
+  }
   function node(id,x,y,w,h,title,sub) {
     const on = stages[step].active.includes(id);
     const g = el(&#x27;g&#x27;,{&#x27;data-node&#x27;:id});
@@ -1954,7 +2020,7 @@ html&gt;body{padding:0}&lt;/style&gt;
     const compact=width&lt;560;
     const pad=compact?4:12, gap=compact?18:52, nw=(width-pad*2-gap)/2;
     const px=pad, dx=pad+nw+gap, pc=px+nw/2, dc=dx+nw/2;
-    const sy=136, sh=compact?184:126, wy=sy+sh+92, wh=compact?214:160, height=wy+wh+79;
+    const sy=136, sh=compact?184:126, wy=sy+sh+114, wh=compact?214:160, height=wy+wh+84;
     svg.replaceChildren(); svg.setAttribute(&#x27;viewBox&#x27;,`0 0 ${width} ${height}`); svg.style.height=height+&#x27;px&#x27;;
     el(&#x27;title&#x27;,{},svg,`vLLM ${version.toUpperCase()} Mooncake PD，第 ${step} 步：${stages[step].name}`);
     el(&#x27;desc&#x27;,{},svg,&#x27;左右分别是 P、D，上排是 Scheduler 控制状态，下排是 Worker 持有设备 KV。虚线是元数据，实线是 KV 数据。&#x27;);
@@ -1977,7 +2043,7 @@ html&gt;body{padding:0}&lt;/style&gt;
     edge(&#x27;ddown&#x27;,`M ${dc-24} ${sy+sh} V ${wy}`);
     edge(&#x27;pup&#x27;,`M ${pc+24} ${wy} V ${sy+sh}`);
     edge(&#x27;dup&#x27;,`M ${dc+24} ${wy} V ${sy+sh}`);
-    const midY=sy+sh+27;
+    const midY=sy+sh+43;
     [pc,dc].forEach(c=&gt;{
       el(&#x27;rect&#x27;,{x:c-51,y:midY-15,width:102,height:38,fill:&#x27;var(--background)&#x27;,stroke:&#x27;none&#x27;});
       label(c,midY,version===&#x27;v0&#x27;?&#x27;↓ 普通模型输入&#x27;:&#x27;↓ 调度元数据&#x27;,&#x27;vmp-subtle&#x27;);
@@ -1995,10 +2061,22 @@ html&gt;body{padding:0}&lt;/style&gt;
     edge(&#x27;request&#x27;,`M ${dx+nw-10} ${wy+15} V ${wy-25} H ${px+10} V ${wy+15}`);
     label(width/2,wy-10,version===&#x27;v0&#x27;?&#x27;D → P：tokens + ROI 查询&#x27;:&#x27;D → P：取数请求 + 目标地址&#x27;,&#x27;vmp-subtle&#x27;);
     edge(&#x27;data&#x27;,`M ${pc} ${wy+wh} V ${wy+wh+37} H ${dc} V ${wy+wh}`,&#x27;data&#x27;);
-    label(width/2,wy+wh+60,version===&#x27;v0&#x27;?(compact?&#x27;P → D：D 发起 READ&#x27;:&#x27;P → D：MooncakePipe · D 发起 READ&#x27;):(compact?&#x27;P → D：Mooncake WRITE&#x27;:&#x27;P → D：Mooncake Transfer Engine · WRITE&#x27;),&#x27;vmp-node-title&#x27;);
+    label(width/2,wy+wh+65,version===&#x27;v0&#x27;?(compact?&#x27;P → D：D 发起 READ&#x27;:&#x27;P → D：MooncakePipe · D 发起 READ&#x27;):(compact?&#x27;P → D：Mooncake WRITE&#x27;:&#x27;P → D：Mooncake Transfer Engine · WRITE&#x27;),&#x27;vmp-node-title&#x27;);
     if(version===&#x27;v1&#x27;) edge(&#x27;complete&#x27;,`M ${px+nw-8} ${wy+wh-5} V ${wy+wh+18} H ${dx+8} V ${wy+wh-5}`);
     else edge(&#x27;complete&#x27;,`M ${dx+8} ${wy+wh-5} V ${wy+wh+18} H ${px+nw-8} V ${wy+wh-5}`);
-    if((version===&#x27;v1&#x27;&amp;&amp;step===8)||(version===&#x27;v0&#x27;&amp;&amp;step===6)) label(width/2,wy+wh+15,version===&#x27;v0&#x27;?&#x27;ACK&#x27;:&#x27;完成响应&#x27;,&#x27;vmp-subtle&#x27;);
+    if(step===0||(version===&#x27;v1&#x27;&amp;&amp;step===8)||(version===&#x27;v0&#x27;&amp;&amp;step===6)) label(width/2-48,wy+wh+21,version===&#x27;v0&#x27;?&#x27;ACK&#x27;:&#x27;完成响应&#x27;,&#x27;vmp-subtle&#x27;);
+    const badgePositions={
+      routeP:[(width/2-42+pc)/2,76],routeD:[(width/2+42+dc)/2,76],
+      pdown:[pc-24,sy+sh+12],pup:[pc+24,sy+sh+12],
+      ddown:[dc-24,sy+sh+12],dup:[dc+24,sy+sh+12],
+      request:[px+10,wy-25],data:[pc+(dc-pc)*.25,wy+wh+37],complete:[width/2,wy+wh+18]
+    };
+    Object.entries(badgePositions).forEach(([id,[x,y]])=&gt;numberBadge(x,y,edgeSteps[version][id],id));
+    const nodePositions={ps:[px,sy],ds:[dx,sy],pw:[px,wy],dw:[dx,wy]};
+    Object.entries(localSteps[version]).forEach(([id,numbers])=&gt;{
+      const [x,y]=nodePositions[id];
+      numberBadge(x+(numbers.length&gt;1?21:15),y+20,numbers,id,true);
+    });
     if(step===(version===&#x27;v0&#x27;?6:7)&amp;&amp;!window.matchMedia(&#x27;(prefers-reduced-motion: reduce)&#x27;).matches) {
       const dot=el(&#x27;circle&#x27;,{r:4,fill:&#x27;var(--viz-series-2)&#x27;});
       const motion=el(&#x27;animateMotion&#x27;,{dur:&#x27;1.1s&#x27;,repeatCount:1,fill:&#x27;freeze&#x27;,path:`M ${pc} ${wy+wh} V ${wy+wh+37} H ${dc} V ${wy+wh}`},dot);
@@ -2012,6 +2090,7 @@ html&gt;body{padding:0}&lt;/style&gt;
     v0Button.setAttribute(&#x27;aria-pressed&#x27;,String(version===&#x27;v0&#x27;));
     v1Button.setAttribute(&#x27;aria-pressed&#x27;,String(version===&#x27;v1&#x27;));
     prev.disabled=step===0; next.disabled=step===9;
+    updateOverview();
   }
   function save() {
     const api=window.openai;
