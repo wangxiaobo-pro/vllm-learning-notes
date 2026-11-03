@@ -41,9 +41,9 @@
     </section>
     <section aria-labelledby="parallelism-title">
       <h2 id="parallelism-title">vLLM 并行流程</h2>
-      <p>用 GPU 虚线框查看 TP、EP、SP、PP、CP、DP 的权重分配与矩阵切分，沿箭头播放计算和通信；DP 可对照训练梯度同步与 vLLM 推理请求分流。</p>
+      <p>查看 TP、EP、SP、PP、CP、DP 六种单项并行，以及 TP+SP、DP+EP、DP+TP+PP 三种组合，默认打开 TP+SP。用 GPU 虚线框和矩阵追踪权重分配、计算与通信；DP 可对照训练梯度同步与 vLLM 推理请求分流。</p>
       <nav aria-label="并行流程项目">
-        <a href="parallelism/index.html">打开六种并行流程</a>
+        <a href="parallelism/index.html">打开六种并行与三种组合</a>
       </nav>
     </section>
     <section aria-labelledby="communication-title">

@@ -1,0 +1,4375 @@
+{
+  "tpsp": {
+    "title": "SP: token shard → All-Gather → real TP causal attention → Reduce-Scatter",
+    "scope": "A minimal two-head attention + output projection, not a complete DeepSeek layer. Norm, residual and MLP are omitted. X has four tokens, two hidden columns; each attention head has dimension one. Q=K=V=X by identity projection; causal attention; scale=1/sqrt(1)=1. Wo rows belong to the corresponding head/rank.",
+    "shapes": {
+      "X": "[tokens=4, hidden=2]",
+      "initial_X_per_rank": "[2,2]",
+      "X_after_AG_per_rank": "[4,2]",
+      "head_Q_K_V_per_rank": "[4,1]",
+      "attention_head_output_per_rank": "[4,1]",
+      "Wo_row_per_rank": "[1,2]",
+      "partial_output_per_rank": "[4,2]",
+      "RS_output_per_rank": "[2,2]"
+    },
+    "steps": [
+      {
+        "n": 1,
+        "operation": "Token sharding",
+        "description": "rank0 owns tokens 0,1; rank1 owns tokens 2,3. Each token row retains both hidden columns."
+      },
+      {
+        "n": 2,
+        "operation": "All-Gather along token axis",
+        "description": "Both ranks receive the full X, [4,2]. This is concatenation, not SUM."
+      },
+      {
+        "n": 3,
+        "operation": "Local head projection and causal attention",
+        "description": "rank0 computes Q/K/V from column 0 and head0; rank1 uses column 1 and head1. Each head attends to tokens at or before the query token; masked score entries are null and masked probabilities are zero."
+      },
+      {
+        "n": 4,
+        "operation": "Local output-projection contribution",
+        "description": "A_r = head_output_r @ Wo_row_r. Both A0 and A1 are [4,2] partial sums computed from real attention; they are not fabricated attention outputs."
+      },
+      {
+        "n": 5,
+        "operation": "Reduce-Scatter SUM along token axis",
+        "description": "Y=A0+A1. The collective sums contributions and returns rows 0,1 to rank0 and rows 2,3 to rank1. Y shown in the diagram is the mathematical full result, not a required intermediate all-reduce."
+      },
+      {
+        "n": 6,
+        "operation": "Verify",
+        "description": "Concatenate the two output token shards and compare with unsharded concat(head0,head1) @ Wo."
+      }
+    ],
+    "formulas": [
+      "P_h[t,j] = softmax_j(Q_h[t] * K_h[j]), j <= t",
+      "H_h[t] = sum_j P_h[t,j] * V_h[j]",
+      "A_r = H_r @ Wo[r:r+1,:]",
+      "Y = A_0 + A_1; rank0=Y[0:2,:], rank1=Y[2:4,:]"
+    ],
+    "full_precision": {
+      "X": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          2,
+          1
+        ]
+      ],
+      "initial_rank_token_shards": {
+        "rank0": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "rank1": [
+          [
+            1,
+            1
+          ],
+          [
+            2,
+            1
+          ]
+        ]
+      },
+      "after_all_gather": {
+        "rank0": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            2,
+            1
+          ]
+        ],
+        "rank1": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            2,
+            1
+          ]
+        ]
+      },
+      "Wq": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "Wk": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "Wv": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "Wo": [
+        [
+          1,
+          2
+        ],
+        [
+          3,
+          1
+        ]
+      ],
+      "head_calculations": [
+        {
+          "rank": 0,
+          "head": 0,
+          "Q": [
+            [
+              1
+            ],
+            [
+              0
+            ],
+            [
+              1
+            ],
+            [
+              2
+            ]
+          ],
+          "K": [
+            [
+              1
+            ],
+            [
+              0
+            ],
+            [
+              1
+            ],
+            [
+              2
+            ]
+          ],
+          "V": [
+            [
+              1
+            ],
+            [
+              0
+            ],
+            [
+              1
+            ],
+            [
+              2
+            ]
+          ],
+          "causal_scores": [
+            [
+              1,
+              null,
+              null,
+              null
+            ],
+            [
+              0,
+              0,
+              null,
+              null
+            ],
+            [
+              1,
+              0,
+              1,
+              null
+            ],
+            [
+              2,
+              0,
+              2,
+              4
+            ]
+          ],
+          "causal_probabilities": [
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              0.5,
+              0.5,
+              0,
+              0
+            ],
+            [
+              0.4223187982515182,
+              0.15536240349696362,
+              0.4223187982515182,
+              0
+            ],
+            [
+              0.10499358540350652,
+              0.014209336618611037,
+              0.10499358540350652,
+              0.7758034925743759
+            ]
+          ],
+          "attention_head_output": [
+            [
+              1
+            ],
+            [
+              0.5
+            ],
+            [
+              0.8446375965030364
+            ],
+            [
+              1.7615941559557649
+            ]
+          ],
+          "LSE": [
+            1,
+            0.6931471805599453,
+            1.8619948040582512,
+            4.253856022085945
+          ],
+          "Wo_row": [
+            [
+              1,
+              2
+            ]
+          ],
+          "partial_output": [
+            [
+              1,
+              2
+            ],
+            [
+              0.5,
+              1
+            ],
+            [
+              0.8446375965030364,
+              1.6892751930060728
+            ],
+            [
+              1.7615941559557649,
+              3.5231883119115297
+            ]
+          ]
+        },
+        {
+          "rank": 1,
+          "head": 1,
+          "Q": [
+            [
+              0
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ]
+          ],
+          "K": [
+            [
+              0
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ]
+          ],
+          "V": [
+            [
+              0
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ]
+          ],
+          "causal_scores": [
+            [
+              0,
+              null,
+              null,
+              null
+            ],
+            [
+              0,
+              1,
+              null,
+              null
+            ],
+            [
+              0,
+              1,
+              1,
+              null
+            ],
+            [
+              0,
+              1,
+              1,
+              1
+            ]
+          ],
+          "causal_probabilities": [
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              0.2689414213699951,
+              0.7310585786300049,
+              0,
+              0
+            ],
+            [
+              0.15536240349696362,
+              0.4223187982515182,
+              0.4223187982515182,
+              0
+            ],
+            [
+              0.10923177257303593,
+              0.2969227424756547,
+              0.2969227424756547,
+              0.2969227424756547
+            ]
+          ],
+          "attention_head_output": [
+            [
+              0
+            ],
+            [
+              0.7310585786300049
+            ],
+            [
+              0.8446375965030364
+            ],
+            [
+              0.8907682274269642
+            ]
+          ],
+          "LSE": [
+            0,
+            1.3132616875182228,
+            1.8619948040582512,
+            2.2142833003627604
+          ],
+          "Wo_row": [
+            [
+              3,
+              1
+            ]
+          ],
+          "partial_output": [
+            [
+              0,
+              0
+            ],
+            [
+              2.193175735890015,
+              0.7310585786300049
+            ],
+            [
+              2.533912789509109,
+              0.8446375965030364
+            ],
+            [
+              2.6723046822808927,
+              0.8907682274269642
+            ]
+          ]
+        }
+      ],
+      "sum_of_partial_outputs": [
+        [
+          1,
+          2
+        ],
+        [
+          2.693175735890015,
+          1.7310585786300048
+        ],
+        [
+          3.3785503860121455,
+          2.533912789509109
+        ],
+        [
+          4.433898838236658,
+          4.413956539338494
+        ]
+      ],
+      "reduce_scatter_outputs": {
+        "rank0": [
+          [
+            1,
+            2
+          ],
+          [
+            2.693175735890015,
+            1.7310585786300048
+          ]
+        ],
+        "rank1": [
+          [
+            3.3785503860121455,
+            2.533912789509109
+          ],
+          [
+            4.433898838236658,
+            4.413956539338494
+          ]
+        ]
+      },
+      "unsharded_concat_head_output": [
+        [
+          1,
+          0
+        ],
+        [
+          0.5,
+          0.7310585786300049
+        ],
+        [
+          0.8446375965030364,
+          0.8446375965030364
+        ],
+        [
+          1.7615941559557649,
+          0.8907682274269642
+        ]
+      ],
+      "unsharded_reference": [
+        [
+          1,
+          2
+        ],
+        [
+          2.693175735890015,
+          1.7310585786300048
+        ],
+        [
+          3.3785503860121455,
+          2.533912789509109
+        ],
+        [
+          4.433898838236658,
+          4.413956539338494
+        ]
+      ]
+    },
+    "display": {
+      "X": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          2,
+          1
+        ]
+      ],
+      "initial_rank_token_shards": {
+        "rank0": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "rank1": [
+          [
+            1,
+            1
+          ],
+          [
+            2,
+            1
+          ]
+        ]
+      },
+      "after_all_gather": {
+        "rank0": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            2,
+            1
+          ]
+        ],
+        "rank1": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            2,
+            1
+          ]
+        ]
+      },
+      "Wq": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "Wk": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "Wv": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "Wo": [
+        [
+          1,
+          2
+        ],
+        [
+          3,
+          1
+        ]
+      ],
+      "head_calculations": [
+        {
+          "rank": 0,
+          "head": 0,
+          "Q": [
+            [
+              1
+            ],
+            [
+              0
+            ],
+            [
+              1
+            ],
+            [
+              2
+            ]
+          ],
+          "K": [
+            [
+              1
+            ],
+            [
+              0
+            ],
+            [
+              1
+            ],
+            [
+              2
+            ]
+          ],
+          "V": [
+            [
+              1
+            ],
+            [
+              0
+            ],
+            [
+              1
+            ],
+            [
+              2
+            ]
+          ],
+          "causal_scores": [
+            [
+              1,
+              null,
+              null,
+              null
+            ],
+            [
+              0,
+              0,
+              null,
+              null
+            ],
+            [
+              1,
+              0,
+              1,
+              null
+            ],
+            [
+              2,
+              0,
+              2,
+              4
+            ]
+          ],
+          "causal_probabilities": [
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              0.5,
+              0.5,
+              0,
+              0
+            ],
+            [
+              0.4223,
+              0.1554,
+              0.4223,
+              0
+            ],
+            [
+              0.105,
+              0.0142,
+              0.105,
+              0.7758
+            ]
+          ],
+          "attention_head_output": [
+            [
+              1
+            ],
+            [
+              0.5
+            ],
+            [
+              0.8446
+            ],
+            [
+              1.7616
+            ]
+          ],
+          "LSE": [
+            1,
+            0.6931,
+            1.862,
+            4.2539
+          ],
+          "Wo_row": [
+            [
+              1,
+              2
+            ]
+          ],
+          "partial_output": [
+            [
+              1,
+              2
+            ],
+            [
+              0.5,
+              1
+            ],
+            [
+              0.8446,
+              1.6893
+            ],
+            [
+              1.7616,
+              3.5232
+            ]
+          ]
+        },
+        {
+          "rank": 1,
+          "head": 1,
+          "Q": [
+            [
+              0
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ]
+          ],
+          "K": [
+            [
+              0
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ]
+          ],
+          "V": [
+            [
+              0
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ]
+          ],
+          "causal_scores": [
+            [
+              0,
+              null,
+              null,
+              null
+            ],
+            [
+              0,
+              1,
+              null,
+              null
+            ],
+            [
+              0,
+              1,
+              1,
+              null
+            ],
+            [
+              0,
+              1,
+              1,
+              1
+            ]
+          ],
+          "causal_probabilities": [
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              0.2689,
+              0.7311,
+              0,
+              0
+            ],
+            [
+              0.1554,
+              0.4223,
+              0.4223,
+              0
+            ],
+            [
+              0.1092,
+              0.2969,
+              0.2969,
+              0.2969
+            ]
+          ],
+          "attention_head_output": [
+            [
+              0
+            ],
+            [
+              0.7311
+            ],
+            [
+              0.8446
+            ],
+            [
+              0.8908
+            ]
+          ],
+          "LSE": [
+            0,
+            1.3133,
+            1.862,
+            2.2143
+          ],
+          "Wo_row": [
+            [
+              3,
+              1
+            ]
+          ],
+          "partial_output": [
+            [
+              0,
+              0
+            ],
+            [
+              2.1932,
+              0.7311
+            ],
+            [
+              2.5339,
+              0.8446
+            ],
+            [
+              2.6723,
+              0.8908
+            ]
+          ]
+        }
+      ],
+      "sum_of_partial_outputs": [
+        [
+          1,
+          2
+        ],
+        [
+          2.6932,
+          1.7311
+        ],
+        [
+          3.3786,
+          2.5339
+        ],
+        [
+          4.4339,
+          4.414
+        ]
+      ],
+      "reduce_scatter_outputs": {
+        "rank0": [
+          [
+            1,
+            2
+          ],
+          [
+            2.6932,
+            1.7311
+          ]
+        ],
+        "rank1": [
+          [
+            3.3786,
+            2.5339
+          ],
+          [
+            4.4339,
+            4.414
+          ]
+        ]
+      },
+      "unsharded_concat_head_output": [
+        [
+          1,
+          0
+        ],
+        [
+          0.5,
+          0.7311
+        ],
+        [
+          0.8446,
+          0.8446
+        ],
+        [
+          1.7616,
+          0.8908
+        ]
+      ],
+      "unsharded_reference": [
+        [
+          1,
+          2
+        ],
+        [
+          2.6932,
+          1.7311
+        ],
+        [
+          3.3786,
+          2.5339
+        ],
+        [
+          4.4339,
+          4.414
+        ]
+      ]
+    },
+    "verification": {
+      "max_abs_error_vs_unsharded": 0,
+      "passed": true,
+      "runtime_validation": false
+    }
+  },
+  "dpep": {
+    "schema_version": 1,
+    "mode": "dpep",
+    "title": "DP + EP：请求分开执行，MoE 专家跨这两张 GPU 共享",
+    "notice": "教学网络 Dense前层 → MoE → Dense后层；所有数字为可手算示例，非真实模型实测。两个 dense 层是普通线性层，不代表 Attention。",
+    "weight_layout": {
+      "dense": "[in,out]；行向量约定 Y=X@W，前后 dense 均无 bias、无额外激活",
+      "experts": "沿用原 EP 数据的 [out,in]；Linear=X@W.T+bias，再 ReLU"
+    },
+    "configuration": {
+      "data_parallel_size": 2,
+      "tensor_parallel_size": 1,
+      "pipeline_parallel_size": 1,
+      "enable_expert_parallel": true,
+      "derived_expert_parallel_size": 2,
+      "physical_gpu_count": 2,
+      "prefill_context_parallel_size": 1,
+      "expert_placement_strategy": "linear",
+      "enable_eplb": false
+    },
+    "groups": {
+      "DP": [
+        [
+          0,
+          1
+        ]
+      ],
+      "EP": [
+        [
+          0,
+          1
+        ]
+      ],
+      "TP": [
+        [
+          0
+        ],
+        [
+          1
+        ]
+      ],
+      "PP": [
+        [
+          0
+        ],
+        [
+          1
+        ]
+      ],
+      "note": "本配置 TP=PP=PCP=1，DP 与 EP 成员均为 GPU0/GPU1。vLLM 的 MoE EP 组在固定 PP stage 内覆盖 DP×PCP×TP；EP 不是额外乘出的设备维度。相同 rank 成员不意味着同一个通信器对象。",
+      "dense_ownership": "两端完整复制 Wpre/Wpost；请求 A 的源 token 在 GPU0，请求 B 的源 token 在 GPU1。",
+      "expert_ownership": "固定 linear placement，EPLB 关闭：E0/E1 完整参数在 GPU0；E2/E3 完整参数在 GPU1。每个专家矩阵未作 TP 切分。"
+    },
+    "inputX": {
+      "A": [
+        [
+          1,
+          1
+        ],
+        [
+          3,
+          -2
+        ]
+      ],
+      "B": [
+        [
+          2,
+          -3
+        ],
+        [
+          -1,
+          3
+        ]
+      ]
+    },
+    "Wpre": [
+      [
+        1,
+        1
+      ],
+      [
+        0,
+        1
+      ]
+    ],
+    "Wpost": [
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        1
+      ]
+    ],
+    "request_token_mapping": {
+      "A": [
+        "t0",
+        "t1"
+      ],
+      "B": [
+        "t2",
+        "t3"
+      ]
+    },
+    "ranks": [
+      {
+        "rank": 0,
+        "gpu": 0,
+        "dp_rank": 0,
+        "ep_rank": 0,
+        "request": "A",
+        "tokens": [
+          "t0",
+          "t1"
+        ],
+        "owned_experts": [
+          "E0",
+          "E1"
+        ],
+        "inputX": [
+          [
+            1,
+            1
+          ],
+          [
+            3,
+            -2
+          ]
+        ],
+        "Wpre": [
+          [
+            1,
+            1
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "moeInput": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            1
+          ]
+        ],
+        "moeOutput": [
+          [
+            0.7,
+            3.7
+          ],
+          [
+            2.4,
+            2.8
+          ]
+        ],
+        "Wpost": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            1
+          ]
+        ],
+        "outputY": [
+          [
+            4.4,
+            3.7
+          ],
+          [
+            5.2,
+            2.8
+          ]
+        ]
+      },
+      {
+        "rank": 1,
+        "gpu": 1,
+        "dp_rank": 1,
+        "ep_rank": 1,
+        "request": "B",
+        "tokens": [
+          "t2",
+          "t3"
+        ],
+        "owned_experts": [
+          "E2",
+          "E3"
+        ],
+        "inputX": [
+          [
+            2,
+            -3
+          ],
+          [
+            -1,
+            3
+          ]
+        ],
+        "Wpre": [
+          [
+            1,
+            1
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "moeInput": [
+          [
+            2,
+            -1
+          ],
+          [
+            -1,
+            2
+          ]
+        ],
+        "moeOutput": [
+          [
+            0.4,
+            2.4
+          ],
+          [
+            0.5,
+            2
+          ]
+        ],
+        "Wpost": [
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            1
+          ]
+        ],
+        "outputY": [
+          [
+            2.8,
+            2.4
+          ],
+          [
+            2.5,
+            2
+          ]
+        ]
+      }
+    ],
+    "dense_before": {
+      "operation": "X @ Wpre",
+      "activation": "identity",
+      "weights_replicated": true,
+      "ranks": [
+        {
+          "rank": 0,
+          "gpu": 0,
+          "request": "A",
+          "tokens": [
+            "t0",
+            "t1"
+          ],
+          "input": [
+            [
+              1,
+              1
+            ],
+            [
+              3,
+              -2
+            ]
+          ],
+          "W": [
+            [
+              1,
+              1
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "output": [
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              1
+            ]
+          ]
+        },
+        {
+          "rank": 1,
+          "gpu": 1,
+          "request": "B",
+          "tokens": [
+            "t2",
+            "t3"
+          ],
+          "input": [
+            [
+              2,
+              -3
+            ],
+            [
+              -1,
+              3
+            ]
+          ],
+          "W": [
+            [
+              1,
+              1
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "output": [
+            [
+              2,
+              -1
+            ],
+            [
+              -1,
+              2
+            ]
+          ]
+        }
+      ]
+    },
+    "moe": {
+      "title": "EP：同一MoE层内派发、专家计算、回源归并",
+      "scope": "EP=2, 4 experts, top-2, fixed placement, no EPLB; DeepEP LL weighting semantics",
+      "teaching_notice": "全部数值与2维Linear+ReLU专家均为教学模型；不是Qwen/DeepSeek真实专家，也不是DeepEP支持2维hidden的硬件配置声明。",
+      "weighting_notice": "apply_router_weight_on_input=False。DeepEP LL将topk_weights传给combine，权重与归并在combine kernel内部完成；weighted_contributions只是等价算术分解。",
+      "input": {
+        "shape": [
+          4,
+          2
+        ],
+        "rows": [
+          "t0",
+          "t1",
+          "t2",
+          "t3"
+        ],
+        "values": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            1
+          ],
+          [
+            2,
+            -1
+          ],
+          [
+            -1,
+            2
+          ]
+        ],
+        "meaning": "四个源token的本轮hidden"
+      },
+      "source_shards": [
+        {
+          "rank": 0,
+          "tokens": [
+            "t0",
+            "t1"
+          ],
+          "values": [
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              1
+            ]
+          ]
+        },
+        {
+          "rank": 1,
+          "tokens": [
+            "t2",
+            "t3"
+          ],
+          "values": [
+            [
+              2,
+              -1
+            ],
+            [
+              -1,
+              2
+            ]
+          ]
+        }
+      ],
+      "routing": [
+        {
+          "token": "t0",
+          "source_rank": 0,
+          "choices": [
+            {
+              "expert": "E0",
+              "expert_rank": 0,
+              "weight": 0.7
+            },
+            {
+              "expert": "E2",
+              "expert_rank": 1,
+              "weight": 0.3
+            }
+          ]
+        },
+        {
+          "token": "t1",
+          "source_rank": 0,
+          "choices": [
+            {
+              "expert": "E1",
+              "expert_rank": 0,
+              "weight": 0.6
+            },
+            {
+              "expert": "E3",
+              "expert_rank": 1,
+              "weight": 0.4
+            }
+          ]
+        },
+        {
+          "token": "t2",
+          "source_rank": 1,
+          "choices": [
+            {
+              "expert": "E0",
+              "expert_rank": 0,
+              "weight": 0.2
+            },
+            {
+              "expert": "E3",
+              "expert_rank": 1,
+              "weight": 0.8
+            }
+          ]
+        },
+        {
+          "token": "t3",
+          "source_rank": 1,
+          "choices": [
+            {
+              "expert": "E1",
+              "expert_rank": 0,
+              "weight": 0.5
+            },
+            {
+              "expert": "E2",
+              "expert_rank": 1,
+              "weight": 0.5
+            }
+          ]
+        }
+      ],
+      "experts": [
+        {
+          "id": "E0",
+          "owner_rank": 0,
+          "W": [
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              2
+            ]
+          ],
+          "bias": [
+            0,
+            0
+          ],
+          "input": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t2"
+            ],
+            "values": [
+              [
+                1,
+                2
+              ],
+              [
+                2,
+                -1
+              ]
+            ],
+            "meaning": "dispatch 后该专家读取的激活"
+          },
+          "linear_output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t2"
+            ],
+            "values": [
+              [
+                1,
+                4
+              ],
+              [
+                2,
+                -2
+              ]
+            ],
+            "meaning": "X @ W.T，ReLU之前"
+          },
+          "output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t2"
+            ],
+            "values": [
+              [
+                1,
+                4
+              ],
+              [
+                2,
+                0
+              ]
+            ],
+            "meaning": "ReLU(X @ W.T)"
+          }
+        },
+        {
+          "id": "E1",
+          "owner_rank": 0,
+          "W": [
+            [
+              1,
+              1
+            ],
+            [
+              -1,
+              1
+            ]
+          ],
+          "bias": [
+            0,
+            0
+          ],
+          "input": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t1",
+              "t3"
+            ],
+            "values": [
+              [
+                3,
+                1
+              ],
+              [
+                -1,
+                2
+              ]
+            ],
+            "meaning": "dispatch 后该专家读取的激活"
+          },
+          "linear_output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t1",
+              "t3"
+            ],
+            "values": [
+              [
+                4,
+                -2
+              ],
+              [
+                1,
+                3
+              ]
+            ],
+            "meaning": "X @ W.T，ReLU之前"
+          },
+          "output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t1",
+              "t3"
+            ],
+            "values": [
+              [
+                4,
+                0
+              ],
+              [
+                1,
+                3
+              ]
+            ],
+            "meaning": "ReLU(X @ W.T)"
+          }
+        },
+        {
+          "id": "E2",
+          "owner_rank": 1,
+          "W": [
+            [
+              2,
+              -1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "bias": [
+            0,
+            0
+          ],
+          "input": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t3"
+            ],
+            "values": [
+              [
+                1,
+                2
+              ],
+              [
+                -1,
+                2
+              ]
+            ],
+            "meaning": "dispatch 后该专家读取的激活"
+          },
+          "linear_output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t3"
+            ],
+            "values": [
+              [
+                0,
+                3
+              ],
+              [
+                -4,
+                1
+              ]
+            ],
+            "meaning": "X @ W.T，ReLU之前"
+          },
+          "output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t3"
+            ],
+            "values": [
+              [
+                0,
+                3
+              ],
+              [
+                0,
+                1
+              ]
+            ],
+            "meaning": "ReLU(X @ W.T)"
+          }
+        },
+        {
+          "id": "E3",
+          "owner_rank": 1,
+          "W": [
+            [
+              -1,
+              2
+            ],
+            [
+              2,
+              1
+            ]
+          ],
+          "bias": [
+            0,
+            0
+          ],
+          "input": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t1",
+              "t2"
+            ],
+            "values": [
+              [
+                3,
+                1
+              ],
+              [
+                2,
+                -1
+              ]
+            ],
+            "meaning": "dispatch 后该专家读取的激活"
+          },
+          "linear_output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t1",
+              "t2"
+            ],
+            "values": [
+              [
+                -1,
+                7
+              ],
+              [
+                -4,
+                3
+              ]
+            ],
+            "meaning": "X @ W.T，ReLU之前"
+          },
+          "output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t1",
+              "t2"
+            ],
+            "values": [
+              [
+                0,
+                7
+              ],
+              [
+                0,
+                3
+              ]
+            ],
+            "meaning": "ReLU(X @ W.T)"
+          }
+        }
+      ],
+      "packed_by_expert_rank": [
+        {
+          "rank": 0,
+          "order": [
+            {
+              "token": "t0",
+              "expert": "E0",
+              "source_rank": 0
+            },
+            {
+              "token": "t2",
+              "expert": "E0",
+              "source_rank": 1
+            },
+            {
+              "token": "t1",
+              "expert": "E1",
+              "source_rank": 0
+            },
+            {
+              "token": "t3",
+              "expert": "E1",
+              "source_rank": 1
+            }
+          ],
+          "dispatch_matrix": {
+            "shape": [
+              4,
+              2
+            ],
+            "rows": [
+              "t0/E0",
+              "t2/E0",
+              "t1/E1",
+              "t3/E1"
+            ],
+            "values": [
+              [
+                1,
+                2
+              ],
+              [
+                2,
+                -1
+              ],
+              [
+                3,
+                1
+              ],
+              [
+                -1,
+                2
+              ]
+            ],
+            "meaning": "逻辑上按本地专家排列；不是 DeepEP 固定物理buffer布局"
+          },
+          "expert_output_matrix": {
+            "shape": [
+              4,
+              2
+            ],
+            "rows": [
+              "t0/E0",
+              "t2/E0",
+              "t1/E1",
+              "t3/E1"
+            ],
+            "values": [
+              [
+                1,
+                4
+              ],
+              [
+                2,
+                0
+              ],
+              [
+                4,
+                0
+              ],
+              [
+                1,
+                3
+              ]
+            ],
+            "meaning": "尚未乘router权重的专家结果"
+          },
+          "router_weights": [
+            0.7,
+            0.2,
+            0.6,
+            0.5
+          ],
+          "combine_internal_weighted_contributions": {
+            "shape": [
+              4,
+              2
+            ],
+            "rows": [
+              "t0/E0",
+              "t2/E0",
+              "t1/E1",
+              "t3/E1"
+            ],
+            "values": [
+              [
+                0.7,
+                2.8
+              ],
+              [
+                0.4,
+                0
+              ],
+              [
+                2.4,
+                0
+              ],
+              [
+                0.5,
+                1.5
+              ]
+            ],
+            "meaning": "仅解释 combine kernel 内的乘权贡献，不能标成发送前payload"
+          }
+        },
+        {
+          "rank": 1,
+          "order": [
+            {
+              "token": "t0",
+              "expert": "E2",
+              "source_rank": 0
+            },
+            {
+              "token": "t3",
+              "expert": "E2",
+              "source_rank": 1
+            },
+            {
+              "token": "t1",
+              "expert": "E3",
+              "source_rank": 0
+            },
+            {
+              "token": "t2",
+              "expert": "E3",
+              "source_rank": 1
+            }
+          ],
+          "dispatch_matrix": {
+            "shape": [
+              4,
+              2
+            ],
+            "rows": [
+              "t0/E2",
+              "t3/E2",
+              "t1/E3",
+              "t2/E3"
+            ],
+            "values": [
+              [
+                1,
+                2
+              ],
+              [
+                -1,
+                2
+              ],
+              [
+                3,
+                1
+              ],
+              [
+                2,
+                -1
+              ]
+            ],
+            "meaning": "逻辑上按本地专家排列；不是 DeepEP 固定物理buffer布局"
+          },
+          "expert_output_matrix": {
+            "shape": [
+              4,
+              2
+            ],
+            "rows": [
+              "t0/E2",
+              "t3/E2",
+              "t1/E3",
+              "t2/E3"
+            ],
+            "values": [
+              [
+                0,
+                3
+              ],
+              [
+                0,
+                1
+              ],
+              [
+                0,
+                7
+              ],
+              [
+                0,
+                3
+              ]
+            ],
+            "meaning": "尚未乘router权重的专家结果"
+          },
+          "router_weights": [
+            0.3,
+            0.5,
+            0.4,
+            0.8
+          ],
+          "combine_internal_weighted_contributions": {
+            "shape": [
+              4,
+              2
+            ],
+            "rows": [
+              "t0/E2",
+              "t3/E2",
+              "t1/E3",
+              "t2/E3"
+            ],
+            "values": [
+              [
+                0,
+                0.9
+              ],
+              [
+                0,
+                0.5
+              ],
+              [
+                0,
+                2.8
+              ],
+              [
+                0,
+                2.4
+              ]
+            ],
+            "meaning": "仅解释 combine kernel 内的乘权贡献，不能标成发送前payload"
+          }
+        }
+      ],
+      "transfers": [
+        {
+          "source_rank": 0,
+          "destination_rank": 0,
+          "cross_rank": false,
+          "rows": [
+            {
+              "token": "t0",
+              "expert": "E0"
+            },
+            {
+              "token": "t1",
+              "expert": "E1"
+            }
+          ],
+          "dispatch_values": [
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              1
+            ]
+          ],
+          "combine_reverse_raw_values": [
+            [
+              1,
+              4
+            ],
+            [
+              4,
+              0
+            ]
+          ],
+          "weights_at_combine": [
+            0.7,
+            0.6
+          ]
+        },
+        {
+          "source_rank": 0,
+          "destination_rank": 1,
+          "cross_rank": true,
+          "rows": [
+            {
+              "token": "t0",
+              "expert": "E2"
+            },
+            {
+              "token": "t1",
+              "expert": "E3"
+            }
+          ],
+          "dispatch_values": [
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              1
+            ]
+          ],
+          "combine_reverse_raw_values": [
+            [
+              0,
+              3
+            ],
+            [
+              0,
+              7
+            ]
+          ],
+          "weights_at_combine": [
+            0.3,
+            0.4
+          ]
+        },
+        {
+          "source_rank": 1,
+          "destination_rank": 0,
+          "cross_rank": true,
+          "rows": [
+            {
+              "token": "t2",
+              "expert": "E0"
+            },
+            {
+              "token": "t3",
+              "expert": "E1"
+            }
+          ],
+          "dispatch_values": [
+            [
+              2,
+              -1
+            ],
+            [
+              -1,
+              2
+            ]
+          ],
+          "combine_reverse_raw_values": [
+            [
+              2,
+              0
+            ],
+            [
+              1,
+              3
+            ]
+          ],
+          "weights_at_combine": [
+            0.2,
+            0.5
+          ]
+        },
+        {
+          "source_rank": 1,
+          "destination_rank": 1,
+          "cross_rank": false,
+          "rows": [
+            {
+              "token": "t2",
+              "expert": "E3"
+            },
+            {
+              "token": "t3",
+              "expert": "E2"
+            }
+          ],
+          "dispatch_values": [
+            [
+              2,
+              -1
+            ],
+            [
+              -1,
+              2
+            ]
+          ],
+          "combine_reverse_raw_values": [
+            [
+              0,
+              3
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "weights_at_combine": [
+            0.8,
+            0.5
+          ]
+        }
+      ],
+      "combined": {
+        "shape": [
+          4,
+          2
+        ],
+        "rows": [
+          "t0",
+          "t1",
+          "t2",
+          "t3"
+        ],
+        "values": [
+          [
+            0.7,
+            3.7
+          ],
+          [
+            2.4,
+            2.8
+          ],
+          [
+            0.4,
+            2.4
+          ],
+          [
+            0.5,
+            2
+          ]
+        ],
+        "meaning": "按原source token行序的MoE输出"
+      },
+      "output_shards": [
+        {
+          "rank": 0,
+          "tokens": [
+            "t0",
+            "t1"
+          ],
+          "values": [
+            [
+              0.7,
+              3.7
+            ],
+            [
+              2.4,
+              2.8
+            ]
+          ]
+        },
+        {
+          "rank": 1,
+          "tokens": [
+            "t2",
+            "t3"
+          ],
+          "values": [
+            [
+              0.4,
+              2.4
+            ],
+            [
+              0.5,
+              2
+            ]
+          ]
+        }
+      ],
+      "nodes": [
+        {
+          "id": "ep.r0.input",
+          "owner_rank": 0,
+          "row": 0,
+          "label": "源 token 激活",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r0.router",
+          "owner_rank": 0,
+          "row": 1,
+          "label": "本地 Router / top-2",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r0.dispatch",
+          "owner_rank": 0,
+          "row": 2,
+          "label": "Dispatch发送侧",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r0.expert_input",
+          "owner_rank": 0,
+          "row": 3,
+          "label": "本地专家输入",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r0.expert_output",
+          "owner_rank": 0,
+          "row": 4,
+          "label": "本地专家输出",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r0.combine",
+          "owner_rank": 0,
+          "row": 5,
+          "label": "Combine回源并加权归并",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r0.output",
+          "owner_rank": 0,
+          "row": 6,
+          "label": "源顺序输出",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r1.input",
+          "owner_rank": 1,
+          "row": 0,
+          "label": "源 token 激活",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r1.router",
+          "owner_rank": 1,
+          "row": 1,
+          "label": "本地 Router / top-2",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r1.dispatch",
+          "owner_rank": 1,
+          "row": 2,
+          "label": "Dispatch发送侧",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r1.expert_input",
+          "owner_rank": 1,
+          "row": 3,
+          "label": "本地专家输入",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r1.expert_output",
+          "owner_rank": 1,
+          "row": 4,
+          "label": "本地专家输出",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r1.combine",
+          "owner_rank": 1,
+          "row": 5,
+          "label": "Combine回源并加权归并",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r1.output",
+          "owner_rank": 1,
+          "row": 6,
+          "label": "源顺序输出",
+          "same_moe_layer": "L"
+        }
+      ],
+      "edges": [
+        {
+          "id": "ep.in0",
+          "from": "ep.r0.input",
+          "to": "ep.r0.router",
+          "kind": "local_tensor",
+          "step": 1,
+          "label": "本地 hidden [2,2]",
+          "payload": [
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              1
+            ]
+          ]
+        },
+        {
+          "id": "ep.route0",
+          "from": "ep.r0.router",
+          "to": "ep.r0.dispatch",
+          "kind": "local_tensor_and_metadata",
+          "step": 2,
+          "label": "激活 + topk_ids；权重供 combine 使用",
+          "payload": {
+            "hidden": [
+              [
+                1,
+                2
+              ],
+              [
+                3,
+                1
+              ]
+            ],
+            "topk_ids": [
+              [
+                0,
+                2
+              ],
+              [
+                1,
+                3
+              ]
+            ],
+            "topk_weights": [
+              [
+                0.7,
+                0.3
+              ],
+              [
+                0.6,
+                0.4
+              ]
+            ]
+          }
+        },
+        {
+          "id": "ep.calc0",
+          "from": "ep.r0.expert_input",
+          "to": "ep.r0.expert_output",
+          "kind": "local_compute",
+          "step": 4,
+          "label": "各专家 Linear + ReLU",
+          "payload": [
+            [
+              1,
+              4
+            ],
+            [
+              2,
+              0
+            ],
+            [
+              4,
+              0
+            ],
+            [
+              1,
+              3
+            ]
+          ]
+        },
+        {
+          "id": "ep.out0",
+          "from": "ep.r0.combine",
+          "to": "ep.r0.output",
+          "kind": "local_tensor",
+          "step": 6,
+          "label": "完成combine；恢复源行序",
+          "payload": [
+            [
+              0.7,
+              3.7
+            ],
+            [
+              2.4,
+              2.8
+            ]
+          ]
+        },
+        {
+          "id": "ep.in1",
+          "from": "ep.r1.input",
+          "to": "ep.r1.router",
+          "kind": "local_tensor",
+          "step": 1,
+          "label": "本地 hidden [2,2]",
+          "payload": [
+            [
+              2,
+              -1
+            ],
+            [
+              -1,
+              2
+            ]
+          ]
+        },
+        {
+          "id": "ep.route1",
+          "from": "ep.r1.router",
+          "to": "ep.r1.dispatch",
+          "kind": "local_tensor_and_metadata",
+          "step": 2,
+          "label": "激活 + topk_ids；权重供 combine 使用",
+          "payload": {
+            "hidden": [
+              [
+                2,
+                -1
+              ],
+              [
+                -1,
+                2
+              ]
+            ],
+            "topk_ids": [
+              [
+                0,
+                3
+              ],
+              [
+                1,
+                2
+              ]
+            ],
+            "topk_weights": [
+              [
+                0.2,
+                0.8
+              ],
+              [
+                0.5,
+                0.5
+              ]
+            ]
+          }
+        },
+        {
+          "id": "ep.calc1",
+          "from": "ep.r1.expert_input",
+          "to": "ep.r1.expert_output",
+          "kind": "local_compute",
+          "step": 4,
+          "label": "各专家 Linear + ReLU",
+          "payload": [
+            [
+              0,
+              3
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              7
+            ],
+            [
+              0,
+              3
+            ]
+          ]
+        },
+        {
+          "id": "ep.out1",
+          "from": "ep.r1.combine",
+          "to": "ep.r1.output",
+          "kind": "local_tensor",
+          "step": 6,
+          "label": "完成combine；恢复源行序",
+          "payload": [
+            [
+              0.4,
+              2.4
+            ],
+            [
+              0.5,
+              2
+            ]
+          ]
+        },
+        {
+          "id": "ep.dispatch0",
+          "from": "ep.r0.dispatch",
+          "to": "ep.r0.expert_input",
+          "kind": "local_tensor",
+          "step": 3,
+          "label": "按专家目的地dispatch",
+          "payload": [
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              1
+            ]
+          ],
+          "rows": [
+            {
+              "token": "t0",
+              "expert": "E0"
+            },
+            {
+              "token": "t1",
+              "expert": "E1"
+            }
+          ],
+          "communication_group": "EP",
+          "completion_required_before_consume": true
+        },
+        {
+          "id": "ep.combine0",
+          "from": "ep.r0.expert_output",
+          "to": "ep.r0.combine",
+          "kind": "local_tensor",
+          "step": 5,
+          "label": "combine反向回源；kernel内乘权求和",
+          "payload": [
+            [
+              1,
+              4
+            ],
+            [
+              4,
+              0
+            ]
+          ],
+          "rows": [
+            {
+              "token": "t0",
+              "expert": "E0"
+            },
+            {
+              "token": "t1",
+              "expert": "E1"
+            }
+          ],
+          "router_weights": [
+            0.7,
+            0.6
+          ],
+          "raw_expert_values_are_semantic_inputs": true,
+          "completion_required_before_consume": true
+        },
+        {
+          "id": "ep.dispatch1",
+          "from": "ep.r0.dispatch",
+          "to": "ep.r1.expert_input",
+          "kind": "cross_rank_tensor",
+          "step": 3,
+          "label": "按专家目的地dispatch",
+          "payload": [
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              1
+            ]
+          ],
+          "rows": [
+            {
+              "token": "t0",
+              "expert": "E2"
+            },
+            {
+              "token": "t1",
+              "expert": "E3"
+            }
+          ],
+          "communication_group": "EP",
+          "completion_required_before_consume": true
+        },
+        {
+          "id": "ep.combine1",
+          "from": "ep.r1.expert_output",
+          "to": "ep.r0.combine",
+          "kind": "cross_rank_tensor",
+          "step": 5,
+          "label": "combine反向回源；kernel内乘权求和",
+          "payload": [
+            [
+              0,
+              3
+            ],
+            [
+              0,
+              7
+            ]
+          ],
+          "rows": [
+            {
+              "token": "t0",
+              "expert": "E2"
+            },
+            {
+              "token": "t1",
+              "expert": "E3"
+            }
+          ],
+          "router_weights": [
+            0.3,
+            0.4
+          ],
+          "raw_expert_values_are_semantic_inputs": true,
+          "completion_required_before_consume": true
+        },
+        {
+          "id": "ep.dispatch2",
+          "from": "ep.r1.dispatch",
+          "to": "ep.r0.expert_input",
+          "kind": "cross_rank_tensor",
+          "step": 3,
+          "label": "按专家目的地dispatch",
+          "payload": [
+            [
+              2,
+              -1
+            ],
+            [
+              -1,
+              2
+            ]
+          ],
+          "rows": [
+            {
+              "token": "t2",
+              "expert": "E0"
+            },
+            {
+              "token": "t3",
+              "expert": "E1"
+            }
+          ],
+          "communication_group": "EP",
+          "completion_required_before_consume": true
+        },
+        {
+          "id": "ep.combine2",
+          "from": "ep.r0.expert_output",
+          "to": "ep.r1.combine",
+          "kind": "cross_rank_tensor",
+          "step": 5,
+          "label": "combine反向回源；kernel内乘权求和",
+          "payload": [
+            [
+              2,
+              0
+            ],
+            [
+              1,
+              3
+            ]
+          ],
+          "rows": [
+            {
+              "token": "t2",
+              "expert": "E0"
+            },
+            {
+              "token": "t3",
+              "expert": "E1"
+            }
+          ],
+          "router_weights": [
+            0.2,
+            0.5
+          ],
+          "raw_expert_values_are_semantic_inputs": true,
+          "completion_required_before_consume": true
+        },
+        {
+          "id": "ep.dispatch3",
+          "from": "ep.r1.dispatch",
+          "to": "ep.r1.expert_input",
+          "kind": "local_tensor",
+          "step": 3,
+          "label": "按专家目的地dispatch",
+          "payload": [
+            [
+              2,
+              -1
+            ],
+            [
+              -1,
+              2
+            ]
+          ],
+          "rows": [
+            {
+              "token": "t2",
+              "expert": "E3"
+            },
+            {
+              "token": "t3",
+              "expert": "E2"
+            }
+          ],
+          "communication_group": "EP",
+          "completion_required_before_consume": true
+        },
+        {
+          "id": "ep.combine3",
+          "from": "ep.r1.expert_output",
+          "to": "ep.r1.combine",
+          "kind": "local_tensor",
+          "step": 5,
+          "label": "combine反向回源；kernel内乘权求和",
+          "payload": [
+            [
+              0,
+              3
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "rows": [
+            {
+              "token": "t2",
+              "expert": "E3"
+            },
+            {
+              "token": "t3",
+              "expert": "E2"
+            }
+          ],
+          "router_weights": [
+            0.8,
+            0.5
+          ],
+          "raw_expert_values_are_semantic_inputs": true,
+          "completion_required_before_consume": true
+        }
+      ],
+      "sources": [
+        {
+          "file": "vllm/model_executor/layers/fused_moe/modular_kernel.py",
+          "line": 1475,
+          "role": "prepare→experts→finalize"
+        },
+        {
+          "file": "vllm/model_executor/layers/fused_moe/prepare_finalize/deepep_ll.py",
+          "line": 286,
+          "role": "dispatch"
+        },
+        {
+          "file": "vllm/model_executor/layers/fused_moe/prepare_finalize/deepep_ll.py",
+          "line": 378,
+          "role": "combine内部加权归并"
+        }
+      ]
+    },
+    "dense_after": {
+      "operation": "Ymoe @ Wpost",
+      "activation": "identity",
+      "weights_replicated": true,
+      "ranks": [
+        {
+          "rank": 0,
+          "gpu": 0,
+          "request": "A",
+          "tokens": [
+            "t0",
+            "t1"
+          ],
+          "input": [
+            [
+              0.7,
+              3.7
+            ],
+            [
+              2.4,
+              2.8
+            ]
+          ],
+          "W": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "output": [
+            [
+              4.4,
+              3.7
+            ],
+            [
+              5.2,
+              2.8
+            ]
+          ]
+        },
+        {
+          "rank": 1,
+          "gpu": 1,
+          "request": "B",
+          "tokens": [
+            "t2",
+            "t3"
+          ],
+          "input": [
+            [
+              0.4,
+              2.4
+            ],
+            [
+              0.5,
+              2
+            ]
+          ],
+          "W": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "output": [
+            [
+              2.8,
+              2.4
+            ],
+            [
+              2.5,
+              2
+            ]
+          ]
+        }
+      ]
+    },
+    "outputY": {
+      "A": [
+        [
+          4.4,
+          3.7
+        ],
+        [
+          5.2,
+          2.8
+        ]
+      ],
+      "B": [
+        [
+          2.8,
+          2.4
+        ],
+        [
+          2.5,
+          2
+        ]
+      ]
+    },
+    "steps": [
+      {
+        "step": 1,
+        "title": "不同请求的本地输入",
+        "detail": "GPU0 持有 A 的两行；GPU1 持有 B 的两行。这里从已得到的输入激活开始。",
+        "kind": "local_tensor"
+      },
+      {
+        "step": 2,
+        "title": "复制 dense 前层分别计算",
+        "detail": "两端读相同完整 Wpre，分别计算本地 X@Wpre，得到原 EP 算例的四个 token。",
+        "kind": "local_compute"
+      },
+      {
+        "step": 3,
+        "title": "本地 Router 选择 top-2",
+        "detail": "每个源 token 选择两个专家并保留对应 combine 权重；教学路由结果已固定。",
+        "kind": "local_metadata"
+      },
+      {
+        "step": 4,
+        "title": "EP dispatch 到专家所有者",
+        "detail": "激活与专家选择元数据按目的地派发；本地目的地留在本卡，跨卡目的地经 EP 通信，到达后才能读取。",
+        "kind": "cross_rank_tensor",
+        "group": "EP"
+      },
+      {
+        "step": 5,
+        "title": "各 GPU 执行所拥有的完整专家",
+        "detail": "E0/E1 在 GPU0，E2/E3 在 GPU1；每个专家对收到的 token 执行 ReLU(X@W.T+bias)，此处输出尚未乘路由权重。",
+        "kind": "local_compute"
+      },
+      {
+        "step": 6,
+        "title": "Combine 回源并加权求和",
+        "detail": "专家结果回到 token 源端，combine 内部应用 top-2 权重并求和；A 恢复到 GPU0，B 恢复到 GPU1。",
+        "kind": "cross_rank_tensor",
+        "group": "EP"
+      },
+      {
+        "step": 7,
+        "title": "复制 dense 后层分别计算",
+        "detail": "每端用自己的 MoE 输出读取相同完整 Wpost，计算 Ymoe@Wpost。",
+        "kind": "local_compute"
+      },
+      {
+        "step": 8,
+        "title": "Host 返回对应请求的教学结果",
+        "detail": "Y 回到对应请求的 Host：A=[[4.4,3.7],[5.2,2.8]]，B=[[2.8,2.4],[2.5,2]]。请求归属未因专家派发而迁移。",
+        "kind": "host_output"
+      }
+    ],
+    "boundaries": [
+      "图中 EP 数据可跨 DP rank，因此这些 MoE rank 不是两套互不通信的完整模型副本；复制的是这里列出的非专家 dense 权重。",
+      "请求归属是源 DP rank，执行某条 token 的专家 GPU 不等于接管该请求的 Scheduler。",
+      "DeepEP LL 的 combine 内部加权；moe.packed_by_expert_rank[].combine_internal_weighted_contributions 仅作等价算术解释，不是提前乘权的网络 payload。",
+      "原 moe.nodes/edges 保留原 EP 教学编号 1–6；组合图应使用顶层 steps 1–8，EP 子步骤映射为 原2→组合3、原3→组合4、原4→组合5、原5/6→组合6。",
+      "本图省略真实调度器的 DP 工作协调和 backend 特有的布局/通信协议，不声称两维 hidden 可直接运行 DeepEP。",
+      "DP 仍需协调执行：本地无请求而其他 DP 仍在执行时，空闲 DP 可用 dummy batch 参加同轮 MoE forward/collectives；逻辑 token 数可不同，图模式可能进行 padding。"
+    ],
+    "verification": {
+      "method": "Python standard library fractions.Fraction; all dense, expert, weighted combine, packed/transfer matrix values independently recomputed",
+      "assertions": 33,
+      "checks": [
+        "E0 expert input",
+        "E0 linear",
+        "E0 relu",
+        "E1 expert input",
+        "E1 linear",
+        "E1 relu",
+        "E2 expert input",
+        "E2 linear",
+        "E2 relu",
+        "E3 expert input",
+        "E3 linear",
+        "E3 relu",
+        "weighted combine",
+        "rank0 dispatch pack",
+        "rank0 packed outputs",
+        "rank0 arithmetic contributions",
+        "rank1 dispatch pack",
+        "rank1 packed outputs",
+        "rank1 arithmetic contributions",
+        "transfer0 dispatch",
+        "transfer0 reverse raw",
+        "transfer1 dispatch",
+        "transfer1 reverse raw",
+        "transfer2 dispatch",
+        "transfer2 reverse raw",
+        "transfer3 dispatch",
+        "transfer3 reverse raw",
+        "A dense before -> source shard",
+        "A combine -> original source",
+        "A dense after",
+        "B dense before -> source shard",
+        "B combine -> original source",
+        "B dense after"
+      ],
+      "passed": true
+    },
+    "sources": {
+      "moe_numeric_source": "parallelism-matrix-flows.html#pf-example-data → eppp.ep (copied without modification)",
+      "source_baseline": "vLLM commit 295c062db8；DP/EP 组边界经本地源码独立核对",
+      "source_links": [
+        {
+          "file": "vllm/distributed/parallel_state.py",
+          "lines": [
+            2291,
+            2301
+          ],
+          "role": "MoE EP group covers DP×PCP×TP at a fixed PP stage"
+        },
+        {
+          "file": "vllm/v1/engine/core.py",
+          "lines": [
+            2344,
+            2348
+          ],
+          "role": "idle DP may run dummy batches while peers remain active"
+        },
+        {
+          "file": "vllm/v1/worker/dp_utils.py",
+          "lines": [
+            198,
+            218
+          ],
+          "role": "DP token-count and execution coordination"
+        },
+        {
+          "file": "vllm/model_executor/layers/fused_moe/config.py",
+          "lines": [
+            1170,
+            1176
+          ],
+          "role": "explicit TP1 DP2 EP=True example uses two engines/devices"
+        },
+        {
+          "file": "vllm/model_executor/layers/fused_moe/config.py",
+          "lines": [
+            1219,
+            1230
+          ],
+          "role": "EP ownership of complete experts; MoE tp_size becomes 1"
+        },
+        {
+          "file": "vllm/model_executor/layers/fused_moe/expert_map_manager.py",
+          "lines": [
+            75,
+            78
+          ],
+          "role": "linear placement partitions E0/E1 and E2/E3"
+        }
+      ]
+    }
+  },
+  "dptpp": {
+    "schema_version": 1,
+    "title": "DP2 + TP2 + PP2: two independent dense inference batches on 8 GPUs",
+    "config": {
+      "dp_size": 2,
+      "tp_size": 2,
+      "pp_size": 2,
+      "physical_gpu_count": 8,
+      "world_size_per_dp": 4,
+      "sequence_parallel": false
+    },
+    "matrix_convention": "X and hidden=[tokens,features]; W1/W2=[input_feature,output_feature]; stage=ReLU(X@W1)@W2; no bias; no activation after W2.",
+    "DPinputs": [
+      {
+        "dp_rank": 0,
+        "request": "A",
+        "X": [
+          [
+            2,
+            1
+          ],
+          [
+            -1,
+            1
+          ]
+        ]
+      },
+      {
+        "dp_rank": 1,
+        "request": "B",
+        "X": [
+          [
+            2,
+            -1
+          ]
+        ]
+      }
+    ],
+    "stages": [
+      {
+        "pp_stage": 0,
+        "W1": [
+          [
+            1,
+            -1,
+            2,
+            1
+          ],
+          [
+            2,
+            1,
+            -1,
+            -1
+          ]
+        ],
+        "W2": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            2
+          ],
+          [
+            1,
+            1
+          ]
+        ]
+      },
+      {
+        "pp_stage": 1,
+        "W1": [
+          [
+            1,
+            0,
+            1,
+            -1
+          ],
+          [
+            0,
+            1,
+            -1,
+            1
+          ]
+        ],
+        "W2": [
+          [
+            1,
+            1
+          ],
+          [
+            1,
+            -1
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            0,
+            2
+          ]
+        ]
+      }
+    ],
+    "ranks": [
+      {
+        "dp_rank": 0,
+        "pp_stage": 0,
+        "tp_rank": 0,
+        "request": "A",
+        "intermediate_features": [
+          0,
+          1
+        ],
+        "X": [
+          [
+            2,
+            1
+          ],
+          [
+            -1,
+            1
+          ]
+        ],
+        "W1Shard": [
+          [
+            1,
+            -1
+          ],
+          [
+            2,
+            1
+          ]
+        ],
+        "W2Shard": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "Z": [
+          [
+            4,
+            -1
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "H": [
+          [
+            4,
+            0
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "partialY": [
+          [
+            4,
+            0
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "Y": [
+          [
+            2,
+            7
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "physical_gpu": 0,
+        "world_local_rank": 0
+      },
+      {
+        "dp_rank": 0,
+        "pp_stage": 0,
+        "tp_rank": 1,
+        "request": "A",
+        "intermediate_features": [
+          2,
+          3
+        ],
+        "X": [
+          [
+            2,
+            1
+          ],
+          [
+            -1,
+            1
+          ]
+        ],
+        "W1Shard": [
+          [
+            2,
+            1
+          ],
+          [
+            -1,
+            -1
+          ]
+        ],
+        "W2Shard": [
+          [
+            -1,
+            2
+          ],
+          [
+            1,
+            1
+          ]
+        ],
+        "Z": [
+          [
+            3,
+            1
+          ],
+          [
+            -3,
+            -2
+          ]
+        ],
+        "H": [
+          [
+            3,
+            1
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "partialY": [
+          [
+            -2,
+            7
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "Y": [
+          [
+            2,
+            7
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "physical_gpu": 1,
+        "world_local_rank": 1
+      },
+      {
+        "dp_rank": 0,
+        "pp_stage": 1,
+        "tp_rank": 0,
+        "request": "A",
+        "intermediate_features": [
+          0,
+          1
+        ],
+        "X": [
+          [
+            2,
+            7
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "W1Shard": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "W2Shard": [
+          [
+            1,
+            1
+          ],
+          [
+            1,
+            -1
+          ]
+        ],
+        "Z": [
+          [
+            2,
+            7
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "H": [
+          [
+            2,
+            7
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "partialY": [
+          [
+            9,
+            -5
+          ],
+          [
+            3,
+            -1
+          ]
+        ],
+        "Y": [
+          [
+            9,
+            5
+          ],
+          [
+            3,
+            1
+          ]
+        ],
+        "physical_gpu": 2,
+        "world_local_rank": 2
+      },
+      {
+        "dp_rank": 0,
+        "pp_stage": 1,
+        "tp_rank": 1,
+        "request": "A",
+        "intermediate_features": [
+          2,
+          3
+        ],
+        "X": [
+          [
+            2,
+            7
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "W1Shard": [
+          [
+            1,
+            -1
+          ],
+          [
+            -1,
+            1
+          ]
+        ],
+        "W2Shard": [
+          [
+            2,
+            0
+          ],
+          [
+            0,
+            2
+          ]
+        ],
+        "Z": [
+          [
+            -5,
+            5
+          ],
+          [
+            -1,
+            1
+          ]
+        ],
+        "H": [
+          [
+            0,
+            5
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "partialY": [
+          [
+            0,
+            10
+          ],
+          [
+            0,
+            2
+          ]
+        ],
+        "Y": [
+          [
+            9,
+            5
+          ],
+          [
+            3,
+            1
+          ]
+        ],
+        "physical_gpu": 3,
+        "world_local_rank": 3
+      },
+      {
+        "dp_rank": 1,
+        "pp_stage": 0,
+        "tp_rank": 0,
+        "request": "B",
+        "intermediate_features": [
+          0,
+          1
+        ],
+        "X": [
+          [
+            2,
+            -1
+          ]
+        ],
+        "W1Shard": [
+          [
+            1,
+            -1
+          ],
+          [
+            2,
+            1
+          ]
+        ],
+        "W2Shard": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "Z": [
+          [
+            0,
+            -3
+          ]
+        ],
+        "H": [
+          [
+            0,
+            0
+          ]
+        ],
+        "partialY": [
+          [
+            0,
+            0
+          ]
+        ],
+        "Y": [
+          [
+            -2,
+            13
+          ]
+        ],
+        "physical_gpu": 4,
+        "world_local_rank": 0
+      },
+      {
+        "dp_rank": 1,
+        "pp_stage": 0,
+        "tp_rank": 1,
+        "request": "B",
+        "intermediate_features": [
+          2,
+          3
+        ],
+        "X": [
+          [
+            2,
+            -1
+          ]
+        ],
+        "W1Shard": [
+          [
+            2,
+            1
+          ],
+          [
+            -1,
+            -1
+          ]
+        ],
+        "W2Shard": [
+          [
+            -1,
+            2
+          ],
+          [
+            1,
+            1
+          ]
+        ],
+        "Z": [
+          [
+            5,
+            3
+          ]
+        ],
+        "H": [
+          [
+            5,
+            3
+          ]
+        ],
+        "partialY": [
+          [
+            -2,
+            13
+          ]
+        ],
+        "Y": [
+          [
+            -2,
+            13
+          ]
+        ],
+        "physical_gpu": 5,
+        "world_local_rank": 1
+      },
+      {
+        "dp_rank": 1,
+        "pp_stage": 1,
+        "tp_rank": 0,
+        "request": "B",
+        "intermediate_features": [
+          0,
+          1
+        ],
+        "X": [
+          [
+            -2,
+            13
+          ]
+        ],
+        "W1Shard": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "W2Shard": [
+          [
+            1,
+            1
+          ],
+          [
+            1,
+            -1
+          ]
+        ],
+        "Z": [
+          [
+            -2,
+            13
+          ]
+        ],
+        "H": [
+          [
+            0,
+            13
+          ]
+        ],
+        "partialY": [
+          [
+            13,
+            -13
+          ]
+        ],
+        "Y": [
+          [
+            13,
+            17
+          ]
+        ],
+        "physical_gpu": 6,
+        "world_local_rank": 2
+      },
+      {
+        "dp_rank": 1,
+        "pp_stage": 1,
+        "tp_rank": 1,
+        "request": "B",
+        "intermediate_features": [
+          2,
+          3
+        ],
+        "X": [
+          [
+            -2,
+            13
+          ]
+        ],
+        "W1Shard": [
+          [
+            1,
+            -1
+          ],
+          [
+            -1,
+            1
+          ]
+        ],
+        "W2Shard": [
+          [
+            2,
+            0
+          ],
+          [
+            0,
+            2
+          ]
+        ],
+        "Z": [
+          [
+            -15,
+            15
+          ]
+        ],
+        "H": [
+          [
+            0,
+            15
+          ]
+        ],
+        "partialY": [
+          [
+            0,
+            30
+          ]
+        ],
+        "Y": [
+          [
+            13,
+            17
+          ]
+        ],
+        "physical_gpu": 7,
+        "world_local_rank": 3
+      }
+    ],
+    "stage_results": [
+      {
+        "dp_rank": 0,
+        "pp_stage": 0,
+        "request": "A",
+        "X": [
+          [
+            2,
+            1
+          ],
+          [
+            -1,
+            1
+          ]
+        ],
+        "Z": [
+          [
+            4,
+            -1,
+            3,
+            1
+          ],
+          [
+            1,
+            2,
+            -3,
+            -2
+          ]
+        ],
+        "H": [
+          [
+            4,
+            0,
+            3,
+            1
+          ],
+          [
+            1,
+            2,
+            0,
+            0
+          ]
+        ],
+        "Y": [
+          [
+            2,
+            7
+          ],
+          [
+            1,
+            2
+          ]
+        ]
+      },
+      {
+        "dp_rank": 0,
+        "pp_stage": 1,
+        "request": "A",
+        "X": [
+          [
+            2,
+            7
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "Z": [
+          [
+            2,
+            7,
+            -5,
+            5
+          ],
+          [
+            1,
+            2,
+            -1,
+            1
+          ]
+        ],
+        "H": [
+          [
+            2,
+            7,
+            0,
+            5
+          ],
+          [
+            1,
+            2,
+            0,
+            1
+          ]
+        ],
+        "Y": [
+          [
+            9,
+            5
+          ],
+          [
+            3,
+            1
+          ]
+        ]
+      },
+      {
+        "dp_rank": 1,
+        "pp_stage": 0,
+        "request": "B",
+        "X": [
+          [
+            2,
+            -1
+          ]
+        ],
+        "Z": [
+          [
+            0,
+            -3,
+            5,
+            3
+          ]
+        ],
+        "H": [
+          [
+            0,
+            0,
+            5,
+            3
+          ]
+        ],
+        "Y": [
+          [
+            -2,
+            13
+          ]
+        ]
+      },
+      {
+        "dp_rank": 1,
+        "pp_stage": 1,
+        "request": "B",
+        "X": [
+          [
+            -2,
+            13
+          ]
+        ],
+        "Z": [
+          [
+            -2,
+            13,
+            -15,
+            15
+          ]
+        ],
+        "H": [
+          [
+            0,
+            13,
+            0,
+            15
+          ]
+        ],
+        "Y": [
+          [
+            13,
+            17
+          ]
+        ]
+      }
+    ],
+    "pp_transfers": [
+      {
+        "dp_rank": 0,
+        "request": "A",
+        "from_pp_stage": 0,
+        "to_pp_stage": 1,
+        "tensor_name": "hidden_states (teaching tensor)",
+        "source_replicated_on_tp": true,
+        "original_shape": [
+          2,
+          2
+        ],
+        "numel": 4,
+        "numel_divisible_by_tp": true,
+        "full_hidden_before_send": [
+          [
+            2,
+            7
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "rank_transfers": [
+          {
+            "tp_rank": 0,
+            "send_flat_chunk": [
+              2,
+              7
+            ],
+            "receive_flat_chunk": [
+              2,
+              7
+            ],
+            "source_physical_gpu": 0,
+            "destination_physical_gpu": 2,
+            "source_world_local_rank": 0,
+            "destination_world_local_rank": 2
+          },
+          {
+            "tp_rank": 1,
+            "send_flat_chunk": [
+              1,
+              2
+            ],
+            "receive_flat_chunk": [
+              1,
+              2
+            ],
+            "source_physical_gpu": 1,
+            "destination_physical_gpu": 3,
+            "source_world_local_rank": 1,
+            "destination_world_local_rank": 3
+          }
+        ],
+        "destination_tp_all_gather_chunks": [
+          [
+            2,
+            7
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "reconstructed_hidden_per_destination_tp_rank": [
+          [
+            [
+              2,
+              7
+            ],
+            [
+              1,
+              2
+            ]
+          ],
+          [
+            [
+              2,
+              7
+            ],
+            [
+              1,
+              2
+            ]
+          ]
+        ]
+      },
+      {
+        "dp_rank": 1,
+        "request": "B",
+        "from_pp_stage": 0,
+        "to_pp_stage": 1,
+        "tensor_name": "hidden_states (teaching tensor)",
+        "source_replicated_on_tp": true,
+        "original_shape": [
+          1,
+          2
+        ],
+        "numel": 2,
+        "numel_divisible_by_tp": true,
+        "full_hidden_before_send": [
+          [
+            -2,
+            13
+          ]
+        ],
+        "rank_transfers": [
+          {
+            "tp_rank": 0,
+            "send_flat_chunk": [
+              -2
+            ],
+            "receive_flat_chunk": [
+              -2
+            ],
+            "source_physical_gpu": 4,
+            "destination_physical_gpu": 6,
+            "source_world_local_rank": 0,
+            "destination_world_local_rank": 2
+          },
+          {
+            "tp_rank": 1,
+            "send_flat_chunk": [
+              13
+            ],
+            "receive_flat_chunk": [
+              13
+            ],
+            "source_physical_gpu": 5,
+            "destination_physical_gpu": 7,
+            "source_world_local_rank": 1,
+            "destination_world_local_rank": 3
+          }
+        ],
+        "destination_tp_all_gather_chunks": [
+          [
+            -2
+          ],
+          [
+            13
+          ]
+        ],
+        "reconstructed_hidden_per_destination_tp_rank": [
+          [
+            [
+              -2,
+              13
+            ]
+          ],
+          [
+            [
+              -2,
+              13
+            ]
+          ]
+        ]
+      }
+    ],
+    "reference": {
+      "A": {
+        "stage0_hidden": [
+          [
+            2,
+            7
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "stage1_hidden": [
+          [
+            9,
+            5
+          ],
+          [
+            3,
+            1
+          ]
+        ],
+        "final_hidden": [
+          [
+            9,
+            5
+          ],
+          [
+            3,
+            1
+          ]
+        ]
+      },
+      "B": {
+        "stage0_hidden": [
+          [
+            -2,
+            13
+          ]
+        ],
+        "stage1_hidden": [
+          [
+            13,
+            17
+          ]
+        ],
+        "final_hidden": [
+          [
+            13,
+            17
+          ]
+        ]
+      }
+    },
+    "groups": {
+      "TP_physical_gpu_sets": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          4,
+          5
+        ],
+        [
+          6,
+          7
+        ]
+      ],
+      "PP_physical_gpu_sets": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          4,
+          6
+        ],
+        [
+          5,
+          7
+        ]
+      ],
+      "per_dp_local_world": {
+        "world_size": 4,
+        "TP": [
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "PP": [
+          [
+            0,
+            2
+          ],
+          [
+            1,
+            3
+          ]
+        ]
+      },
+      "note": "Dense DP0 and DP1 each use an independent 4-rank distributed world. Physical GPU numbers 0..7 are teaching labels, not one shared 8-rank torch world. No cross-replica dense DP communicator is asserted here."
+    },
+    "rank_mapping": "world_local_rank=pp_stage*2+tp_rank inside each independent DP world; physical_gpu=dp_rank*4+world_local_rank is only the teaching physical-device label.",
+    "steps": [
+      {
+        "n": 1,
+        "operation": "DP request routing",
+        "detail": "A goes to DP0 (GPUs0..3), B goes to DP1 (GPUs4..7). Each replica has the same complete two-stage model collectively; no dense hidden aggregation across DP replicas."
+      },
+      {
+        "n": 2,
+        "operation": "PP stage0 TP MLP",
+        "detail": "Both TP ranks have the same stage input. W1 output features and matching W2 input rows are split 0,1 versus 2,3. Compute local Z, ReLU H, and partialY."
+      },
+      {
+        "n": 3,
+        "operation": "Stage0 TP All-Reduce SUM",
+        "detail": "The two partialY matrices sum to full Y on both source TP ranks. A gives [[2,7],[1,2]]; B gives [[-2,13]]."
+      },
+      {
+        "n": 4,
+        "operation": "PP send/receive flattened TP slices",
+        "detail": "With all_gather_group=TP and numel divisible by TPsize, each source TP rank sends its contiguous half of flattened replicated Y along its PP group. This is not always a token-axis partition."
+      },
+      {
+        "n": 5,
+        "operation": "Destination TP All-Gather and reshape",
+        "detail": "Each destination TP rank receives its corresponding flattened slice, then the destination TP group all-gathers slices in TP-rank order and restores the original tensor shape."
+      },
+      {
+        "n": 6,
+        "operation": "PP stage1 TP MLP",
+        "detail": "Use reconstructed Y as stage1 input; split stage1 W1/W2 in the same feature convention, compute local partialY."
+      },
+      {
+        "n": 7,
+        "operation": "Stage1 TP All-Reduce SUM",
+        "detail": "Each destination TP rank gets its replica final hidden. A=[[9,5],[3,1]]; B=[[13,17]]."
+      },
+      {
+        "n": 8,
+        "operation": "End of teaching example",
+        "detail": "Return final hidden independently for each DP request. No invented logits, sampling, cross-DP hidden merge, or training gradient All-Reduce."
+      }
+    ],
+    "boundaries": [
+      "The matrices define a teaching dense two-stage MLP, not a real model layer. Source references support communication boundaries, not the teaching model dimensions.",
+      "TP shards weights/features within each stage; PP partitions the sequential stages; DP replicates this entire TPxPP topology for separate requests.",
+      "PP payloads show only one replicated dense hidden tensor. Real models may pass additional tensors such as residual, and actual structured metadata is omitted.",
+      "The flattened slice optimization shown requires numel divisible by TP size and a replicated source tensor. No SP is enabled; do not generalize it to token-sharded source tensors.",
+      "Request A has [2,2] hidden, so each PP slice happens to be one row. Request B has [1,2] hidden, so each PP slice is one scalar. Both reconstruct the full hidden before stage1 consumes it.",
+      "PP send submits communication; receiver must wait for receive and subsequent All-Gather completion before consuming the tensor. Diagram order expresses dependencies, not guaranteed global serialization.",
+      "Dense DP replicas each initialize an independent 4-rank TPxPP world in this source path. There are 8 physical GPUs total, but physical GPU4 has local distributed rank0 in DP1, not rank4 in one 8-rank world. Same (PP,TP) coordinates across replicas do not imply an actual dense DP communication group."
+    ],
+    "sources": [
+      {
+        "path": "vllm/v1/worker/gpu_worker.py",
+        "line": 1281,
+        "url": "https://github.com/vllm-project/vllm/blob/295c062db8/vllm/v1/worker/gpu_worker.py#L1281",
+        "meaning": "receive PP tensors with TP all_gather_group"
+      },
+      {
+        "path": "vllm/v1/worker/gpu_worker.py",
+        "line": 1317,
+        "url": "https://github.com/vllm-project/vllm/blob/295c062db8/vllm/v1/worker/gpu_worker.py#L1317",
+        "meaning": "send PP tensors with TP all_gather_group"
+      },
+      {
+        "path": "vllm/distributed/parallel_state.py",
+        "line": 1221,
+        "url": "https://github.com/vllm-project/vllm/blob/295c062db8/vllm/distributed/parallel_state.py#L1221",
+        "meaning": "flatten into TP chunks and send own TP rank chunk"
+      },
+      {
+        "path": "vllm/distributed/parallel_state.py",
+        "line": 1352,
+        "url": "https://github.com/vllm-project/vllm/blob/295c062db8/vllm/distributed/parallel_state.py#L1352",
+        "meaning": "receiver TP All-Gather and reshape to original shape"
+      },
+      {
+        "path": "vllm/v1/engine/core.py",
+        "line": 1463,
+        "url": "https://github.com/vllm-project/vllm/blob/295c062db8/vllm/v1/engine/core.py#L1463",
+        "meaning": "dense model parallel configuration adjusts internal DP to independent worlds"
+      },
+      {
+        "path": "vllm/config/parallel.py",
+        "line": 1157,
+        "url": "https://github.com/vllm-project/vllm/blob/295c062db8/vllm/config/parallel.py#L1157",
+        "meaning": "dense DP replica reset of internal DP size/rank"
+      }
+    ]
+  }
+}

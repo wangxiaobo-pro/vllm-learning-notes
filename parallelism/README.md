@@ -1,6 +1,6 @@
 # 并行设备结构与矩阵数据流
 
-用浏览器打开 [index.html](index.html)，切换 TP、EP、SP、PP、CP、DP。默认展示训练 DP 的设备结构示例；DP 可切换到 vLLM 推理。
+用浏览器打开 [index.html](index.html)，默认展示 **TP+SP**。可切换 TP、EP、SP、PP、CP、DP 六种单项并行，以及 TP+SP、DP+EP、DP+TP+PP 三种组合；DP 保留训练与 vLLM 推理的对照。
 
 - “设备结构”用虚线框标出每个 GPU，框内直接显示输入、常驻权重、计算和输出，框间箭头表示通信。
 - “逐层数值”保留六种 vLLM 算例的逐层展开；两种视图使用相同数值和步骤编号。
@@ -25,6 +25,23 @@
 
 通信操作的单独说明见 [通信原语项目](../communication-primitives/index.html)。
 
+## 三种组合算例
+
+组合入口把同一请求的计算接到实际通信边界，数值、权重、通信组和 payload 存放在 [combo-examples.json](combo-examples.json)。下表中的小数最多显示 4 位，完整精度保留在数据文件中。
+
+| 组合 | 设备、所有权与数据链 | 最终 hidden |
+| --- | --- | --- |
+| TP+SP（默认） | 同 2 GPU 复用 TP 组；activation 按 token 分片 → All-Gather → 分 head 的 TP Attention 与输出投影部分和 → SUM Reduce-Scatter | GPU 0：`[[1,2],[2.6932,1.7311]]`；GPU 1：`[[3.3786,2.5339],[4.4339,4.414]]` |
+| DP+EP | 同 2 GPU 各处理请求 A/B，复制非专家 dense 权重；MoE 经 dispatch → 本地专家 → combine 回源，再进入源 DP 的 dense 层 | A：`[[4.4,3.7],[5.2,2.8]]`；B：`[[2.8,2.4],[2.5,2]]` |
+| DP+TP+PP | 8 个物理 GPU；两套独立的 4-rank world，每套 PP=2、各 stage TP=2；stage 内 SUM All-Reduce → PP 分片发送 → 目的 stage 的 TP All-Gather → 下一 stage | A：`[[9,5],[3,1]]`；B：`[[13,17]]` |
+
+- **TP+SP** 的两种切分使用同一组两卡，不是 `TP2 × SP2 = 4 GPU`。Attention 前汇集完整 token 行，再按 head 计算；RS 求和后重新按 token 分配 activation。这里沿用 DeepSeek activation/MoE SP 的通信布局，固定 PP=1；它不表示历史 KV 被分到两卡。
+- **DP+EP** 固定 TP=PP=1、4 experts、top-2、linear placement、EPLB 关闭。GPU 0 拥有 E0/E1，GPU 1 拥有 E2/E3；复制的是非专家 dense 权重，每个 DP 没有独立的完整专家集合。专家执行位置不改变请求或 Scheduler 的归属。各 DP 的逻辑 token 数可以不同，但仍须协调同轮 MoE collectives；本地空闲而其他 DP 运行时，按需用 dummy batch 参与，图模式还可能要求 padding。
+- **DP+TP+PP** 的 GPU 0–7 是教学设备编号，不是统一 world 的全局 rank。每个 DP 的本地 rank 都为 0–3，TP 组为 `[0,1]`、`[2,3]`，PP 组为 `[0,2]`、`[1,3]`；两套 dense DP 各有请求与 Scheduler，互不交换模型 activation。
+- 本例 PP 源 hidden 在同一 stage 的两 TP rank 上完整复制，且 `numel` 可被 TP=2 整除；各 rank 实际发送 `hidden.reshape(2, -1)[tp_rank]`，接收 stage 的 TP 组 All-Gather 后恢复原 shape。A 的 `[2,2]` 恰好每次发送一行，B 的 `[1,2]` 每次发送一个标量，因此这是 flattened 切片，不是固定按 token 行切分。图中将本地计算、Worker 发送与对端收到分片（第 4 步）、All-Gather 还原（第 5 步）分开；模型本地 return 本身不表示跨卡，下一 stage 消费恢复后的完整矩阵。
+
+三个组合都是独立验算的教学网络，不是完整预训练模型或 GPU/NPU 实测。TP+SP 省略 Norm、residual 和 MoE 数值；DP+EP 的 dense/专家为小型教学算子；DP+TP+PP 为两阶段 MLP，仅展示一份 hidden 的 PP 传输，未启用 SP。真实模型可能还传 residual 等其他张量，不能把本例的 PP 分片优化套到非复制的源 tensor。
+
 ## 矩阵到底怎么切
 
 图中行、列的含义与公式一起标注。`X` 通常是 `[token,hidden]`；训练 DP 的行表示独立样本。TP/DP 的权重采用 `X @ W` 的 `[in,out]` 约定，与 PyTorch `Linear.weight` 存储互为转置。
@@ -47,7 +64,7 @@ All-Reduce 图形节点代表集合操作，不是一个中心服务器；汇入
 
 ## 数值的真实性与范围
 
-这是实际执行并独立验算的小型教学网络，不是从预训练模型或 GPU/NPU 运行中采集的激活。所有数值、权重和维度可在 [matrix-examples.json](matrix-examples.json) 中查看；图内嵌同一份数据，离线打开不发起网络请求。
+这是实际执行并独立验算的小型教学网络，不是从预训练模型或 GPU/NPU 运行中采集的激活。六种单项算例的数值、权重和维度可在 [matrix-examples.json](matrix-examples.json) 中查看，三种组合见 [combo-examples.json](combo-examples.json)；图内嵌对应数据，离线打开不发起网络请求。
 
 - TP/DP 使用行向量 `X @ W`，权重为 `[in,out]`，与 PyTorch `Linear.weight` 存储互为转置；第二层后不再做 ReLU，Y 可为负。
 - EP/PP 的专家/阶段使用 `ReLU(X @ W.T)`，W 为 `[out,in]`。它们是教学 Linear，不冒充完整 Qwen/DeepSeek decoder。
@@ -55,7 +72,7 @@ All-Reduce 图形节点代表集合操作，不是一个中心服务器；汇入
 - SP 固定 TP/SP=2、PP=1，借用 DeepSeek activation/MoE SP 的 AG→Attention→RS 布局。数值例为 4 tokens、两头各 1 维、Q/K/V=X、causal mask；省略 Norm、residual、RoPE、MoE 数值。它不是 Ulysses，也不定义历史 KV 的分片。
 - PP 传输前后矩阵保持相同；模型/Runner 本地返回与 Worker 真正发送分开标示。算例结束于 hidden，不伪造 logits、residual 或 KV。
 - CP 固定 FlashAttention DCP `ag_rs`、PCP=1、TP=DCP=2、interleave=1：4 个历史 tokens，加当前 token 4。Q 每头 2 维，采用 `QK.T / sqrt(2)`；先校正历史输出，再在 RS 内求和，并按 LSE 合并当前 chunk。DCP 复用此 TP 组；PCP、a2a、MLA 有其他实现。
-- DP 固定 dense、DP=2、TP=PP=1。Scheduler 下发元数据，激活在 Worker 内生成；结果先经 `update_from_output` 才进入客户端输出。两个完整模型副本不交换 hidden；MoE+EP 可跨 DP ranks 通信，需要另看 EP。
+- DP 固定 dense、DP=2、TP=PP=1。Scheduler 下发元数据，激活在 Worker 内生成；结果先经 `update_from_output` 才进入客户端输出。两个完整模型副本不交换 hidden；MoE+EP 可跨 DP ranks 通信，见上面的 DP+EP 组合。
 
 所有权和调用边界按 upstream vLLM [`295c062db8`](https://github.com/vllm-project/vllm/tree/295c062db8a48ea73bbd05d1174cb37d24bf86f9) 静态核对。页面“适用边界与源码”提供各模式的精确入口。
 
@@ -66,6 +83,7 @@ All-Reduce 图形节点代表集合操作，不是一个中心服务器；汇入
 ```sh
 python verify_matrices.py
 python verify_training_dp.py
+python verify_combinations.py
 ```
 
 [verify_matrices.py](verify_matrices.py) 仅使用 Python 标准库，从输入重新计算六种模式，检查形状、分片轴、payload、归并、完整网络/attention 参考和 4 位展示数据。它不读取 JSON 中的验证成功标志作为结论，也不声称验证了 NCCL 或设备执行。
@@ -73,3 +91,5 @@ python verify_training_dp.py
 当前验算全部通过：TP/DP/PP/SP 最大误差为 0，EP 为 `4.44e-16`，CP 为 `2.22e-16`。页面会将小数展示到最多 4 位，原始精度保留在 JSON 中。
 
 训练 DP 的独立梯度、平均梯度和更新检查通过；全批次有限差分误差为 `2.76e-10`。页面布局检查范围与结果见 [LAYOUT-CHECKS.md](LAYOUT-CHECKS.md)。
+
+[verify_combinations.py](verify_combinations.py) 同样仅使用 Python 标准库，从 [combo-examples.json](combo-examples.json) 的输入重新计算三种组合，检查 Attention/专家/MLP 算术、请求与专家所有权、通信组、PP flattened payload、目的 TP All-Gather 恢复及未切分参考结果。它忽略存储的验证成功标志，不声称验证了通信后端或硬件执行。当前三种组合全部通过：TP+SP 最大误差为 0，DP+EP 为 `8.88e-16`，DP+TP+PP 为 0。

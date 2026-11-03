@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | Transformer 结构与矩阵 | 模型结构、注意力、MLP、逐步矩阵计算 | [transform](transform/README.md) | [transform/index.html](transform/index.html) |
 | vLLM PD 分离 | V0 / V1、P / D、Scheduler / Worker、Mooncake 缓存匹配与传输 | [pd-disaggregation](pd-disaggregation/README.md) | [pd-disaggregation/index.html](pd-disaggregation/index.html) |
-| vLLM 并行流程 | 六种并行的 GPU 结构、矩阵切分与连续数据流，附训练 DP 对照 | [parallelism](parallelism/README.md) | [parallelism/index.html](parallelism/index.html) |
+| vLLM 并行流程 | 六种单项并行与 TP+SP、DP+EP、DP+TP+PP 三种组合，默认 TP+SP，附训练 DP 对照 | [parallelism](parallelism/README.md) | [parallelism/index.html](parallelism/index.html) |
 | 通信原语 | 具体数组的发送、归约、汇集、散布与交换 | [communication-primitives](communication-primitives/README.md) | [communication-primitives/index.html](communication-primitives/index.html) |
 
 ```text
@@ -25,9 +25,11 @@ vllm-learning-notes/
 │   └── index.html                     # V0 / V1 PD 分离交互动画
 ├── parallelism/
 │   ├── README.md
-│   ├── index.html                     # 六种并行方式与矩阵数据流
+│   ├── index.html                     # 六种并行与三种组合，默认 TP+SP
 │   ├── matrix-examples.json           # 完整精度的数值算例
 │   ├── verify_matrices.py             # 独立算术与分片验算
+│   ├── combo-examples.json            # 三种组合的数值、通信组与 payload
+│   ├── verify_combinations.py         # 组合算术、所有权与传输验算
 │   ├── training-dp.json               # 三 GPU 训练 DP 算例
 │   └── verify_training_dp.py          # 全批次与分布式梯度等价验算
 └── communication-primitives/
