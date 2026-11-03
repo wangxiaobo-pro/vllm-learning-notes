@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | Transformer 结构与矩阵 | 模型结构、注意力、MLP、逐步矩阵计算 | [transform](transform/README.md) | [transform/index.html](transform/index.html) |
 | vLLM PD 分离 | V0 / V1、P / D、Scheduler / Worker、Mooncake 缓存匹配与传输 | [pd-disaggregation](pd-disaggregation/README.md) | [pd-disaggregation/index.html](pd-disaggregation/index.html) |
-| vLLM 并行流程 | TP、EP、SP、PP、CP、DP 的分工、通信与接续 | [parallelism](parallelism/README.md) | [parallelism/index.html](parallelism/index.html) |
+| vLLM 并行流程 | TP、EP、SP、PP、CP、DP 的连续数据流与可验算激活矩阵 | [parallelism](parallelism/README.md) | [parallelism/index.html](parallelism/index.html) |
 | 通信原语 | 具体数组的发送、归约、汇集、散布与交换 | [communication-primitives](communication-primitives/README.md) | [communication-primitives/index.html](communication-primitives/index.html) |
 
 ```text
@@ -25,7 +25,9 @@ vllm-learning-notes/
 │   └── index.html                     # V0 / V1 PD 分离交互动画
 ├── parallelism/
 │   ├── README.md
-│   └── index.html                     # 六种并行方式
+│   ├── index.html                     # 六种并行方式与矩阵数据流
+│   ├── matrix-examples.json           # 完整精度的数值算例
+│   └── verify_matrices.py             # 独立算术与分片验算
 └── communication-primitives/
     ├── README.md
     └── index.html                     # 通信原语与数组变化

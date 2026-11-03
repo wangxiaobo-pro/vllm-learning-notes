@@ -1,42 +1,48 @@
-# vLLM 并行流程
+# vLLM 并行矩阵数据流
 
-用浏览器打开 [index.html](index.html)，切换 TP、EP、SP、PP、CP、DP，再选择“全局关系”或“下一步”。全局视图下方有完整编号流程；步骤视图展示此步完成后各 rank 的状态。箭头小序号表示通信步骤，节点内序号表示本地动作。
+用浏览器打开 [index.html](index.html)，切换 TP、EP、SP、PP、CP、DP。
 
-## 覆盖范围
+- 全局关系显示完整连通图：每层的输出通过箭头进入下一层，每条箭头附步骤序号。
+- “上一步 / 下一步”保持所有节点与连线的位置，只高亮当前步骤；尚未产生的数据用 `·` 表示。
+- “播放流程”沿箭头移动张量或控制信息，并走到末步停止。动画时长不代表实际性能；遵循系统减少动态效果设置。
+- 蓝色为本地激活/计算，橙色为跨 rank 张量，虚线为请求、调度或 token。图中只表示逻辑数据依赖，不指定 collective 的 ring/tree 网络算法。
+- 节点展示实际数值矩阵；下方“数值输入、权重与验算”可查看完整权重与参考结果。“完整流程”列出所有编号步骤。
 
-| 方式 | 连续示例 | 主要通信 |
+## 六种连续算例
+
+| 方式 | 展示的数据链 | 数值结果 |
 | --- | --- | --- |
-| TP | 同一批 4 tokens，两层 MLP 的特征分片与输出部分和 | All-Reduce |
-| EP | 同一 MoE 层，2 ranks、4 experts、top-2 | Dispatch / Combine，All-to-All 语义 |
-| SP | DeepSeek 连续 MoE 层，8 tokens 的 activation 分片 | All-Gather / Reduce-Scatter |
-| PP | 6 层分到 3 stages，本地返回与真正发送 | Send / Recv |
-| CP | FlashAttention DCP，历史 KV 按位置分片 | Q / LSE All-Gather，校正后 Reduce-Scatter |
-| DP | Dense 推理中两个不同请求进入独立 EngineCore | 请求路由与负载协调 |
+| TP | 同一 X → 分片 W1 → ReLU → 分片 W2 的部分和 → All-Reduce → 下一层 | 两端部分输出相加为 `[[2,7],[1,2]]` |
+| EP | 源 hidden → Router → Dispatch → 专家 → Combine → 源端下一层 | 按 t0–t3 归并为 `[[0.7,3.7],[2.4,2.8],[0.4,2.4],[0.5,2]]` |
+| SP | token 分片 → All-Gather → 各 head 的 Attention 贡献 → Reduce-Scatter → 本地下一子层 | 真正计算双头 causal softmax 与输出投影，再按 token 分回 |
+| PP | Stage 0 输入/输出 → Worker 发送 → Stage 1 → Worker 发送 → Stage 2 → 最终 hidden | 末段输出 `[[15,3],[8,0]]`，等于串行三层结果 |
+| CP | Q 汇集 → 本地历史 attention → LSE 校正 → Reduce-Scatter → 与当前 token 的 O/LSE 合并 | 两头输出约为 `[[1.6143,1.0675],[1.0675,1.6143]]` |
+| DP | 请求 → Scheduler → Worker → embedding → 两层网络 → LM head → host → Scheduler 更新 → 请求输出流 | A 输入“甲乙”选“乙”；B 输入“丙”选“丙” |
 
-PP 额外包含三个 batch 在三个 stage 上重叠推进的等时示意；时间槽不代表实测耗时，也未计通信成本。
+通信操作的单独说明见 [通信原语项目](../communication-primitives/index.html)。
 
-对应的通信原语操作可在 [通信原语项目](../communication-primitives/index.html) 单独查看。
+## 数值的真实性与范围
 
-## 源码基线与边界
+这是实际执行并独立验算的小型教学网络，不是从预训练模型或 GPU/NPU 运行中采集的激活。所有数值、权重和维度可在 [matrix-examples.json](matrix-examples.json) 中查看；图内嵌同一份数据，离线打开不发起网络请求。
 
-静态核对 upstream vLLM commit [`295c062db8`](https://github.com/vllm-project/vllm/tree/295c062db8a48ea73bbd05d1174cb37d24bf86f9)。示例尺寸、token、专家权重分数均为教学数据，未运行分布式 GPU/NPU 性能实验，不承诺加速比。
+- TP/DP 使用行向量 `X @ W`，权重为 `[in,out]`，与 PyTorch `Linear.weight` 存储互为转置；第二层后不再做 ReLU，Y 可为负。
+- EP/PP 的专家/阶段使用 `ReLU(X @ W.T)`，W 为 `[out,in]`。它们是教学 Linear，不冒充完整 Qwen/DeepSeek decoder。
+- EP 固定 2 ranks、4 experts、top-2、无 EPLB、`apply_router_weight_on_input=False`；采用 DeepEP LL combine 内部加权归并语义。图中打包行序是逻辑示意，不是后端固定物理布局。
+- SP 固定 TP/SP=2、PP=1，借用 DeepSeek activation/MoE SP 的 AG→Attention→RS 布局。数值例为 4 tokens、两头各 1 维、Q/K/V=X、causal mask；省略 Norm、residual、RoPE、MoE 数值。它不是 Ulysses，也不定义历史 KV 的分片。
+- PP 传输前后矩阵保持相同；模型/Runner 本地返回与 Worker 真正发送分开标示。算例结束于 hidden，不伪造 logits、residual 或 KV。
+- CP 固定 FlashAttention DCP `ag_rs`、PCP=1、TP=DCP=2、interleave=1：4 个历史 tokens，加当前 token 4。Q 每头 2 维，采用 `QK.T / sqrt(2)`；先校正历史输出，再在 RS 内求和，并按 LSE 合并当前 chunk。DCP 复用此 TP 组；PCP、a2a、MLA 有其他实现。
+- DP 固定 dense、DP=2、TP=PP=1。Scheduler 下发元数据，激活在 Worker 内生成；结果先经 `update_from_output` 才进入客户端输出。两个完整模型副本不交换 hidden；MoE+EP 可跨 DP ranks 通信，需要另看 EP。
 
-- TP 固定 ColumnParallelLinear → 激活 → RowParallelLinear，关闭 bias，`gather_output=False`、`input_is_parallel=True`、`reduce_results=True`。权重形状采用 PyTorch 的 `[out,in]`。
-- EP 固定 DeepEP LL、top-2、无 EPLB、`apply_router_weight_on_input=False`；该路径在 combine kernel 中加权归并，其他后端的位置可不同。
-- SP 固定 `use_sequence_parallel_moe`、TP=2、PP=1。它是 activation/token 分片，不等同于 Ulysses，也不定义历史 KV 的所有权。
-- PP 固定普通 V1 Runner、Qwen2、`broadcast_pp_output=False`。`irecv_tensor_dict` 先接收元数据，再分配缓冲并提交 tensor 接收；模型返回 `IntermediateTensors` 与 Worker 提交发送明确分开。
-- CP 选用 DCP `ag_rs` 分支，PCP=1、TP=DCP=2、interleave=1。它复用此 TP 组；PCP、`a2a` 与 MLA 专用分支另有实现。历史 context 不包括当前 query chunk；两部分各算 attention 后按 LSE 合并。
-- DP 选择 dense、DP=2、TP=PP=1。MoE+EP 可跨 DP ranks 进行专家通信，不能套用 dense 的独立 hidden 计算假设。
-- 图中的双向 collective 箭头仅表达参与者与数据依赖，不指定 NCCL/HCCL 的底层 ring/tree 拓扑。并行维度也不能一概相乘来计算设备数。
+所有权和调用边界按 upstream vLLM [`295c062db8`](https://github.com/vllm-project/vllm/tree/295c062db8a48ea73bbd05d1174cb37d24bf86f9) 静态核对。页面“适用边界与源码”提供各模式的精确入口。
 
-## 源码入口
+## 可重复验算
 
-- [TP Linear](https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/layers/linear.py#L603)
-- [EP DeepEP LL dispatch / combine](https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/layers/fused_moe/prepare_finalize/deepep_ll.py#L286)
-- [SP DeepSeek decoder layer](https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/deepseek_v2.py#L1352)
-- [PP Worker 接收与发送](https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/worker/gpu_worker.py#L1277)
-- [CP DCP FlashAttention](https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/attention/backends/flash_attn.py#L1595)
-- [CP LSE 校正 / Reduce-Scatter](https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/attention/ops/dcp.py#L438)
-- [DP 路由选择](https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/engine/core_client.py#L1642)
+在本目录运行：
 
-页面为自包含离线 HTML，源码链接需要联网。各步骤里的“实现边界与源码”可展开查看该模式的精确入口。
+```sh
+python verify_matrices.py
+```
+
+[verify_matrices.py](verify_matrices.py) 仅使用 Python 标准库，从输入重新计算六种模式，检查形状、分片轴、payload、归并、完整网络/attention 参考和 4 位展示数据。它不读取 JSON 中的验证成功标志作为结论，也不声称验证了 NCCL 或设备执行。
+
+当前验算全部通过：TP/DP/PP/SP 最大误差为 0，EP 为 `4.44e-16`，CP 为 `2.22e-16`。页面会将小数展示到最多 4 位，原始精度保留在 JSON 中。

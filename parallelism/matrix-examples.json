@@ -1,0 +1,4871 @@
+{
+  "tpdp": {
+    "schemaVersion": 1,
+    "disclaimer": "人为设计并执行验算的教学网络；非生产模型实测。无bias、attention或KV cache。LM head和词表也仅用于教学。",
+    "convention": {
+      "activationLayout": "[token, feature]",
+      "weightLayout": "[input_feature, output_feature]",
+      "equations": [
+        "Z = X @ W1",
+        "H = ReLU(Z)",
+        "Y = H @ W2"
+      ],
+      "note": "第二个Linear后没有ReLU，最终Y允许负值；形状与常见PyTorch Linear.weight存储转置。"
+    },
+    "network": {
+      "inputSize": 2,
+      "intermediateSize": 4,
+      "outputSize": 2,
+      "W1": [
+        [
+          1,
+          -1,
+          2,
+          1
+        ],
+        [
+          2,
+          1,
+          -1,
+          -1
+        ]
+      ],
+      "W2": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          -1,
+          2
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "Whead": [
+        [
+          1,
+          0,
+          -1
+        ],
+        [
+          0,
+          1,
+          1
+        ]
+      ],
+      "vocabulary": [
+        "甲",
+        "乙",
+        "丙"
+      ],
+      "lmHeadRule": "各请求最后一行Y @ Whead，再做无并列最大值的argmax；索引从0开始。"
+    },
+    "tp": {
+      "config": {
+        "tp": 2,
+        "dp": 1,
+        "pp": 1
+      },
+      "request": "A",
+      "X": [
+        [
+          2,
+          1
+        ],
+        [
+          -1,
+          1
+        ]
+      ],
+      "fullZ": [
+        [
+          4,
+          -1,
+          3,
+          1
+        ],
+        [
+          1,
+          2,
+          -3,
+          -2
+        ]
+      ],
+      "fullH": [
+        [
+          4,
+          0,
+          3,
+          1
+        ],
+        [
+          1,
+          2,
+          0,
+          0
+        ]
+      ],
+      "fullY": [
+        [
+          2,
+          7
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "ranks": [
+        {
+          "rank": 0,
+          "intermediateFeatures": [
+            0,
+            1
+          ],
+          "X": [
+            [
+              2,
+              1
+            ],
+            [
+              -1,
+              1
+            ]
+          ],
+          "W1Shard": [
+            [
+              1,
+              -1
+            ],
+            [
+              2,
+              1
+            ]
+          ],
+          "Z": [
+            [
+              4,
+              -1
+            ],
+            [
+              1,
+              2
+            ]
+          ],
+          "H": [
+            [
+              4,
+              0
+            ],
+            [
+              1,
+              2
+            ]
+          ],
+          "W2Shard": [
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "partialY": [
+            [
+              4,
+              0
+            ],
+            [
+              1,
+              2
+            ]
+          ]
+        },
+        {
+          "rank": 1,
+          "intermediateFeatures": [
+            2,
+            3
+          ],
+          "X": [
+            [
+              2,
+              1
+            ],
+            [
+              -1,
+              1
+            ]
+          ],
+          "W1Shard": [
+            [
+              2,
+              1
+            ],
+            [
+              -1,
+              -1
+            ]
+          ],
+          "Z": [
+            [
+              3,
+              1
+            ],
+            [
+              -3,
+              -2
+            ]
+          ],
+          "H": [
+            [
+              3,
+              1
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "W2Shard": [
+            [
+              -1,
+              2
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "partialY": [
+            [
+              -2,
+              7
+            ],
+            [
+              0,
+              0
+            ]
+          ]
+        }
+      ],
+      "Y0": [
+        [
+          4,
+          0
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "Y1": [
+        [
+          -2,
+          7
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "Ysum": [
+        [
+          2,
+          7
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "postAllReduceYPerRank": [
+        [
+          [
+            2,
+            7
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        [
+          [
+            2,
+            7
+          ],
+          [
+            1,
+            2
+          ]
+        ]
+      ],
+      "communication": "RowParallelLinear末尾All-Reduce(SUM)，两端都得到完整Y；先前中间特征保持分片，没有为了示例额外All-Gather。",
+      "lastRowLogits": [
+        1,
+        2,
+        1
+      ],
+      "argmax0Based": 1,
+      "selectedToken": "乙"
+    },
+    "dp": {
+      "config": {
+        "dp": 2,
+        "tp": 1,
+        "pp": 1
+      },
+      "ranks": [
+        {
+          "rank": 0,
+          "request": "A",
+          "W1": [
+            [
+              1,
+              -1,
+              2,
+              1
+            ],
+            [
+              2,
+              1,
+              -1,
+              -1
+            ]
+          ],
+          "W2": [
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              -1,
+              2
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "Whead": [
+            [
+              1,
+              0,
+              -1
+            ],
+            [
+              0,
+              1,
+              1
+            ]
+          ],
+          "X": [
+            [
+              2,
+              1
+            ],
+            [
+              -1,
+              1
+            ]
+          ],
+          "Z": [
+            [
+              4,
+              -1,
+              3,
+              1
+            ],
+            [
+              1,
+              2,
+              -3,
+              -2
+            ]
+          ],
+          "H": [
+            [
+              4,
+              0,
+              3,
+              1
+            ],
+            [
+              1,
+              2,
+              0,
+              0
+            ]
+          ],
+          "Y": [
+            [
+              2,
+              7
+            ],
+            [
+              1,
+              2
+            ]
+          ],
+          "logitsAllRows": [
+            [
+              2,
+              7,
+              5
+            ],
+            [
+              1,
+              2,
+              1
+            ]
+          ],
+          "lastRowLogits": [
+            1,
+            2,
+            1
+          ],
+          "argmax0Based": 1,
+          "selectedToken": "乙"
+        },
+        {
+          "rank": 1,
+          "request": "B",
+          "W1": [
+            [
+              1,
+              -1,
+              2,
+              1
+            ],
+            [
+              2,
+              1,
+              -1,
+              -1
+            ]
+          ],
+          "W2": [
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              -1,
+              2
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "Whead": [
+            [
+              1,
+              0,
+              -1
+            ],
+            [
+              0,
+              1,
+              1
+            ]
+          ],
+          "X": [
+            [
+              2,
+              -1
+            ]
+          ],
+          "Z": [
+            [
+              0,
+              -3,
+              5,
+              3
+            ]
+          ],
+          "H": [
+            [
+              0,
+              0,
+              5,
+              3
+            ]
+          ],
+          "Y": [
+            [
+              -2,
+              13
+            ]
+          ],
+          "logitsAllRows": [
+            [
+              -2,
+              13,
+              15
+            ]
+          ],
+          "lastRowLogits": [
+            -2,
+            13,
+            15
+          ],
+          "argmax0Based": 2,
+          "selectedToken": "丙"
+        }
+      ],
+      "communication": "两个DP副本分别持有完整相同权重，各自处理不同请求；此dense前向没有跨DP的hidden拼接或All-Reduce。",
+      "independenceCheck": "拼接输入后的逐行输出等于独立输出拼接，仅用于离线验算，不是DP执行步骤。"
+    },
+    "validation": {
+      "engine": "Python standard library, exact integer arithmetic",
+      "status": "passed",
+      "checks": [
+        "形状断言",
+        "全部Z/H/Y与手算常量一致",
+        "独立scalar-loop网络与矩阵乘法网络一致",
+        "TP中间分片拼接等于完整Z/H",
+        "TP两个partialY相加等于完整Y",
+        "DP独立输出等于统一逐行计算结果",
+        "两个请求的logits均有唯一最大值"
+      ]
+    }
+  },
+  "eppp": {
+    "schema_version": 1,
+    "source_baseline": {
+      "repository": "E:/code/vllm",
+      "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+      "verification": "static source semantics plus exact Python arithmetic; no GPU/NPU/model inference"
+    },
+    "matrix_convention": "rows=tokens/work items, columns=hidden features; PyTorch W layout [out,in]; Y=ReLU(X @ W.T), zero bias",
+    "ep": {
+      "title": "EP：同一MoE层内派发、专家计算、回源归并",
+      "scope": "EP=2, 4 experts, top-2, fixed placement, no EPLB; DeepEP LL weighting semantics",
+      "teaching_notice": "全部数值与2维Linear+ReLU专家均为教学模型；不是Qwen/DeepSeek真实专家，也不是DeepEP支持2维hidden的硬件配置声明。",
+      "weighting_notice": "apply_router_weight_on_input=False。DeepEP LL将topk_weights传给combine，权重与归并在combine kernel内部完成；weighted_contributions只是等价算术分解。",
+      "input": {
+        "shape": [
+          4,
+          2
+        ],
+        "rows": [
+          "t0",
+          "t1",
+          "t2",
+          "t3"
+        ],
+        "values": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            1
+          ],
+          [
+            2,
+            -1
+          ],
+          [
+            -1,
+            2
+          ]
+        ],
+        "meaning": "四个源token的本轮hidden"
+      },
+      "source_shards": [
+        {
+          "rank": 0,
+          "tokens": [
+            "t0",
+            "t1"
+          ],
+          "values": [
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              1
+            ]
+          ]
+        },
+        {
+          "rank": 1,
+          "tokens": [
+            "t2",
+            "t3"
+          ],
+          "values": [
+            [
+              2,
+              -1
+            ],
+            [
+              -1,
+              2
+            ]
+          ]
+        }
+      ],
+      "routing": [
+        {
+          "token": "t0",
+          "source_rank": 0,
+          "choices": [
+            {
+              "expert": "E0",
+              "expert_rank": 0,
+              "weight": 0.7
+            },
+            {
+              "expert": "E2",
+              "expert_rank": 1,
+              "weight": 0.3
+            }
+          ]
+        },
+        {
+          "token": "t1",
+          "source_rank": 0,
+          "choices": [
+            {
+              "expert": "E1",
+              "expert_rank": 0,
+              "weight": 0.6
+            },
+            {
+              "expert": "E3",
+              "expert_rank": 1,
+              "weight": 0.4
+            }
+          ]
+        },
+        {
+          "token": "t2",
+          "source_rank": 1,
+          "choices": [
+            {
+              "expert": "E0",
+              "expert_rank": 0,
+              "weight": 0.2
+            },
+            {
+              "expert": "E3",
+              "expert_rank": 1,
+              "weight": 0.8
+            }
+          ]
+        },
+        {
+          "token": "t3",
+          "source_rank": 1,
+          "choices": [
+            {
+              "expert": "E1",
+              "expert_rank": 0,
+              "weight": 0.5
+            },
+            {
+              "expert": "E2",
+              "expert_rank": 1,
+              "weight": 0.5
+            }
+          ]
+        }
+      ],
+      "experts": [
+        {
+          "id": "E0",
+          "owner_rank": 0,
+          "W": [
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              2
+            ]
+          ],
+          "bias": [
+            0,
+            0
+          ],
+          "input": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t2"
+            ],
+            "values": [
+              [
+                1,
+                2
+              ],
+              [
+                2,
+                -1
+              ]
+            ],
+            "meaning": "dispatch 后该专家读取的激活"
+          },
+          "linear_output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t2"
+            ],
+            "values": [
+              [
+                1,
+                4
+              ],
+              [
+                2,
+                -2
+              ]
+            ],
+            "meaning": "X @ W.T，ReLU之前"
+          },
+          "output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t2"
+            ],
+            "values": [
+              [
+                1,
+                4
+              ],
+              [
+                2,
+                0
+              ]
+            ],
+            "meaning": "ReLU(X @ W.T)"
+          }
+        },
+        {
+          "id": "E1",
+          "owner_rank": 0,
+          "W": [
+            [
+              1,
+              1
+            ],
+            [
+              -1,
+              1
+            ]
+          ],
+          "bias": [
+            0,
+            0
+          ],
+          "input": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t1",
+              "t3"
+            ],
+            "values": [
+              [
+                3,
+                1
+              ],
+              [
+                -1,
+                2
+              ]
+            ],
+            "meaning": "dispatch 后该专家读取的激活"
+          },
+          "linear_output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t1",
+              "t3"
+            ],
+            "values": [
+              [
+                4,
+                -2
+              ],
+              [
+                1,
+                3
+              ]
+            ],
+            "meaning": "X @ W.T，ReLU之前"
+          },
+          "output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t1",
+              "t3"
+            ],
+            "values": [
+              [
+                4,
+                0
+              ],
+              [
+                1,
+                3
+              ]
+            ],
+            "meaning": "ReLU(X @ W.T)"
+          }
+        },
+        {
+          "id": "E2",
+          "owner_rank": 1,
+          "W": [
+            [
+              2,
+              -1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "bias": [
+            0,
+            0
+          ],
+          "input": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t3"
+            ],
+            "values": [
+              [
+                1,
+                2
+              ],
+              [
+                -1,
+                2
+              ]
+            ],
+            "meaning": "dispatch 后该专家读取的激活"
+          },
+          "linear_output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t3"
+            ],
+            "values": [
+              [
+                0,
+                3
+              ],
+              [
+                -4,
+                1
+              ]
+            ],
+            "meaning": "X @ W.T，ReLU之前"
+          },
+          "output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t3"
+            ],
+            "values": [
+              [
+                0,
+                3
+              ],
+              [
+                0,
+                1
+              ]
+            ],
+            "meaning": "ReLU(X @ W.T)"
+          }
+        },
+        {
+          "id": "E3",
+          "owner_rank": 1,
+          "W": [
+            [
+              -1,
+              2
+            ],
+            [
+              2,
+              1
+            ]
+          ],
+          "bias": [
+            0,
+            0
+          ],
+          "input": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t1",
+              "t2"
+            ],
+            "values": [
+              [
+                3,
+                1
+              ],
+              [
+                2,
+                -1
+              ]
+            ],
+            "meaning": "dispatch 后该专家读取的激活"
+          },
+          "linear_output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t1",
+              "t2"
+            ],
+            "values": [
+              [
+                -1,
+                7
+              ],
+              [
+                -4,
+                3
+              ]
+            ],
+            "meaning": "X @ W.T，ReLU之前"
+          },
+          "output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t1",
+              "t2"
+            ],
+            "values": [
+              [
+                0,
+                7
+              ],
+              [
+                0,
+                3
+              ]
+            ],
+            "meaning": "ReLU(X @ W.T)"
+          }
+        }
+      ],
+      "packed_by_expert_rank": [
+        {
+          "rank": 0,
+          "order": [
+            {
+              "token": "t0",
+              "expert": "E0",
+              "source_rank": 0
+            },
+            {
+              "token": "t2",
+              "expert": "E0",
+              "source_rank": 1
+            },
+            {
+              "token": "t1",
+              "expert": "E1",
+              "source_rank": 0
+            },
+            {
+              "token": "t3",
+              "expert": "E1",
+              "source_rank": 1
+            }
+          ],
+          "dispatch_matrix": {
+            "shape": [
+              4,
+              2
+            ],
+            "rows": [
+              "t0/E0",
+              "t2/E0",
+              "t1/E1",
+              "t3/E1"
+            ],
+            "values": [
+              [
+                1,
+                2
+              ],
+              [
+                2,
+                -1
+              ],
+              [
+                3,
+                1
+              ],
+              [
+                -1,
+                2
+              ]
+            ],
+            "meaning": "逻辑上按本地专家排列；不是 DeepEP 固定物理buffer布局"
+          },
+          "expert_output_matrix": {
+            "shape": [
+              4,
+              2
+            ],
+            "rows": [
+              "t0/E0",
+              "t2/E0",
+              "t1/E1",
+              "t3/E1"
+            ],
+            "values": [
+              [
+                1,
+                4
+              ],
+              [
+                2,
+                0
+              ],
+              [
+                4,
+                0
+              ],
+              [
+                1,
+                3
+              ]
+            ],
+            "meaning": "尚未乘router权重的专家结果"
+          },
+          "router_weights": [
+            0.7,
+            0.2,
+            0.6,
+            0.5
+          ],
+          "combine_internal_weighted_contributions": {
+            "shape": [
+              4,
+              2
+            ],
+            "rows": [
+              "t0/E0",
+              "t2/E0",
+              "t1/E1",
+              "t3/E1"
+            ],
+            "values": [
+              [
+                0.7,
+                2.8
+              ],
+              [
+                0.4,
+                0
+              ],
+              [
+                2.4,
+                0
+              ],
+              [
+                0.5,
+                1.5
+              ]
+            ],
+            "meaning": "仅解释 combine kernel 内的乘权贡献，不能标成发送前payload"
+          }
+        },
+        {
+          "rank": 1,
+          "order": [
+            {
+              "token": "t0",
+              "expert": "E2",
+              "source_rank": 0
+            },
+            {
+              "token": "t3",
+              "expert": "E2",
+              "source_rank": 1
+            },
+            {
+              "token": "t1",
+              "expert": "E3",
+              "source_rank": 0
+            },
+            {
+              "token": "t2",
+              "expert": "E3",
+              "source_rank": 1
+            }
+          ],
+          "dispatch_matrix": {
+            "shape": [
+              4,
+              2
+            ],
+            "rows": [
+              "t0/E2",
+              "t3/E2",
+              "t1/E3",
+              "t2/E3"
+            ],
+            "values": [
+              [
+                1,
+                2
+              ],
+              [
+                -1,
+                2
+              ],
+              [
+                3,
+                1
+              ],
+              [
+                2,
+                -1
+              ]
+            ],
+            "meaning": "逻辑上按本地专家排列；不是 DeepEP 固定物理buffer布局"
+          },
+          "expert_output_matrix": {
+            "shape": [
+              4,
+              2
+            ],
+            "rows": [
+              "t0/E2",
+              "t3/E2",
+              "t1/E3",
+              "t2/E3"
+            ],
+            "values": [
+              [
+                0,
+                3
+              ],
+              [
+                0,
+                1
+              ],
+              [
+                0,
+                7
+              ],
+              [
+                0,
+                3
+              ]
+            ],
+            "meaning": "尚未乘router权重的专家结果"
+          },
+          "router_weights": [
+            0.3,
+            0.5,
+            0.4,
+            0.8
+          ],
+          "combine_internal_weighted_contributions": {
+            "shape": [
+              4,
+              2
+            ],
+            "rows": [
+              "t0/E2",
+              "t3/E2",
+              "t1/E3",
+              "t2/E3"
+            ],
+            "values": [
+              [
+                0,
+                0.9
+              ],
+              [
+                0,
+                0.5
+              ],
+              [
+                0,
+                2.8
+              ],
+              [
+                0,
+                2.4
+              ]
+            ],
+            "meaning": "仅解释 combine kernel 内的乘权贡献，不能标成发送前payload"
+          }
+        }
+      ],
+      "transfers": [
+        {
+          "source_rank": 0,
+          "destination_rank": 0,
+          "cross_rank": false,
+          "rows": [
+            {
+              "token": "t0",
+              "expert": "E0"
+            },
+            {
+              "token": "t1",
+              "expert": "E1"
+            }
+          ],
+          "dispatch_values": [
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              1
+            ]
+          ],
+          "combine_reverse_raw_values": [
+            [
+              1,
+              4
+            ],
+            [
+              4,
+              0
+            ]
+          ],
+          "weights_at_combine": [
+            0.7,
+            0.6
+          ]
+        },
+        {
+          "source_rank": 0,
+          "destination_rank": 1,
+          "cross_rank": true,
+          "rows": [
+            {
+              "token": "t0",
+              "expert": "E2"
+            },
+            {
+              "token": "t1",
+              "expert": "E3"
+            }
+          ],
+          "dispatch_values": [
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              1
+            ]
+          ],
+          "combine_reverse_raw_values": [
+            [
+              0,
+              3
+            ],
+            [
+              0,
+              7
+            ]
+          ],
+          "weights_at_combine": [
+            0.3,
+            0.4
+          ]
+        },
+        {
+          "source_rank": 1,
+          "destination_rank": 0,
+          "cross_rank": true,
+          "rows": [
+            {
+              "token": "t2",
+              "expert": "E0"
+            },
+            {
+              "token": "t3",
+              "expert": "E1"
+            }
+          ],
+          "dispatch_values": [
+            [
+              2,
+              -1
+            ],
+            [
+              -1,
+              2
+            ]
+          ],
+          "combine_reverse_raw_values": [
+            [
+              2,
+              0
+            ],
+            [
+              1,
+              3
+            ]
+          ],
+          "weights_at_combine": [
+            0.2,
+            0.5
+          ]
+        },
+        {
+          "source_rank": 1,
+          "destination_rank": 1,
+          "cross_rank": false,
+          "rows": [
+            {
+              "token": "t2",
+              "expert": "E3"
+            },
+            {
+              "token": "t3",
+              "expert": "E2"
+            }
+          ],
+          "dispatch_values": [
+            [
+              2,
+              -1
+            ],
+            [
+              -1,
+              2
+            ]
+          ],
+          "combine_reverse_raw_values": [
+            [
+              0,
+              3
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "weights_at_combine": [
+            0.8,
+            0.5
+          ]
+        }
+      ],
+      "combined": {
+        "shape": [
+          4,
+          2
+        ],
+        "rows": [
+          "t0",
+          "t1",
+          "t2",
+          "t3"
+        ],
+        "values": [
+          [
+            0.7,
+            3.7
+          ],
+          [
+            2.4,
+            2.8
+          ],
+          [
+            0.4,
+            2.4
+          ],
+          [
+            0.5,
+            2
+          ]
+        ],
+        "meaning": "按原source token行序的MoE输出"
+      },
+      "output_shards": [
+        {
+          "rank": 0,
+          "tokens": [
+            "t0",
+            "t1"
+          ],
+          "values": [
+            [
+              0.7,
+              3.7
+            ],
+            [
+              2.4,
+              2.8
+            ]
+          ]
+        },
+        {
+          "rank": 1,
+          "tokens": [
+            "t2",
+            "t3"
+          ],
+          "values": [
+            [
+              0.4,
+              2.4
+            ],
+            [
+              0.5,
+              2
+            ]
+          ]
+        }
+      ],
+      "nodes": [
+        {
+          "id": "ep.r0.input",
+          "owner_rank": 0,
+          "row": 0,
+          "label": "源 token 激活",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r0.router",
+          "owner_rank": 0,
+          "row": 1,
+          "label": "本地 Router / top-2",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r0.dispatch",
+          "owner_rank": 0,
+          "row": 2,
+          "label": "Dispatch发送侧",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r0.expert_input",
+          "owner_rank": 0,
+          "row": 3,
+          "label": "本地专家输入",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r0.expert_output",
+          "owner_rank": 0,
+          "row": 4,
+          "label": "本地专家输出",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r0.combine",
+          "owner_rank": 0,
+          "row": 5,
+          "label": "Combine回源并加权归并",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r0.output",
+          "owner_rank": 0,
+          "row": 6,
+          "label": "源顺序输出",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r1.input",
+          "owner_rank": 1,
+          "row": 0,
+          "label": "源 token 激活",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r1.router",
+          "owner_rank": 1,
+          "row": 1,
+          "label": "本地 Router / top-2",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r1.dispatch",
+          "owner_rank": 1,
+          "row": 2,
+          "label": "Dispatch发送侧",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r1.expert_input",
+          "owner_rank": 1,
+          "row": 3,
+          "label": "本地专家输入",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r1.expert_output",
+          "owner_rank": 1,
+          "row": 4,
+          "label": "本地专家输出",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r1.combine",
+          "owner_rank": 1,
+          "row": 5,
+          "label": "Combine回源并加权归并",
+          "same_moe_layer": "L"
+        },
+        {
+          "id": "ep.r1.output",
+          "owner_rank": 1,
+          "row": 6,
+          "label": "源顺序输出",
+          "same_moe_layer": "L"
+        }
+      ],
+      "edges": [
+        {
+          "id": "ep.in0",
+          "from": "ep.r0.input",
+          "to": "ep.r0.router",
+          "kind": "local_tensor",
+          "step": 1,
+          "label": "本地 hidden [2,2]",
+          "payload": [
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              1
+            ]
+          ]
+        },
+        {
+          "id": "ep.route0",
+          "from": "ep.r0.router",
+          "to": "ep.r0.dispatch",
+          "kind": "local_tensor_and_metadata",
+          "step": 2,
+          "label": "激活 + topk_ids；权重供 combine 使用",
+          "payload": {
+            "hidden": [
+              [
+                1,
+                2
+              ],
+              [
+                3,
+                1
+              ]
+            ],
+            "topk_ids": [
+              [
+                0,
+                2
+              ],
+              [
+                1,
+                3
+              ]
+            ],
+            "topk_weights": [
+              [
+                0.7,
+                0.3
+              ],
+              [
+                0.6,
+                0.4
+              ]
+            ]
+          }
+        },
+        {
+          "id": "ep.calc0",
+          "from": "ep.r0.expert_input",
+          "to": "ep.r0.expert_output",
+          "kind": "local_compute",
+          "step": 4,
+          "label": "各专家 Linear + ReLU",
+          "payload": [
+            [
+              1,
+              4
+            ],
+            [
+              2,
+              0
+            ],
+            [
+              4,
+              0
+            ],
+            [
+              1,
+              3
+            ]
+          ]
+        },
+        {
+          "id": "ep.out0",
+          "from": "ep.r0.combine",
+          "to": "ep.r0.output",
+          "kind": "local_tensor",
+          "step": 6,
+          "label": "完成combine；恢复源行序",
+          "payload": [
+            [
+              0.7,
+              3.7
+            ],
+            [
+              2.4,
+              2.8
+            ]
+          ]
+        },
+        {
+          "id": "ep.in1",
+          "from": "ep.r1.input",
+          "to": "ep.r1.router",
+          "kind": "local_tensor",
+          "step": 1,
+          "label": "本地 hidden [2,2]",
+          "payload": [
+            [
+              2,
+              -1
+            ],
+            [
+              -1,
+              2
+            ]
+          ]
+        },
+        {
+          "id": "ep.route1",
+          "from": "ep.r1.router",
+          "to": "ep.r1.dispatch",
+          "kind": "local_tensor_and_metadata",
+          "step": 2,
+          "label": "激活 + topk_ids；权重供 combine 使用",
+          "payload": {
+            "hidden": [
+              [
+                2,
+                -1
+              ],
+              [
+                -1,
+                2
+              ]
+            ],
+            "topk_ids": [
+              [
+                0,
+                3
+              ],
+              [
+                1,
+                2
+              ]
+            ],
+            "topk_weights": [
+              [
+                0.2,
+                0.8
+              ],
+              [
+                0.5,
+                0.5
+              ]
+            ]
+          }
+        },
+        {
+          "id": "ep.calc1",
+          "from": "ep.r1.expert_input",
+          "to": "ep.r1.expert_output",
+          "kind": "local_compute",
+          "step": 4,
+          "label": "各专家 Linear + ReLU",
+          "payload": [
+            [
+              0,
+              3
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              7
+            ],
+            [
+              0,
+              3
+            ]
+          ]
+        },
+        {
+          "id": "ep.out1",
+          "from": "ep.r1.combine",
+          "to": "ep.r1.output",
+          "kind": "local_tensor",
+          "step": 6,
+          "label": "完成combine；恢复源行序",
+          "payload": [
+            [
+              0.4,
+              2.4
+            ],
+            [
+              0.5,
+              2
+            ]
+          ]
+        },
+        {
+          "id": "ep.dispatch0",
+          "from": "ep.r0.dispatch",
+          "to": "ep.r0.expert_input",
+          "kind": "local_tensor",
+          "step": 3,
+          "label": "按专家目的地dispatch",
+          "payload": [
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              1
+            ]
+          ],
+          "rows": [
+            {
+              "token": "t0",
+              "expert": "E0"
+            },
+            {
+              "token": "t1",
+              "expert": "E1"
+            }
+          ],
+          "communication_group": "EP",
+          "completion_required_before_consume": true
+        },
+        {
+          "id": "ep.combine0",
+          "from": "ep.r0.expert_output",
+          "to": "ep.r0.combine",
+          "kind": "local_tensor",
+          "step": 5,
+          "label": "combine反向回源；kernel内乘权求和",
+          "payload": [
+            [
+              1,
+              4
+            ],
+            [
+              4,
+              0
+            ]
+          ],
+          "rows": [
+            {
+              "token": "t0",
+              "expert": "E0"
+            },
+            {
+              "token": "t1",
+              "expert": "E1"
+            }
+          ],
+          "router_weights": [
+            0.7,
+            0.6
+          ],
+          "raw_expert_values_are_semantic_inputs": true,
+          "completion_required_before_consume": true
+        },
+        {
+          "id": "ep.dispatch1",
+          "from": "ep.r0.dispatch",
+          "to": "ep.r1.expert_input",
+          "kind": "cross_rank_tensor",
+          "step": 3,
+          "label": "按专家目的地dispatch",
+          "payload": [
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              1
+            ]
+          ],
+          "rows": [
+            {
+              "token": "t0",
+              "expert": "E2"
+            },
+            {
+              "token": "t1",
+              "expert": "E3"
+            }
+          ],
+          "communication_group": "EP",
+          "completion_required_before_consume": true
+        },
+        {
+          "id": "ep.combine1",
+          "from": "ep.r1.expert_output",
+          "to": "ep.r0.combine",
+          "kind": "cross_rank_tensor",
+          "step": 5,
+          "label": "combine反向回源；kernel内乘权求和",
+          "payload": [
+            [
+              0,
+              3
+            ],
+            [
+              0,
+              7
+            ]
+          ],
+          "rows": [
+            {
+              "token": "t0",
+              "expert": "E2"
+            },
+            {
+              "token": "t1",
+              "expert": "E3"
+            }
+          ],
+          "router_weights": [
+            0.3,
+            0.4
+          ],
+          "raw_expert_values_are_semantic_inputs": true,
+          "completion_required_before_consume": true
+        },
+        {
+          "id": "ep.dispatch2",
+          "from": "ep.r1.dispatch",
+          "to": "ep.r0.expert_input",
+          "kind": "cross_rank_tensor",
+          "step": 3,
+          "label": "按专家目的地dispatch",
+          "payload": [
+            [
+              2,
+              -1
+            ],
+            [
+              -1,
+              2
+            ]
+          ],
+          "rows": [
+            {
+              "token": "t2",
+              "expert": "E0"
+            },
+            {
+              "token": "t3",
+              "expert": "E1"
+            }
+          ],
+          "communication_group": "EP",
+          "completion_required_before_consume": true
+        },
+        {
+          "id": "ep.combine2",
+          "from": "ep.r0.expert_output",
+          "to": "ep.r1.combine",
+          "kind": "cross_rank_tensor",
+          "step": 5,
+          "label": "combine反向回源；kernel内乘权求和",
+          "payload": [
+            [
+              2,
+              0
+            ],
+            [
+              1,
+              3
+            ]
+          ],
+          "rows": [
+            {
+              "token": "t2",
+              "expert": "E0"
+            },
+            {
+              "token": "t3",
+              "expert": "E1"
+            }
+          ],
+          "router_weights": [
+            0.2,
+            0.5
+          ],
+          "raw_expert_values_are_semantic_inputs": true,
+          "completion_required_before_consume": true
+        },
+        {
+          "id": "ep.dispatch3",
+          "from": "ep.r1.dispatch",
+          "to": "ep.r1.expert_input",
+          "kind": "local_tensor",
+          "step": 3,
+          "label": "按专家目的地dispatch",
+          "payload": [
+            [
+              2,
+              -1
+            ],
+            [
+              -1,
+              2
+            ]
+          ],
+          "rows": [
+            {
+              "token": "t2",
+              "expert": "E3"
+            },
+            {
+              "token": "t3",
+              "expert": "E2"
+            }
+          ],
+          "communication_group": "EP",
+          "completion_required_before_consume": true
+        },
+        {
+          "id": "ep.combine3",
+          "from": "ep.r1.expert_output",
+          "to": "ep.r1.combine",
+          "kind": "local_tensor",
+          "step": 5,
+          "label": "combine反向回源；kernel内乘权求和",
+          "payload": [
+            [
+              0,
+              3
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "rows": [
+            {
+              "token": "t2",
+              "expert": "E3"
+            },
+            {
+              "token": "t3",
+              "expert": "E2"
+            }
+          ],
+          "router_weights": [
+            0.8,
+            0.5
+          ],
+          "raw_expert_values_are_semantic_inputs": true,
+          "completion_required_before_consume": true
+        }
+      ],
+      "sources": [
+        {
+          "file": "vllm/model_executor/layers/fused_moe/modular_kernel.py",
+          "line": 1475,
+          "role": "prepare→experts→finalize"
+        },
+        {
+          "file": "vllm/model_executor/layers/fused_moe/prepare_finalize/deepep_ll.py",
+          "line": 286,
+          "role": "dispatch"
+        },
+        {
+          "file": "vllm/model_executor/layers/fused_moe/prepare_finalize/deepep_ll.py",
+          "line": 378,
+          "role": "combine内部加权归并"
+        }
+      ]
+    },
+    "pp": {
+      "title": "PP：三个stage通过中间激活串接",
+      "scope": "3 stages, TP=1, 2 tokens x 2 hidden; each stage one teaching Linear+ReLU",
+      "teaching_notice": "本例用每stage一个2×2 Linear+ReLU替代真实decoder层；没有attention/RMSNorm/residual/KV数值。只借用vLLM Worker接收/模型返回/Worker发送的边界，不能标成Qwen2真实输出。",
+      "input": {
+        "shape": [
+          2,
+          2
+        ],
+        "rows": [
+          "t0",
+          "t1"
+        ],
+        "values": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            -1
+          ]
+        ],
+        "meaning": "同一batch进入Stage 0"
+      },
+      "stages": [
+        {
+          "id": "S0",
+          "owner_stage": 0,
+          "W": [
+            [
+              1,
+              1
+            ],
+            [
+              -1,
+              2
+            ]
+          ],
+          "bias": [
+            0,
+            0
+          ],
+          "input": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t1"
+            ],
+            "values": [
+              [
+                1,
+                2
+              ],
+              [
+                3,
+                -1
+              ]
+            ],
+            "meaning": "本stage读取的同一批激活"
+          },
+          "linear_output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t1"
+            ],
+            "values": [
+              [
+                3,
+                3
+              ],
+              [
+                2,
+                -5
+              ]
+            ],
+            "meaning": "X @ W.T，ReLU之前"
+          },
+          "output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t1"
+            ],
+            "values": [
+              [
+                3,
+                3
+              ],
+              [
+                2,
+                0
+              ]
+            ],
+            "meaning": "ReLU(X @ W.T)"
+          },
+          "local_return": {
+            "kind": "intermediate_hidden",
+            "values": [
+              [
+                3,
+                3
+              ],
+              [
+                2,
+                0
+              ]
+            ],
+            "cross_process_transfer": false
+          }
+        },
+        {
+          "id": "S1",
+          "owner_stage": 1,
+          "W": [
+            [
+              2,
+              -1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "bias": [
+            0,
+            0
+          ],
+          "input": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t1"
+            ],
+            "values": [
+              [
+                3,
+                3
+              ],
+              [
+                2,
+                0
+              ]
+            ],
+            "meaning": "本stage读取的同一批激活"
+          },
+          "linear_output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t1"
+            ],
+            "values": [
+              [
+                3,
+                6
+              ],
+              [
+                4,
+                2
+              ]
+            ],
+            "meaning": "X @ W.T，ReLU之前"
+          },
+          "output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t1"
+            ],
+            "values": [
+              [
+                3,
+                6
+              ],
+              [
+                4,
+                2
+              ]
+            ],
+            "meaning": "ReLU(X @ W.T)"
+          },
+          "local_return": {
+            "kind": "intermediate_hidden",
+            "values": [
+              [
+                3,
+                6
+              ],
+              [
+                4,
+                2
+              ]
+            ],
+            "cross_process_transfer": false
+          }
+        },
+        {
+          "id": "S2",
+          "owner_stage": 2,
+          "W": [
+            [
+              1,
+              2
+            ],
+            [
+              -1,
+              1
+            ]
+          ],
+          "bias": [
+            0,
+            0
+          ],
+          "input": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t1"
+            ],
+            "values": [
+              [
+                3,
+                6
+              ],
+              [
+                4,
+                2
+              ]
+            ],
+            "meaning": "本stage读取的同一批激活"
+          },
+          "linear_output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t1"
+            ],
+            "values": [
+              [
+                15,
+                3
+              ],
+              [
+                8,
+                -2
+              ]
+            ],
+            "meaning": "X @ W.T，ReLU之前"
+          },
+          "output": {
+            "shape": [
+              2,
+              2
+            ],
+            "rows": [
+              "t0",
+              "t1"
+            ],
+            "values": [
+              [
+                15,
+                3
+              ],
+              [
+                8,
+                0
+              ]
+            ],
+            "meaning": "ReLU(X @ W.T)"
+          },
+          "local_return": {
+            "kind": "final_hidden",
+            "values": [
+              [
+                15,
+                3
+              ],
+              [
+                8,
+                0
+              ]
+            ],
+            "cross_process_transfer": false
+          }
+        }
+      ],
+      "final_hidden": {
+        "shape": [
+          2,
+          2
+        ],
+        "rows": [
+          "t0",
+          "t1"
+        ],
+        "values": [
+          [
+            15,
+            3
+          ],
+          [
+            8,
+            0
+          ]
+        ],
+        "meaning": "末stage最终hidden；不是logits或采样token"
+      },
+      "serial_reference": [
+        [
+          15,
+          3
+        ],
+        [
+          8,
+          0
+        ]
+      ],
+      "nodes": [
+        {
+          "id": "pp.s0.input",
+          "owner_stage": 0,
+          "row": 0,
+          "label": "收到/已有输入"
+        },
+        {
+          "id": "pp.s0.layer",
+          "owner_stage": 0,
+          "row": 1,
+          "label": "教学Linear + ReLU"
+        },
+        {
+          "id": "pp.s0.return",
+          "owner_stage": 0,
+          "row": 2,
+          "label": "模型→Runner→Worker本地返回"
+        },
+        {
+          "id": "pp.s0.send",
+          "owner_stage": 0,
+          "row": 3,
+          "label": "Worker isend_tensor_dict"
+        },
+        {
+          "id": "pp.s1.input",
+          "owner_stage": 1,
+          "row": 4,
+          "label": "收到/已有输入"
+        },
+        {
+          "id": "pp.s1.layer",
+          "owner_stage": 1,
+          "row": 5,
+          "label": "教学Linear + ReLU"
+        },
+        {
+          "id": "pp.s1.return",
+          "owner_stage": 1,
+          "row": 6,
+          "label": "模型→Runner→Worker本地返回"
+        },
+        {
+          "id": "pp.s1.send",
+          "owner_stage": 1,
+          "row": 7,
+          "label": "Worker isend_tensor_dict"
+        },
+        {
+          "id": "pp.s2.input",
+          "owner_stage": 2,
+          "row": 8,
+          "label": "收到/已有输入"
+        },
+        {
+          "id": "pp.s2.layer",
+          "owner_stage": 2,
+          "row": 9,
+          "label": "教学Linear + ReLU"
+        },
+        {
+          "id": "pp.s2.return",
+          "owner_stage": 2,
+          "row": 10,
+          "label": "模型→Runner→Worker本地返回"
+        }
+      ],
+      "edges": [
+        {
+          "id": "pp.compute0",
+          "from": "pp.s0.input",
+          "to": "pp.s0.layer",
+          "kind": "local_compute",
+          "step": 1,
+          "label": "本stage读取输入并计算",
+          "payload": [
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              -1
+            ]
+          ],
+          "output": [
+            [
+              3,
+              3
+            ],
+            [
+              2,
+              0
+            ]
+          ]
+        },
+        {
+          "id": "pp.return0",
+          "from": "pp.s0.layer",
+          "to": "pp.s0.return",
+          "kind": "local_return",
+          "step": 2,
+          "label": "返回hidden对象；不是网络发送",
+          "payload": [
+            [
+              3,
+              3
+            ],
+            [
+              2,
+              0
+            ]
+          ]
+        },
+        {
+          "id": "pp.to_send0",
+          "from": "pp.s0.return",
+          "to": "pp.s0.send",
+          "kind": "local_tensor_reference",
+          "step": 3,
+          "label": "Worker读取返回对象",
+          "payload": [
+            [
+              3,
+              3
+            ],
+            [
+              2,
+              0
+            ]
+          ]
+        },
+        {
+          "id": "pp.transfer0",
+          "from": "pp.s0.send",
+          "to": "pp.s1.input",
+          "kind": "cross_rank_tensor",
+          "step": 3,
+          "label": "Worker发送→下一Worker接收完成→消费",
+          "payload": [
+            [
+              3,
+              3
+            ],
+            [
+              2,
+              0
+            ]
+          ],
+          "communication_group": "PP",
+          "metadata": [
+            "shape",
+            "dtype",
+            "device"
+          ],
+          "metadata_receive_precedes_tensor_irecv": true,
+          "wait_before_consume": true,
+          "receiver_data_equals_sender_data": true
+        },
+        {
+          "id": "pp.compute1",
+          "from": "pp.s1.input",
+          "to": "pp.s1.layer",
+          "kind": "local_compute",
+          "step": 4,
+          "label": "本stage读取输入并计算",
+          "payload": [
+            [
+              3,
+              3
+            ],
+            [
+              2,
+              0
+            ]
+          ],
+          "output": [
+            [
+              3,
+              6
+            ],
+            [
+              4,
+              2
+            ]
+          ]
+        },
+        {
+          "id": "pp.return1",
+          "from": "pp.s1.layer",
+          "to": "pp.s1.return",
+          "kind": "local_return",
+          "step": 5,
+          "label": "返回hidden对象；不是网络发送",
+          "payload": [
+            [
+              3,
+              6
+            ],
+            [
+              4,
+              2
+            ]
+          ]
+        },
+        {
+          "id": "pp.to_send1",
+          "from": "pp.s1.return",
+          "to": "pp.s1.send",
+          "kind": "local_tensor_reference",
+          "step": 6,
+          "label": "Worker读取返回对象",
+          "payload": [
+            [
+              3,
+              6
+            ],
+            [
+              4,
+              2
+            ]
+          ]
+        },
+        {
+          "id": "pp.transfer1",
+          "from": "pp.s1.send",
+          "to": "pp.s2.input",
+          "kind": "cross_rank_tensor",
+          "step": 6,
+          "label": "Worker发送→下一Worker接收完成→消费",
+          "payload": [
+            [
+              3,
+              6
+            ],
+            [
+              4,
+              2
+            ]
+          ],
+          "communication_group": "PP",
+          "metadata": [
+            "shape",
+            "dtype",
+            "device"
+          ],
+          "metadata_receive_precedes_tensor_irecv": true,
+          "wait_before_consume": true,
+          "receiver_data_equals_sender_data": true
+        },
+        {
+          "id": "pp.compute2",
+          "from": "pp.s2.input",
+          "to": "pp.s2.layer",
+          "kind": "local_compute",
+          "step": 7,
+          "label": "本stage读取输入并计算",
+          "payload": [
+            [
+              3,
+              6
+            ],
+            [
+              4,
+              2
+            ]
+          ],
+          "output": [
+            [
+              15,
+              3
+            ],
+            [
+              8,
+              0
+            ]
+          ]
+        },
+        {
+          "id": "pp.return2",
+          "from": "pp.s2.layer",
+          "to": "pp.s2.return",
+          "kind": "local_return",
+          "step": 8,
+          "label": "返回hidden对象；不是网络发送",
+          "payload": [
+            [
+              15,
+              3
+            ],
+            [
+              8,
+              0
+            ]
+          ]
+        }
+      ],
+      "real_vllm_boundary_notes": [
+        "非首Worker先收元数据，再分配接收buffer并提交tensor irecv；AsyncIntermediateTensors在消费前等待完成。",
+        "Qwen2实际中间对象携带hidden_states与residual；此处数值教学算子省略residual，不能凭空将它设零冒充真实值。",
+        "模型return→Runner return→本地Worker，只返回对象；isend_tensor_dict才提交跨rank发送。",
+        "末stage返回hidden之后，真实Runner另行选择logits_indices并compute_logits，再采样；本数值实例终止于hidden。",
+        "跨stage数据传输保持矩阵数值与token行序不变；下一stage计算才改变数值。"
+      ],
+      "sources": [
+        {
+          "file": "vllm/v1/worker/gpu_worker.py",
+          "line": 1277,
+          "role": "非首Worker接收"
+        },
+        {
+          "file": "vllm/distributed/parallel_state.py",
+          "line": 1318,
+          "role": "元数据接收先于数据irecv"
+        },
+        {
+          "file": "vllm/v1/worker/gpu_worker.py",
+          "line": 1314,
+          "role": "Worker实际提交发送"
+        },
+        {
+          "file": "vllm/v1/worker/gpu_model_runner.py",
+          "line": 4400,
+          "role": "非末返回对象，末stage另算logits"
+        }
+      ]
+    },
+    "validation": {
+      "status": "passed",
+      "method": "Python standard library fractions.Fraction; hand-written expected matrices; independent row-wise oracle",
+      "assertions": [
+        "EP: each routed token has exactly 2 choices with weights summing to 1",
+        "EP: all four dispatch matrices, pre-ReLU matrices and expert output matrices equal handwritten expectations",
+        "EP: exactly 8 logical token-expert items, 4 cross-rank items; expert ownership is E0/E1→R0, E2/E3→R1",
+        "EP: weighted contributions and source-order combined matrix equal handwritten Fraction expectations",
+        "EP: combined result equals independent direct weighted-expert oracle without dispatch ordering",
+        "PP: each pre-ReLU/output matrix equals handwritten expectations",
+        "PP: every transfer preserves values and row order; receiver input equals previous stage output",
+        "PP: final hidden equals independent serial row-wise result [[15,3],[8,0]]"
+      ],
+      "limits": "Arithmetic and source-semantics validation only. No benchmark, model execution, GPU/NPU transfer, HTML or browser validation."
+    }
+  },
+  "spcp": {
+    "schema_version": 1,
+    "display_precision": 4,
+    "computation": "Python float64; full_precision is authoritative; display rounds numerical matrices to 4 decimal places. Format numbers with toFixed(4) if trailing zeros are required.",
+    "source_baseline": "upstream vLLM 295c062db8",
+    "sp": {
+      "title": "SP: token shard → All-Gather → real TP causal attention → Reduce-Scatter",
+      "scope": "A minimal two-head attention + output projection, not a complete DeepSeek layer. Norm, residual and MLP are omitted. X has four tokens, two hidden columns; each attention head has dimension one. Q=K=V=X by identity projection; causal attention; scale=1/sqrt(1)=1. Wo rows belong to the corresponding head/rank.",
+      "shapes": {
+        "X": "[tokens=4, hidden=2]",
+        "initial_X_per_rank": "[2,2]",
+        "X_after_AG_per_rank": "[4,2]",
+        "head_Q_K_V_per_rank": "[4,1]",
+        "attention_head_output_per_rank": "[4,1]",
+        "Wo_row_per_rank": "[1,2]",
+        "partial_output_per_rank": "[4,2]",
+        "RS_output_per_rank": "[2,2]"
+      },
+      "steps": [
+        {
+          "n": 1,
+          "operation": "Token sharding",
+          "description": "rank0 owns tokens 0,1; rank1 owns tokens 2,3. Each token row retains both hidden columns."
+        },
+        {
+          "n": 2,
+          "operation": "All-Gather along token axis",
+          "description": "Both ranks receive the full X, [4,2]. This is concatenation, not SUM."
+        },
+        {
+          "n": 3,
+          "operation": "Local head projection and causal attention",
+          "description": "rank0 computes Q/K/V from column 0 and head0; rank1 uses column 1 and head1. Each head attends to tokens at or before the query token; masked score entries are null and masked probabilities are zero."
+        },
+        {
+          "n": 4,
+          "operation": "Local output-projection contribution",
+          "description": "A_r = head_output_r @ Wo_row_r. Both A0 and A1 are [4,2] partial sums computed from real attention; they are not fabricated attention outputs."
+        },
+        {
+          "n": 5,
+          "operation": "Reduce-Scatter SUM along token axis",
+          "description": "Y=A0+A1. The collective sums contributions and returns rows 0,1 to rank0 and rows 2,3 to rank1. Y shown in the diagram is the mathematical full result, not a required intermediate all-reduce."
+        },
+        {
+          "n": 6,
+          "operation": "Verify",
+          "description": "Concatenate the two output token shards and compare with unsharded concat(head0,head1) @ Wo."
+        }
+      ],
+      "formulas": [
+        "P_h[t,j] = softmax_j(Q_h[t] * K_h[j]), j <= t",
+        "H_h[t] = sum_j P_h[t,j] * V_h[j]",
+        "A_r = H_r @ Wo[r:r+1,:]",
+        "Y = A_0 + A_1; rank0=Y[0:2,:], rank1=Y[2:4,:]"
+      ],
+      "full_precision": {
+        "X": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            2,
+            1
+          ]
+        ],
+        "initial_rank_token_shards": {
+          "rank0": [
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "rank1": [
+            [
+              1,
+              1
+            ],
+            [
+              2,
+              1
+            ]
+          ]
+        },
+        "after_all_gather": {
+          "rank0": [
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              2,
+              1
+            ]
+          ],
+          "rank1": [
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              2,
+              1
+            ]
+          ]
+        },
+        "Wq": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "Wk": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "Wv": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "Wo": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            1
+          ]
+        ],
+        "head_calculations": [
+          {
+            "rank": 0,
+            "head": 0,
+            "Q": [
+              [
+                1
+              ],
+              [
+                0
+              ],
+              [
+                1
+              ],
+              [
+                2
+              ]
+            ],
+            "K": [
+              [
+                1
+              ],
+              [
+                0
+              ],
+              [
+                1
+              ],
+              [
+                2
+              ]
+            ],
+            "V": [
+              [
+                1
+              ],
+              [
+                0
+              ],
+              [
+                1
+              ],
+              [
+                2
+              ]
+            ],
+            "causal_scores": [
+              [
+                1,
+                null,
+                null,
+                null
+              ],
+              [
+                0,
+                0,
+                null,
+                null
+              ],
+              [
+                1,
+                0,
+                1,
+                null
+              ],
+              [
+                2,
+                0,
+                2,
+                4
+              ]
+            ],
+            "causal_probabilities": [
+              [
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                0.5,
+                0.5,
+                0,
+                0
+              ],
+              [
+                0.4223187982515182,
+                0.15536240349696362,
+                0.4223187982515182,
+                0
+              ],
+              [
+                0.10499358540350652,
+                0.014209336618611037,
+                0.10499358540350652,
+                0.7758034925743759
+              ]
+            ],
+            "attention_head_output": [
+              [
+                1
+              ],
+              [
+                0.5
+              ],
+              [
+                0.8446375965030364
+              ],
+              [
+                1.7615941559557649
+              ]
+            ],
+            "LSE": [
+              1,
+              0.6931471805599453,
+              1.8619948040582512,
+              4.253856022085945
+            ],
+            "Wo_row": [
+              [
+                1,
+                2
+              ]
+            ],
+            "partial_output": [
+              [
+                1,
+                2
+              ],
+              [
+                0.5,
+                1
+              ],
+              [
+                0.8446375965030364,
+                1.6892751930060728
+              ],
+              [
+                1.7615941559557649,
+                3.5231883119115297
+              ]
+            ]
+          },
+          {
+            "rank": 1,
+            "head": 1,
+            "Q": [
+              [
+                0
+              ],
+              [
+                1
+              ],
+              [
+                1
+              ],
+              [
+                1
+              ]
+            ],
+            "K": [
+              [
+                0
+              ],
+              [
+                1
+              ],
+              [
+                1
+              ],
+              [
+                1
+              ]
+            ],
+            "V": [
+              [
+                0
+              ],
+              [
+                1
+              ],
+              [
+                1
+              ],
+              [
+                1
+              ]
+            ],
+            "causal_scores": [
+              [
+                0,
+                null,
+                null,
+                null
+              ],
+              [
+                0,
+                1,
+                null,
+                null
+              ],
+              [
+                0,
+                1,
+                1,
+                null
+              ],
+              [
+                0,
+                1,
+                1,
+                1
+              ]
+            ],
+            "causal_probabilities": [
+              [
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                0.2689414213699951,
+                0.7310585786300049,
+                0,
+                0
+              ],
+              [
+                0.15536240349696362,
+                0.4223187982515182,
+                0.4223187982515182,
+                0
+              ],
+              [
+                0.10923177257303593,
+                0.2969227424756547,
+                0.2969227424756547,
+                0.2969227424756547
+              ]
+            ],
+            "attention_head_output": [
+              [
+                0
+              ],
+              [
+                0.7310585786300049
+              ],
+              [
+                0.8446375965030364
+              ],
+              [
+                0.8907682274269642
+              ]
+            ],
+            "LSE": [
+              0,
+              1.3132616875182228,
+              1.8619948040582512,
+              2.2142833003627604
+            ],
+            "Wo_row": [
+              [
+                3,
+                1
+              ]
+            ],
+            "partial_output": [
+              [
+                0,
+                0
+              ],
+              [
+                2.193175735890015,
+                0.7310585786300049
+              ],
+              [
+                2.533912789509109,
+                0.8446375965030364
+              ],
+              [
+                2.6723046822808927,
+                0.8907682274269642
+              ]
+            ]
+          }
+        ],
+        "sum_of_partial_outputs": [
+          [
+            1,
+            2
+          ],
+          [
+            2.693175735890015,
+            1.7310585786300048
+          ],
+          [
+            3.3785503860121455,
+            2.533912789509109
+          ],
+          [
+            4.433898838236658,
+            4.413956539338494
+          ]
+        ],
+        "reduce_scatter_outputs": {
+          "rank0": [
+            [
+              1,
+              2
+            ],
+            [
+              2.693175735890015,
+              1.7310585786300048
+            ]
+          ],
+          "rank1": [
+            [
+              3.3785503860121455,
+              2.533912789509109
+            ],
+            [
+              4.433898838236658,
+              4.413956539338494
+            ]
+          ]
+        },
+        "unsharded_concat_head_output": [
+          [
+            1,
+            0
+          ],
+          [
+            0.5,
+            0.7310585786300049
+          ],
+          [
+            0.8446375965030364,
+            0.8446375965030364
+          ],
+          [
+            1.7615941559557649,
+            0.8907682274269642
+          ]
+        ],
+        "unsharded_reference": [
+          [
+            1,
+            2
+          ],
+          [
+            2.693175735890015,
+            1.7310585786300048
+          ],
+          [
+            3.3785503860121455,
+            2.533912789509109
+          ],
+          [
+            4.433898838236658,
+            4.413956539338494
+          ]
+        ]
+      },
+      "display": {
+        "X": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            2,
+            1
+          ]
+        ],
+        "initial_rank_token_shards": {
+          "rank0": [
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "rank1": [
+            [
+              1,
+              1
+            ],
+            [
+              2,
+              1
+            ]
+          ]
+        },
+        "after_all_gather": {
+          "rank0": [
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              2,
+              1
+            ]
+          ],
+          "rank1": [
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              2,
+              1
+            ]
+          ]
+        },
+        "Wq": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "Wk": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "Wv": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "Wo": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            1
+          ]
+        ],
+        "head_calculations": [
+          {
+            "rank": 0,
+            "head": 0,
+            "Q": [
+              [
+                1
+              ],
+              [
+                0
+              ],
+              [
+                1
+              ],
+              [
+                2
+              ]
+            ],
+            "K": [
+              [
+                1
+              ],
+              [
+                0
+              ],
+              [
+                1
+              ],
+              [
+                2
+              ]
+            ],
+            "V": [
+              [
+                1
+              ],
+              [
+                0
+              ],
+              [
+                1
+              ],
+              [
+                2
+              ]
+            ],
+            "causal_scores": [
+              [
+                1,
+                null,
+                null,
+                null
+              ],
+              [
+                0,
+                0,
+                null,
+                null
+              ],
+              [
+                1,
+                0,
+                1,
+                null
+              ],
+              [
+                2,
+                0,
+                2,
+                4
+              ]
+            ],
+            "causal_probabilities": [
+              [
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                0.5,
+                0.5,
+                0,
+                0
+              ],
+              [
+                0.4223,
+                0.1554,
+                0.4223,
+                0
+              ],
+              [
+                0.105,
+                0.0142,
+                0.105,
+                0.7758
+              ]
+            ],
+            "attention_head_output": [
+              [
+                1
+              ],
+              [
+                0.5
+              ],
+              [
+                0.8446
+              ],
+              [
+                1.7616
+              ]
+            ],
+            "LSE": [
+              1,
+              0.6931,
+              1.862,
+              4.2539
+            ],
+            "Wo_row": [
+              [
+                1,
+                2
+              ]
+            ],
+            "partial_output": [
+              [
+                1,
+                2
+              ],
+              [
+                0.5,
+                1
+              ],
+              [
+                0.8446,
+                1.6893
+              ],
+              [
+                1.7616,
+                3.5232
+              ]
+            ]
+          },
+          {
+            "rank": 1,
+            "head": 1,
+            "Q": [
+              [
+                0
+              ],
+              [
+                1
+              ],
+              [
+                1
+              ],
+              [
+                1
+              ]
+            ],
+            "K": [
+              [
+                0
+              ],
+              [
+                1
+              ],
+              [
+                1
+              ],
+              [
+                1
+              ]
+            ],
+            "V": [
+              [
+                0
+              ],
+              [
+                1
+              ],
+              [
+                1
+              ],
+              [
+                1
+              ]
+            ],
+            "causal_scores": [
+              [
+                0,
+                null,
+                null,
+                null
+              ],
+              [
+                0,
+                1,
+                null,
+                null
+              ],
+              [
+                0,
+                1,
+                1,
+                null
+              ],
+              [
+                0,
+                1,
+                1,
+                1
+              ]
+            ],
+            "causal_probabilities": [
+              [
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                0.2689,
+                0.7311,
+                0,
+                0
+              ],
+              [
+                0.1554,
+                0.4223,
+                0.4223,
+                0
+              ],
+              [
+                0.1092,
+                0.2969,
+                0.2969,
+                0.2969
+              ]
+            ],
+            "attention_head_output": [
+              [
+                0
+              ],
+              [
+                0.7311
+              ],
+              [
+                0.8446
+              ],
+              [
+                0.8908
+              ]
+            ],
+            "LSE": [
+              0,
+              1.3133,
+              1.862,
+              2.2143
+            ],
+            "Wo_row": [
+              [
+                3,
+                1
+              ]
+            ],
+            "partial_output": [
+              [
+                0,
+                0
+              ],
+              [
+                2.1932,
+                0.7311
+              ],
+              [
+                2.5339,
+                0.8446
+              ],
+              [
+                2.6723,
+                0.8908
+              ]
+            ]
+          }
+        ],
+        "sum_of_partial_outputs": [
+          [
+            1,
+            2
+          ],
+          [
+            2.6932,
+            1.7311
+          ],
+          [
+            3.3786,
+            2.5339
+          ],
+          [
+            4.4339,
+            4.414
+          ]
+        ],
+        "reduce_scatter_outputs": {
+          "rank0": [
+            [
+              1,
+              2
+            ],
+            [
+              2.6932,
+              1.7311
+            ]
+          ],
+          "rank1": [
+            [
+              3.3786,
+              2.5339
+            ],
+            [
+              4.4339,
+              4.414
+            ]
+          ]
+        },
+        "unsharded_concat_head_output": [
+          [
+            1,
+            0
+          ],
+          [
+            0.5,
+            0.7311
+          ],
+          [
+            0.8446,
+            0.8446
+          ],
+          [
+            1.7616,
+            0.8908
+          ]
+        ],
+        "unsharded_reference": [
+          [
+            1,
+            2
+          ],
+          [
+            2.6932,
+            1.7311
+          ],
+          [
+            3.3786,
+            2.5339
+          ],
+          [
+            4.4339,
+            4.414
+          ]
+        ]
+      },
+      "verification": {
+        "max_abs_error_vs_unsharded": 0,
+        "passed": true,
+        "runtime_validation": false
+      }
+    },
+    "cp": {
+      "title": "DCP: KV-token shards → local softmax O/LSE → LSE correction → head Reduce-Scatter → current-token merge",
+      "scope": "FlashAttention DCP AG+RS combine path. One decode query token, four history tokens, two Q heads and one shared GQA KV head, head_dim=2. Global Q/K/V values are illustrative but all attention/merge values are calculated. Historical tokens use interleave size 1: rank0 tokens 0,2; rank1 tokens 1,3. Current token is token4. The singleton query-token dimension is omitted from displayed matrices.",
+      "exact_Q_definition": "Q_head0=[sqrt(2),0], Q_head1=[0,sqrt(2)]; scale=1/sqrt(2), so history scores are exactly [1,0,2,0] and [0,1,0,2] in mathematical real arithmetic.",
+      "shapes": {
+        "initial_Q_per_rank": "[query_tokens=1, local_Q_heads=1, head_dim=2]",
+        "Q_after_AG_per_rank": "[1,2,2]",
+        "historical_KV_per_rank": "[history_tokens=2, KV_heads=1, head_dim=2]",
+        "local_O_per_rank": "[1,2,2]",
+        "local_LSE_per_rank": "[1,2]",
+        "all_gathered_LSE": "[ranks=2, query_tokens=1, Q_heads=2]",
+        "corrected_O_per_rank": "[1,2,2]",
+        "history_RS_output_per_rank": "[1,1,2]",
+        "history_RS_LSE_per_rank": "[1,1]",
+        "current_KV_per_rank": "[1,1,2]",
+        "final_O_per_rank": "[1,1,2]"
+      },
+      "steps": [
+        {
+          "n": 1,
+          "operation": "Own Q heads and historical KV-token shards",
+          "description": "rank0 initially has Q head0 and KV for history tokens 0,2; rank1 has Q head1 and KV for tokens 1,3. KV head count stays one; context is sharded by token positions."
+        },
+        {
+          "n": 2,
+          "operation": "All-Gather Q along head axis",
+          "description": "Each rank obtains both Q heads, shape [1,2,2], to query its own history shard."
+        },
+        {
+          "n": 3,
+          "operation": "Local softmax attention",
+          "description": "For each Q head calculate local scores QK^T/sqrt(2), local softmax, normalized local O and local natural-log LSE. Local O values cannot be directly averaged or summed."
+        },
+        {
+          "n": 4,
+          "operation": "All-Gather LSE and reweight local O",
+          "description": "L_hist[h]=logsumexp(L_0[h],L_1[h]); alpha_r[h]=exp(L_r[h]-L_hist[h]); C_r[h]=alpha_r[h]*O_r[h]. This needs gathered LSE, not a full historical-KV gather."
+        },
+        {
+          "n": 5,
+          "operation": "Reduce-Scatter SUM along Q-head axis",
+          "description": "Mathematically O_hist=C0+C1. One reduce-scatter performs this SUM and returns head0 to rank0, head1 to rank1. The full summed O in JSON is explanatory; do not draw an extra SUM communication followed by another RS reduction. Each rank also selects its matching global LSE head slice."
+        },
+        {
+          "n": 6,
+          "operation": "Current-token attention on each local Q head",
+          "description": "Current token K=[1,1], V=[2,2] is available to each local Q head through the replicated single KV head. With one key, current O=V and LSE=its score=1. Historical context excludes this token, so it is not double-counted."
+        },
+        {
+          "n": 7,
+          "operation": "Merge history and current token states",
+          "description": "L_final=logaddexp(L_hist,L_cur); O_final=exp(L_hist-L_final)*O_hist + exp(L_cur-L_final)*O_cur. Each rank merges its own head locally. This merge combines attention states; it is not a KV-buffer concat or a second cross-rank reduction."
+        },
+        {
+          "n": 8,
+          "operation": "Verify against full attention",
+          "description": "Compare final per-head outputs against one softmax over all five tokens [history0..3,current4]. Verify history-only combine separately against four-token full attention."
+        }
+      ],
+      "formulas": [
+        "S_r[h,j]=dot(Q[h],K_r[j])/sqrt(2)",
+        "L_r[h]=log(sum_j exp(S_r[h,j]))",
+        "O_r[h]=sum_j exp(S_r[h,j]-L_r[h])*V_r[j]",
+        "L_hist[h]=logsumexp_r(L_r[h])",
+        "C_r[h]=exp(L_r[h]-L_hist[h])*O_r[h]",
+        "O_hist[h]=sum_r C_r[h]",
+        "L_final[h]=logaddexp(L_hist[h],L_cur[h])",
+        "O_final[h]=exp(L_hist[h]-L_final[h])*O_hist[h]+exp(L_cur[h]-L_final[h])*O_cur[h]"
+      ],
+      "full_precision": {
+        "Q_all_heads": [
+          [
+            1.4142135623730951,
+            0
+          ],
+          [
+            0,
+            1.4142135623730951
+          ]
+        ],
+        "initial_Q_by_rank": {
+          "rank0": [
+            [
+              1.4142135623730951,
+              0
+            ]
+          ],
+          "rank1": [
+            [
+              0,
+              1.4142135623730951
+            ]
+          ]
+        },
+        "Q_after_all_gather_by_rank": {
+          "rank0": [
+            [
+              1.4142135623730951,
+              0
+            ],
+            [
+              0,
+              1.4142135623730951
+            ]
+          ],
+          "rank1": [
+            [
+              1.4142135623730951,
+              0
+            ],
+            [
+              0,
+              1.4142135623730951
+            ]
+          ]
+        },
+        "history_K": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            0,
+            2
+          ]
+        ],
+        "history_V": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            1
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "history_shards": [
+          {
+            "rank": 0,
+            "history_token_indices": [
+              0,
+              2
+            ],
+            "K": [
+              [
+                1,
+                0
+              ],
+              [
+                2,
+                0
+              ]
+            ],
+            "V": [
+              [
+                1,
+                0
+              ],
+              [
+                2,
+                1
+              ]
+            ],
+            "scores": [
+              [
+                1,
+                2
+              ],
+              [
+                0,
+                0
+              ]
+            ],
+            "probabilities": [
+              [
+                0.2689414213699951,
+                0.7310585786300049
+              ],
+              [
+                0.5,
+                0.5
+              ]
+            ],
+            "O": [
+              [
+                1.7310585786300048,
+                0.7310585786300049
+              ],
+              [
+                1.5,
+                0.5
+              ]
+            ],
+            "LSE": [
+              2.313261687518223,
+              0.6931471805599453
+            ]
+          },
+          {
+            "rank": 1,
+            "history_token_indices": [
+              1,
+              3
+            ],
+            "K": [
+              [
+                0,
+                1
+              ],
+              [
+                0,
+                2
+              ]
+            ],
+            "V": [
+              [
+                0,
+                1
+              ],
+              [
+                1,
+                2
+              ]
+            ],
+            "scores": [
+              [
+                0,
+                0
+              ],
+              [
+                1,
+                2
+              ]
+            ],
+            "probabilities": [
+              [
+                0.5,
+                0.5
+              ],
+              [
+                0.2689414213699951,
+                0.7310585786300049
+              ]
+            ],
+            "O": [
+              [
+                0.5,
+                1.5
+              ],
+              [
+                0.7310585786300049,
+                1.7310585786300048
+              ]
+            ],
+            "LSE": [
+              0.6931471805599453,
+              2.313261687518223
+            ]
+          }
+        ],
+        "all_gathered_LSE_rank_by_head": [
+          [
+            2.313261687518223,
+            0.6931471805599453
+          ],
+          [
+            0.6931471805599453,
+            2.313261687518223
+          ]
+        ],
+        "global_history_LSE": [
+          2.4938117090722387,
+          2.4938117090722387
+        ],
+        "correction_factors_rank_by_head": [
+          [
+            0.8348109211129293,
+            0.16518907888707074
+          ],
+          [
+            0.16518907888707074,
+            0.8348109211129293
+          ]
+        ],
+        "corrected_O_rank_by_head_dim": [
+          [
+            [
+              1.4451066065265525,
+              0.6102956854136232
+            ],
+            [
+              0.2477836183306061,
+              0.08259453944353537
+            ]
+          ],
+          [
+            [
+              0.08259453944353537,
+              0.2477836183306061
+            ],
+            [
+              0.6102956854136232,
+              1.4451066065265525
+            ]
+          ]
+        ],
+        "history_sum_all_heads_for_explanation": [
+          [
+            1.527701145970088,
+            0.8580793037442294
+          ],
+          [
+            0.8580793037442294,
+            1.527701145970088
+          ]
+        ],
+        "history_reduce_scatter_outputs": {
+          "rank0": {
+            "head": 0,
+            "O": [
+              [
+                1.527701145970088,
+                0.8580793037442294
+              ]
+            ],
+            "LSE": [
+              2.4938117090722387
+            ]
+          },
+          "rank1": {
+            "head": 1,
+            "O": [
+              [
+                0.8580793037442294,
+                1.527701145970088
+              ]
+            ],
+            "LSE": [
+              2.4938117090722387
+            ]
+          }
+        },
+        "current_token_K": [
+          [
+            1,
+            1
+          ]
+        ],
+        "current_token_V": [
+          [
+            2,
+            2
+          ]
+        ],
+        "current_token_attention_all_heads": {
+          "scores": [
+            [
+              1
+            ],
+            [
+              1
+            ]
+          ],
+          "probabilities": [
+            [
+              1
+            ],
+            [
+              1
+            ]
+          ],
+          "O": [
+            [
+              2,
+              2
+            ],
+            [
+              2,
+              2
+            ]
+          ],
+          "LSE": [
+            1,
+            1
+          ]
+        },
+        "current_token_attention_by_rank": {
+          "rank0": {
+            "head": 0,
+            "O": [
+              [
+                2,
+                2
+              ]
+            ],
+            "LSE": [
+              1
+            ]
+          },
+          "rank1": {
+            "head": 1,
+            "O": [
+              [
+                2,
+                2
+              ]
+            ],
+            "LSE": [
+              1
+            ]
+          }
+        },
+        "merge_history_weight": [
+          0.8166497000985959,
+          0.8166497000985959
+        ],
+        "merge_current_weight": [
+          0.18335029990140383,
+          0.18335029990140383
+        ],
+        "final_LSE": [
+          2.6963567487889986,
+          2.6963567487889986
+        ],
+        "final_O_all_heads": [
+          [
+            1.6142972824995614,
+            1.0674508058663446
+          ],
+          [
+            1.0674508058663446,
+            1.6142972824995614
+          ]
+        ],
+        "final_O_by_rank": {
+          "rank0": [
+            [
+              1.6142972824995614,
+              1.0674508058663446
+            ]
+          ],
+          "rank1": [
+            [
+              1.0674508058663446,
+              1.6142972824995614
+            ]
+          ]
+        },
+        "unsharded_history_reference": {
+          "scores": [
+            [
+              1,
+              0,
+              2,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              2
+            ]
+          ],
+          "probabilities": [
+            [
+              0.22451523569930606,
+              0.08259453944353537,
+              0.6102956854136232,
+              0.08259453944353537
+            ],
+            [
+              0.08259453944353537,
+              0.22451523569930606,
+              0.08259453944353537,
+              0.6102956854136232
+            ]
+          ],
+          "O": [
+            [
+              1.527701145970088,
+              0.8580793037442294
+            ],
+            [
+              0.8580793037442294,
+              1.527701145970088
+            ]
+          ],
+          "LSE": [
+            2.4938117090722387,
+            2.4938117090722387
+          ]
+        },
+        "unsharded_5_token_reference": {
+          "scores": [
+            [
+              1,
+              0,
+              2,
+              0,
+              1
+            ],
+            [
+              0,
+              1,
+              0,
+              2,
+              1
+            ]
+          ],
+          "probabilities": [
+            [
+              0.1833502999014039,
+              0.06745080586634482,
+              0.49839778846450244,
+              0.06745080586634482,
+              0.1833502999014039
+            ],
+            [
+              0.06745080586634482,
+              0.1833502999014039,
+              0.06745080586634482,
+              0.49839778846450244,
+              0.1833502999014039
+            ]
+          ],
+          "O": [
+            [
+              1.6142972824995614,
+              1.0674508058663448
+            ],
+            [
+              1.0674508058663448,
+              1.6142972824995614
+            ]
+          ],
+          "LSE": [
+            2.6963567487889986,
+            2.6963567487889986
+          ]
+        }
+      },
+      "display": {
+        "Q_all_heads": [
+          [
+            1.4142,
+            0
+          ],
+          [
+            0,
+            1.4142
+          ]
+        ],
+        "initial_Q_by_rank": {
+          "rank0": [
+            [
+              1.4142,
+              0
+            ]
+          ],
+          "rank1": [
+            [
+              0,
+              1.4142
+            ]
+          ]
+        },
+        "Q_after_all_gather_by_rank": {
+          "rank0": [
+            [
+              1.4142,
+              0
+            ],
+            [
+              0,
+              1.4142
+            ]
+          ],
+          "rank1": [
+            [
+              1.4142,
+              0
+            ],
+            [
+              0,
+              1.4142
+            ]
+          ]
+        },
+        "history_K": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            0,
+            2
+          ]
+        ],
+        "history_V": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            1
+          ],
+          [
+            1,
+            2
+          ]
+        ],
+        "history_shards": [
+          {
+            "rank": 0,
+            "history_token_indices": [
+              0,
+              2
+            ],
+            "K": [
+              [
+                1,
+                0
+              ],
+              [
+                2,
+                0
+              ]
+            ],
+            "V": [
+              [
+                1,
+                0
+              ],
+              [
+                2,
+                1
+              ]
+            ],
+            "scores": [
+              [
+                1,
+                2
+              ],
+              [
+                0,
+                0
+              ]
+            ],
+            "probabilities": [
+              [
+                0.2689,
+                0.7311
+              ],
+              [
+                0.5,
+                0.5
+              ]
+            ],
+            "O": [
+              [
+                1.7311,
+                0.7311
+              ],
+              [
+                1.5,
+                0.5
+              ]
+            ],
+            "LSE": [
+              2.3133,
+              0.6931
+            ]
+          },
+          {
+            "rank": 1,
+            "history_token_indices": [
+              1,
+              3
+            ],
+            "K": [
+              [
+                0,
+                1
+              ],
+              [
+                0,
+                2
+              ]
+            ],
+            "V": [
+              [
+                0,
+                1
+              ],
+              [
+                1,
+                2
+              ]
+            ],
+            "scores": [
+              [
+                0,
+                0
+              ],
+              [
+                1,
+                2
+              ]
+            ],
+            "probabilities": [
+              [
+                0.5,
+                0.5
+              ],
+              [
+                0.2689,
+                0.7311
+              ]
+            ],
+            "O": [
+              [
+                0.5,
+                1.5
+              ],
+              [
+                0.7311,
+                1.7311
+              ]
+            ],
+            "LSE": [
+              0.6931,
+              2.3133
+            ]
+          }
+        ],
+        "all_gathered_LSE_rank_by_head": [
+          [
+            2.3133,
+            0.6931
+          ],
+          [
+            0.6931,
+            2.3133
+          ]
+        ],
+        "global_history_LSE": [
+          2.4938,
+          2.4938
+        ],
+        "correction_factors_rank_by_head": [
+          [
+            0.8348,
+            0.1652
+          ],
+          [
+            0.1652,
+            0.8348
+          ]
+        ],
+        "corrected_O_rank_by_head_dim": [
+          [
+            [
+              1.4451,
+              0.6103
+            ],
+            [
+              0.2478,
+              0.0826
+            ]
+          ],
+          [
+            [
+              0.0826,
+              0.2478
+            ],
+            [
+              0.6103,
+              1.4451
+            ]
+          ]
+        ],
+        "history_sum_all_heads_for_explanation": [
+          [
+            1.5277,
+            0.8581
+          ],
+          [
+            0.8581,
+            1.5277
+          ]
+        ],
+        "history_reduce_scatter_outputs": {
+          "rank0": {
+            "head": 0,
+            "O": [
+              [
+                1.5277,
+                0.8581
+              ]
+            ],
+            "LSE": [
+              2.4938
+            ]
+          },
+          "rank1": {
+            "head": 1,
+            "O": [
+              [
+                0.8581,
+                1.5277
+              ]
+            ],
+            "LSE": [
+              2.4938
+            ]
+          }
+        },
+        "current_token_K": [
+          [
+            1,
+            1
+          ]
+        ],
+        "current_token_V": [
+          [
+            2,
+            2
+          ]
+        ],
+        "current_token_attention_all_heads": {
+          "scores": [
+            [
+              1
+            ],
+            [
+              1
+            ]
+          ],
+          "probabilities": [
+            [
+              1
+            ],
+            [
+              1
+            ]
+          ],
+          "O": [
+            [
+              2,
+              2
+            ],
+            [
+              2,
+              2
+            ]
+          ],
+          "LSE": [
+            1,
+            1
+          ]
+        },
+        "current_token_attention_by_rank": {
+          "rank0": {
+            "head": 0,
+            "O": [
+              [
+                2,
+                2
+              ]
+            ],
+            "LSE": [
+              1
+            ]
+          },
+          "rank1": {
+            "head": 1,
+            "O": [
+              [
+                2,
+                2
+              ]
+            ],
+            "LSE": [
+              1
+            ]
+          }
+        },
+        "merge_history_weight": [
+          0.8166,
+          0.8166
+        ],
+        "merge_current_weight": [
+          0.1834,
+          0.1834
+        ],
+        "final_LSE": [
+          2.6964,
+          2.6964
+        ],
+        "final_O_all_heads": [
+          [
+            1.6143,
+            1.0675
+          ],
+          [
+            1.0675,
+            1.6143
+          ]
+        ],
+        "final_O_by_rank": {
+          "rank0": [
+            [
+              1.6143,
+              1.0675
+            ]
+          ],
+          "rank1": [
+            [
+              1.0675,
+              1.6143
+            ]
+          ]
+        },
+        "unsharded_history_reference": {
+          "scores": [
+            [
+              1,
+              0,
+              2,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              2
+            ]
+          ],
+          "probabilities": [
+            [
+              0.2245,
+              0.0826,
+              0.6103,
+              0.0826
+            ],
+            [
+              0.0826,
+              0.2245,
+              0.0826,
+              0.6103
+            ]
+          ],
+          "O": [
+            [
+              1.5277,
+              0.8581
+            ],
+            [
+              0.8581,
+              1.5277
+            ]
+          ],
+          "LSE": [
+            2.4938,
+            2.4938
+          ]
+        },
+        "unsharded_5_token_reference": {
+          "scores": [
+            [
+              1,
+              0,
+              2,
+              0,
+              1
+            ],
+            [
+              0,
+              1,
+              0,
+              2,
+              1
+            ]
+          ],
+          "probabilities": [
+            [
+              0.1834,
+              0.0675,
+              0.4984,
+              0.0675,
+              0.1834
+            ],
+            [
+              0.0675,
+              0.1834,
+              0.0675,
+              0.4984,
+              0.1834
+            ]
+          ],
+          "O": [
+            [
+              1.6143,
+              1.0675
+            ],
+            [
+              1.0675,
+              1.6143
+            ]
+          ],
+          "LSE": [
+            2.6964,
+            2.6964
+          ]
+        }
+      },
+      "verification": {
+        "history_max_abs_error_vs_unsharded": 0,
+        "final_max_abs_error_vs_unsharded": 2.220446049250313e-16,
+        "passed": true,
+        "runtime_validation": false
+      },
+      "sources": [
+        {
+          "path": "E:/code/vllm/vllm/v1/attention/backends/flash_attn.py",
+          "line": 1595,
+          "meaning": "Query all_gather dim=1 (heads)",
+          "url": "https://github.com/vllm-project/vllm/blob/295c062db8/vllm/v1/attention/backends/flash_attn.py#L1595"
+        },
+        {
+          "path": "E:/code/vllm/vllm/v1/attention/ops/dcp.py",
+          "line": 458,
+          "meaning": "Gather LSE then correct local output",
+          "url": "https://github.com/vllm-project/vllm/blob/295c062db8/vllm/v1/attention/ops/dcp.py#L458"
+        },
+        {
+          "path": "E:/code/vllm/vllm/v1/attention/ops/dcp.py",
+          "line": 493,
+          "meaning": "reduce_scatter dim=1; slice matching global LSE",
+          "url": "https://github.com/vllm-project/vllm/blob/295c062db8/vllm/v1/attention/ops/dcp.py#L493"
+        },
+        {
+          "path": "E:/code/vllm/vllm/v1/attention/backends/flash_attn.py",
+          "line": 1692,
+          "meaning": "Compute current-token attention, then merge_attn_states at line1715",
+          "url": "https://github.com/vllm-project/vllm/blob/295c062db8/vllm/v1/attention/backends/flash_attn.py#L1692"
+        }
+      ]
+    }
+  }
+}
