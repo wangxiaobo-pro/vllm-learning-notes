@@ -46,6 +46,13 @@
         <a href="vllm-ascend-graph/index.html">打开捕获、回放与底层调用对照</a>
       </nav>
     </section>
+    <section aria-labelledby="request-lifecycle-title">
+      <h2 id="request-lifecycle-title">vLLM 请求完整生命周期</h2>
+      <p>跟随一个 V1 单卡流式请求，从 HTTP 接入、排队调度、Prefill 与两轮 Decode，到 SSE 输出和结束清理；通过 20 步查看 token、物理 KV 与块引用的变化。</p>
+      <nav aria-label="请求生命周期项目">
+        <a href="request-lifecycle/index.html">打开全局关系与 20 步请求流程</a>
+      </nav>
+    </section>
     <section aria-labelledby="pd-title">
       <h2 id="pd-title">vLLM PD 分离</h2>
       <p>切换 V0 / V1，以 P、D 两侧的 Scheduler 和 Worker 为线索，逐步观察缓存匹配、KV 传输和请求恢复。</p>

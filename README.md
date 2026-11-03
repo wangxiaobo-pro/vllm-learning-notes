@@ -9,6 +9,7 @@
 | Transformer 结构与矩阵 | 模型结构、注意力、MLP、逐步矩阵计算 | [transform](transform/README.md) | [transform/index.html](transform/index.html) |
 | vLLM-Ascend 启动流程 | 组件初始化清单、26 步启动流程、TP 分片、物理 KV 与调度器 | [vllm-ascend-startup](vllm-ascend-startup/README.md) | [vllm-ascend-startup/index.html](vllm-ascend-startup/index.html) |
 | vLLM-Ascend 图优化 | 首次捕获与后续回放、逐算子底层调用、FIA 动态参数更新与条件性融合 | [vllm-ascend-graph](vllm-ascend-graph/README.md) | [vllm-ascend-graph/index.html](vllm-ascend-graph/index.html) |
+| vLLM 请求完整生命周期 | V1 单卡流式请求的 20 步流程、Prefill / Decode、KV 块与结束清理 | [request-lifecycle](request-lifecycle/README.md) | [request-lifecycle/index.html](request-lifecycle/index.html) |
 | vLLM PD 分离 | V0 / V1、P / D、Scheduler / Worker、Mooncake 缓存匹配与传输 | [pd-disaggregation](pd-disaggregation/README.md) | [pd-disaggregation/index.html](pd-disaggregation/index.html) |
 | vLLM 并行流程 | 六种单项并行与 TP+SP、DP+EP、DP+TP+PP 三种组合，默认 TP+SP，附训练 DP 对照 | [parallelism](parallelism/README.md) | [parallelism/index.html](parallelism/index.html) |
 | 通信原语 | 具体数组的发送、归约、汇集、散布与交换，以及 Ring Attention 的 K/V 环传 | [communication-primitives](communication-primitives/README.md) | [communication-primitives/index.html](communication-primitives/index.html) |
@@ -29,6 +30,10 @@ vllm-learning-notes/
 │   ├── index.html                     # Transformer 项目入口
 │   ├── transformer-structure-explorer.html
 │   └── transformer-structure-explorer-matrices.html
+├── request-lifecycle/
+│   ├── README.md
+│   ├── index.html                     # 请求全局关系与 20 步生命周期
+│   └── source.html                    # 可编辑的可视化源片段
 ├── pd-disaggregation/
 │   ├── README.md
 │   └── index.html                     # V0 / V1 PD 分离交互动画

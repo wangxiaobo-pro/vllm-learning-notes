@@ -1,0 +1,2870 @@
+<!doctype html>
+<html lang="zh-CN" data-visualize-standalone>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>vLLM 请求完整生命周期</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;max-width:736px;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
+
+</head>
+<body>
+<iframe id="codex-visualization" sandbox="allow-scripts" referrerpolicy="no-referrer" title="vLLM 请求完整生命周期" data-srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;zh-CN&quot; data-visualize-standalone&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;vLLM 请求完整生命周期&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(
+    --background,
+    var(--color-background-primary, light-dark(rgb(255 255 255), rgb(24 24 24)))
+  ) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: var(
+    --color-background-primary,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --card: color-mix(in oklab, var(--foreground) 5%, var(--background));
+  --card-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --popover: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255), rgb(45 45 45))
+  );
+  --popover-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --primary: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --primary-foreground: var(
+    --color-text-inverse,
+    light-dark(rgb(255 255 255), rgb(13 13 13))
+  );
+  --secondary: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%))
+  );
+  --secondary-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: var(
+    --color-text-secondary,
+    light-dark(rgb(26 28 31 / 49.4%), rgb(255 255 255 / 49.8%))
+  );
+  --accent: var(
+    --color-background-info,
+    light-dark(rgb(229 242 255), rgb(13 39 63))
+  );
+  --accent-foreground: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --destructive: var(
+    --color-text-warning,
+    light-dark(rgb(226 85 7), rgb(255 133 73))
+  );
+  --border: var(
+    --color-border-secondary,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+  --input: var(
+    --color-border-primary,
+    light-dark(
+      rgb(26 28 31 / 11.8%),
+      color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+    )
+  );
+  --ring: var(
+    --color-ring-primary,
+    light-dark(rgb(51 156 255), rgb(131 195 255 / 76%))
+  );
+  --font-size-base: var(--font-text-md-size, 16px);
+  --blue: light-dark(rgb(51 156 255), rgb(51 156 255));
+  --orange: light-dark(rgb(226 85 7), rgb(251 106 34));
+  --green: light-dark(rgb(0 162 64), rgb(64 201 119));
+  --red: light-dark(rgb(224 46 42), rgb(255 103 100));
+  --purple: light-dark(rgb(146 79 247), rgb(173 123 249));
+  --yellow: light-dark(rgb(255 195 0), rgb(255 210 64));
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans:
+    -apple-system-body, ui-sans-serif, -apple-system, system-ui, &quot;Segoe UI&quot;,
+    Helvetica, &quot;Apple Color Emoji&quot;, Arial, sans-serif, &quot;Segoe UI Emoji&quot;,
+    &quot;Segoe UI Symbol&quot;;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --icon-size: 16px;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --corner-shape: round;
+  --radius: var(--border-radius-lg, 8px);
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 2);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  /* Preserve MCP aliases for older inline renderers without creating :root cycles. */
+  --color-background-primary: var(
+    --background,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --color-text-primary: var(
+    --foreground,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --color-border-secondary: var(
+    --border,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+
+  margin: 0;
+  padding: var(--visualize-paint-gutter, 0px);
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans) !important;
+  -webkit-font-smoothing: antialiased;
+  font-size: var(--font-size-base);
+  line-height: calc(var(--font-size-base) * 1.625);
+  font-weight: var(--font-weight-normal);
+}
+
+.cursor-interaction {
+  cursor: var(--cursor-interaction, pointer);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: var(--cursor-interaction, pointer);
+  text-decoration: none;
+  text-underline-offset: 2px;
+  font-weight: inherit;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+li,
+.table {
+  font-family: var(--font-sans);
+}
+
+h1 {
+  font-size: calc(var(--font-size-base) * 1.5);
+  line-height: 1.3333333333;
+}
+
+h2 {
+  font-size: calc(var(--font-size-base) * 1.25);
+  line-height: 1.4;
+}
+h3 {
+  font-size: calc(var(--font-size-base) * 1.125);
+  line-height: 1.5555555556;
+}
+h4 {
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+}
+h5,
+h6 {
+  font-size: var(--font-size-base);
+  line-height: calc(var(--font-size-base) * 1.625);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+b,
+strong,
+th {
+  font-weight: 600;
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: var(--corner-shape);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+pre,
+pre code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: calc(var(--font-size-base) * 0.875);
+  line-height: calc(var(--font-size-base) * 1.625);
+  font-family: var(--font-sans);
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 5%, transparent);
+}
+.table :is(th, td):not(:last-child) {
+  padding-inline-end: calc(var(--font-size-base) * 1.5);
+}
+
+.table-responsive &gt; .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead :is(th, td) {
+  border-bottom-color: var(--border-strong, var(--input));
+  padding-block: calc(var(--font-size-base) / 2);
+  line-height: var(--font-size-base);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+.table tbody :is(th, td) {
+  padding-block: calc(var(--font-size-base) * 0.625);
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 8px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align=&quot;right&quot;]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align=&quot;center&quot;]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: var(--corner-shape);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+.widget {
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  box-shadow: 0 0 0 0.5px var(--border-strong, var(--border));
+  color: var(--foreground);
+  background: var(--background);
+}
+
+#widget &gt; :not(.card, .widget, .progress) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  border: 1px solid var(--border);
+  corner-shape: var(--corner-shape);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+  font-family: var(--font-sans);
+  padding: 5px 12px;
+  border-color: color-mix(
+    in oklab,
+    light-dark(var(--primary-foreground), var(--foreground)) 5%,
+    transparent
+  );
+  border-radius: var(--radius-2xl);
+  color: light-dark(var(--primary-foreground), var(--foreground));
+  background: light-dark(var(--foreground), var(--popover));
+  box-shadow: 0 8px 18px rgb(15 23 42 / 20%);
+  letter-spacing: -0.15px;
+  font-size: calc(var(--font-size-base) * 14 / 16);
+  font-size: round(nearest, calc(var(--font-size-base) * 14 / 16), 1px);
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+hr {
+  width: 100%;
+  height: 1px;
+  margin-block: 6px;
+  border: 0;
+  background: var(--border);
+}
+
+.nav {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.progress {
+  display: flex;
+  height: 8px;
+  margin-block: calc((var(--line-height-normal, 1.5em) - 8px) / 2);
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+}
+
+.progress-bar:only-child {
+  border-radius: var(--radius-full);
+}
+
+.progress-bar {
+  height: 100%;
+  flex-shrink: 0;
+  border: 0;
+  background: var(--viz-series-1);
+}
+
+.viz-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  color: color-mix(in srgb, var(--foreground) 40%, var(--muted-foreground));
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+  font-family: var(--font-sans);
+  font-size: calc(var(--font-size-base) * 14 / 16);
+  font-size: round(nearest, calc(var(--font-size-base) * 14 / 16), 1px);
+  font-weight: var(--font-weight-normal);
+  line-height: 1;
+}
+
+small,
+.text-small {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.nav-link,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+/* Match inline alignment without overriding a containing flex or grid layout. */
+.btn,
+.nav-link,
+.form-control,
+.form-select,
+.form-range,
+.form-check {
+  vertical-align: middle;
+}
+
+.btn,
+.nav-link {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  corner-shape: var(--corner-shape);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: inherit;
+  font-family: var(--font-sans);
+  height: fit-content;
+  min-height: calc(12px + 2 * var(--control-spacing, 12px));
+  padding-inline: var(--control-spacing, 12px);
+  border-color: transparent;
+  border-radius: var(--radius-full);
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+  font-size: calc(var(--font-size-base) * 14 / 16);
+  font-size: round(nearest, calc(var(--font-size-base) * 14 / 16), 1px);
+  font-weight: var(--font-weight-normal);
+  line-height: 18px;
+}
+
+.btn {
+  border-color: var(--border);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: var(--cursor-interaction, pointer);
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: light-dark(
+    color-mix(in srgb, var(--foreground) 5.5%, transparent),
+    color-mix(in srgb, var(--foreground) 8%, transparent)
+  );
+}
+
+.nav-link:not(:disabled):not([aria-disabled=&quot;true&quot;]):hover {
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+
+.btn-primary {
+  border-color: var(--border);
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: border-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: border-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--muted-foreground);
+  background: light-dark(
+    color-mix(in srgb, var(--foreground) 5.5%, transparent),
+    color-mix(in srgb, var(--foreground) 8%, transparent)
+  );
+}
+
+.nav-pills .nav-link {
+  min-width: 0;
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.nav-justified .nav-link {
+  flex: 1 1 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.nav-pills .nav-link.active {
+  color: var(--foreground);
+  background: var(--muted);
+}
+
+/* Shared preview chrome; product styles stay inside each variant. */
+.viz-dotted-background {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--foreground) 14%, transparent) 0.8px,
+    transparent 0.8px
+  );
+  background-position: center;
+  background-size: 16px 16px;
+}
+
+.viz-carousel {
+  position: relative;
+  min-width: 0;
+}
+
+.viz-carousel:has(&gt; .viz-carousel-controls) {
+  min-height: calc(60px + var(--viz-carousel-picker-height, 0px));
+  padding-bottom: 60px;
+}
+
+.viz-carousel &gt; [data-variant][hidden] {
+  display: none !important;
+}
+
+.viz-carousel &gt; [data-variant] {
+  isolation: isolate;
+}
+
+.viz-carousel-controls {
+  --viz-carousel-hover: light-dark(
+    color-mix(in srgb, var(--foreground) 5.4%, transparent),
+    color-mix(in srgb, var(--foreground) 7.8%, transparent)
+  );
+  position: absolute;
+  z-index: 2;
+  bottom: 8px;
+  left: 50%;
+  display: flex;
+  width: max-content;
+  /* Leave room for the host&#x27;s design-controls launcher at the trailing edge. */
+  max-width: calc(100% - 96px);
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-sans);
+  /* Match the settings dropdown chrome independently of the content font size. */
+  font-size: 13px;
+  font-weight: var(--font-weight-normal);
+  line-height: 18px;
+  transform: translateX(-50%);
+  user-select: none;
+}
+
+/* Keep authored mockup button styles out of the shared carousel chrome. */
+.viz-carousel-controls button,
+.viz-carousel-picker &gt; summary {
+  display: flex !important;
+  height: auto !important;
+  min-height: 30px;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px;
+  padding: 0 6px !important;
+  -webkit-app-region: no-drag;
+  border: 0 !important;
+  border-radius: 14px !important;
+  color: inherit !important;
+  background: transparent !important;
+  font: inherit !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.viz-carousel-controls &gt; button,
+.viz-carousel-picker &gt; summary {
+  position: relative;
+  isolation: isolate;
+}
+
+.viz-carousel-controls &gt; button {
+  --icon-size: 16px;
+  width: 30px !important;
+  padding: 0 !important;
+}
+
+.viz-carousel-picker &gt; summary {
+  padding-inline: 12px !important;
+}
+
+.viz-carousel-controls .viz-carousel-caret {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin: 0;
+  color: inherit;
+  transform: rotate(180deg);
+}
+
+.viz-carousel-controls &gt; button &gt; svg,
+.viz-carousel-controls .viz-carousel-caret,
+.viz-carousel-count {
+  opacity: 0.5;
+}
+
+.viz-carousel-controls &gt; button::before,
+.viz-carousel-picker &gt; summary::before {
+  position: absolute;
+  z-index: -1;
+  inset: 3px;
+  border-radius: 12px;
+  content: &quot;&quot;;
+  pointer-events: none;
+}
+
+.viz-carousel-controls &gt; button:hover::before,
+.viz-carousel-picker &gt; summary:hover::before {
+  background: var(--viz-carousel-hover);
+}
+
+.viz-carousel-controls &gt; button,
+.viz-carousel-controls [data-lucide],
+.viz-carousel-controls .lucide {
+  flex-shrink: 0;
+}
+
+.viz-carousel-picker {
+  min-width: 0;
+}
+
+.viz-carousel-picker &gt; summary {
+  min-width: 0;
+  list-style: none;
+}
+
+.viz-carousel-picker &gt; summary::-webkit-details-marker {
+  display: none;
+}
+
+.viz-carousel-count {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.viz-carousel-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viz-carousel-options {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  left: 0;
+  display: flex;
+  max-height: 240px;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--background);
+  box-shadow: 0 4px 12px light-dark(rgb(0 0 0 / 6%), rgb(0 0 0 / 25%));
+}
+
+.viz-carousel-options &gt; button {
+  border-radius: max(0px, calc(var(--radius-lg) - 5px)) !important;
+  width: 100% !important;
+  min-height: 28px;
+  justify-content: flex-start !important;
+  padding: 4px 8px !important;
+  font-size: var(--font-size-small) !important;
+  text-align: start;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.viz-carousel-options &gt; [aria-current=&quot;true&quot;],
+.viz-carousel-options &gt; button:hover {
+  background: var(--viz-carousel-hover) !important;
+}
+
+.btn:disabled,
+.nav-link:disabled,
+.nav-link[aria-disabled=&quot;true&quot;] {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  corner-shape: var(--corner-shape);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  height: calc(12px + 2 * var(--control-spacing, 12px));
+  min-height: calc(12px + 2 * var(--control-spacing, 12px));
+  padding-inline: calc(4px + var(--control-spacing, 12px) / 2);
+  border-color: var(--input);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--popover) 96%, transparent);
+  font-size: calc(var(--font-size-base) * 14 / 16);
+  font-size: round(nearest, calc(var(--font-size-base) * 14 / 16), 1px);
+  font-weight: var(--font-weight-normal);
+  line-height: 1.4285714286;
+}
+.form-control:is(
+  [type=&quot;file&quot;],
+  [type=&quot;date&quot;],
+  [type=&quot;datetime-local&quot;],
+  [type=&quot;month&quot;],
+  [type=&quot;week&quot;],
+  [type=&quot;color&quot;]
+) {
+  height: calc(12px + 2 * var(--control-spacing, 12px));
+  min-height: calc(12px + 2 * var(--control-spacing, 12px));
+  line-height: 18px;
+}
+.form-control:is(
+  [type=&quot;date&quot;],
+  [type=&quot;datetime-local&quot;],
+  [type=&quot;month&quot;],
+  [type=&quot;week&quot;]
+) {
+  padding-inline: var(--control-spacing, 12px);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+  padding: 0;
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+  min-height: calc(10px + 2 * var(--control-spacing, 12px));
+  padding-inline: var(--control-spacing, 12px);
+  margin-inline-end: var(--control-spacing, 12px);
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: calc(12px + 2 * var(--control-spacing, 12px));
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: var(--corner-shape);
+}
+
+textarea.form-control {
+  height: auto;
+  resize: vertical;
+  min-height: 96px;
+  padding: 8px 10px;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: none;
+}
+.form-control:disabled {
+  color: var(--muted-foreground);
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+  opacity: 1;
+}
+.form-control[aria-invalid=&quot;true&quot;] {
+  border-color: var(--red);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--red) 20%, transparent);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: fit-content;
+  min-height: calc(12px + 2 * var(--control-spacing, 12px));
+  margin: 0;
+  /* The secondary icon role is 14px at compact density and 16px at web density. */
+  --icon-size: calc(10px + var(--control-spacing, 12px) / 2);
+  /* Settings dropdowns retain a 12px inset and a 4px text-to-chevron gap. */
+  padding: 0 calc(16px + var(--icon-size)) 0 12px;
+  outline: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  corner-shape: var(--corner-shape);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(
+      45deg,
+      transparent calc(50% - 0.6px),
+      var(--muted-foreground) calc(50% - 0.6px) calc(50% + 0.6px),
+      transparent calc(50% + 0.6px)
+    ),
+    linear-gradient(
+      135deg,
+      transparent calc(50% - 0.6px),
+      var(--muted-foreground) calc(50% - 0.6px) calc(50% + 0.6px),
+      transparent calc(50% + 0.6px)
+    );
+  background-position:
+    calc(100% - 12px - var(--icon-size) / 2) 50%,
+    calc(100% - 12px - var(--icon-size) * 0.18) 50%;
+  background-repeat: no-repeat;
+  background-size: calc(var(--icon-size) * 0.32) calc(var(--icon-size) * 0.32);
+  cursor: var(--cursor-interaction, default);
+  font-size: calc(var(--font-size-base) * 14 / 16);
+  font-size: round(nearest, calc(var(--font-size-base) * 14 / 16), 1px);
+  font-weight: var(--font-weight-normal);
+  line-height: 18px;
+}
+
+.form-select option {
+  color: var(--popover-foreground);
+  background-color: var(--popover);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: light-dark(
+    color-mix(in srgb, var(--foreground) 5.5%, transparent),
+    color-mix(in srgb, var(--foreground) 8%, transparent)
+  );
+}
+
+.form-select:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+.form-select:disabled {
+  opacity: 0.4;
+}
+
+.form-check {
+  display: flex;
+  min-height: calc(12px + 2 * var(--control-spacing, 12px));
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  corner-shape: round;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  width: calc(10px + var(--control-spacing, 12px) / 2);
+  height: calc(10px + var(--control-spacing, 12px) / 2);
+  border-color: var(--border-strong, var(--input));
+  border-radius: calc(var(--radius-sm) / 2);
+  background-color: transparent;
+  color: var(--foreground);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:is(:checked, :indeterminate) {
+  border-color: var(--border-strong, var(--input));
+  background-color: color-mix(in srgb, var(--popover) 96%, transparent);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+  background-color: var(--foreground);
+}
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:indeterminate::before {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 65%;
+  height: 6.65%;
+  margin: auto;
+  border-radius: var(--radius-full);
+  background: var(--foreground);
+  mask: none;
+  content: &quot;&quot;;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  border-radius: var(--radius-full);
+  width: 16px;
+  height: 16px;
+  border: 0;
+  box-shadow: inset 0 0 0 1px var(--input);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 0;
+  background: radial-gradient(
+    circle,
+    var(--primary-foreground) 0 3px,
+    var(--foreground) 3px
+  );
+  box-shadow: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:focus-visible {
+  border-color: var(--ring);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+.form-check:not(.form-switch) .form-check-input[type=&quot;radio&quot;]:disabled,
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;radio&quot;]:disabled
+  + .form-check-label {
+  opacity: 0.5;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+  border-color: #fff;
+  background: #fff;
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--blue);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+  outline: none;
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  accent-color: var(--primary);
+  height: calc(12px + 2 * var(--control-spacing, 12px));
+  min-height: calc(12px + 2 * var(--control-spacing, 12px));
+  outline: none;
+  border-radius: var(--radius-full);
+  color: var(--foreground);
+  background: transparent;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  background: var(--form-range-track, var(--border));
+  height: 2px;
+  border-radius: var(--radius-full);
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  margin-top: -9px;
+  border-color: transparent;
+  background: currentColor;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Outline the native track and thumb, preserving the larger input hit area. */
+.form-range:focus-visible::-webkit-slider-runnable-track {
+  outline: 2px auto Highlight;
+  outline-color: -webkit-focus-ring-color;
+}
+
+.form-range::-moz-range-track {
+  background: var(--form-range-track, var(--border));
+  height: 2px;
+  border-radius: var(--radius-full);
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  border-color: transparent;
+  background: currentColor;
+  box-shadow: var(--shadow-sm);
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  outline: 2px solid Highlight;
+  outline-offset: 2px;
+}
+
+.form-range:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+  [aria-pressed=&quot;true&quot;],
+  [aria-selected=&quot;true&quot;],
+  .is-selected
+) {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--blue);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible,
+.nav-link:focus-visible {
+  outline-offset: 2px;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.viz-carousel-controls :is(button, summary):focus-visible {
+  outline: 2px solid var(--ring) !important;
+  outline-offset: 2px !important;
+}
+
+/* Web recipes are the default, including on renderers without inline style queries. */
+@supports (border-radius: if(style(--corner-shape: round): 1px; else: 2px)) {
+  /* Match the host&#x27;s proportional text-sm scale at every text preference. */
+  .tooltip,
+  .viz-badge,
+  .btn,
+  .nav-link,
+  .form-control,
+  .form-select {
+    font-size: if(
+      style(--corner-shape: round): round(
+          nearest,
+          calc(var(--font-size-base) * 14 / 16),
+          1px
+        );
+        else: round(nearest, calc(var(--font-size-base) * 13 / 14), 1px)
+    );
+  }
+
+  .btn,
+  .nav-link,
+  .form-select {
+    border-radius: if(
+      style(--corner-shape: round): var(--radius-full); else: var(--radius-lg)
+    );
+  }
+
+  .form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+    border-radius: if(
+      style(--corner-shape: round): calc(var(--radius-sm) / 2);
+        else: calc(var(--radius-lg) * 0.4)
+    );
+  }
+
+  .tooltip {
+    font-weight: if(
+      style(--corner-shape: round): 600; else: var(--font-weight-normal)
+    );
+  }
+}
+
+@media (pointer: coarse) {
+  .viz-carousel:has(&gt; .viz-carousel-controls) {
+    min-height: calc(76px + var(--viz-carousel-picker-height, 0px));
+    padding-bottom: 76px;
+  }
+
+  .btn,
+  .nav-link,
+  .viz-carousel-controls button,
+  .viz-carousel-picker &gt; summary,
+  .form-control,
+  .form-select {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Keep small-screen WebKit from zooming when a text field receives focus. */
+  .form-control,
+  .form-select {
+    font-size: max(16px, calc(var(--font-size-base) * 14 / 16));
+    font-size: max(
+      16px,
+      round(nearest, calc(var(--font-size-base) * 14 / 16), 1px)
+    );
+  }
+  .form-control:is(
+    [type=&quot;file&quot;],
+    [type=&quot;date&quot;],
+    [type=&quot;datetime-local&quot;],
+    [type=&quot;month&quot;],
+    [type=&quot;week&quot;],
+    [type=&quot;time&quot;],
+    [type=&quot;color&quot;]
+  ) {
+    height: 44px;
+    min-height: 44px;
+    font-size: max(16px, calc(var(--font-size-base) * 14 / 16));
+    font-size: max(
+      16px,
+      round(nearest, calc(var(--font-size-base) * 14 / 16), 1px)
+    );
+  }
+
+  .form-control[type=&quot;file&quot;]::file-selector-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .form-control-color[type=&quot;color&quot;] {
+    width: 44px;
+    height: 44px;
+  }
+
+  .form-control:is(
+    [type=&quot;date&quot;],
+    [type=&quot;datetime-local&quot;],
+    [type=&quot;month&quot;],
+    [type=&quot;time&quot;],
+    [type=&quot;week&quot;]
+  ) {
+    min-width: 0;
+    max-width: 100%;
+    padding-block: 8px;
+  }
+
+  .form-check {
+    min-height: 44px;
+    padding-inline: 15px;
+  }
+
+  .form-check-input {
+    position: relative;
+  }
+
+  .form-check-input::after {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    content: &quot;&quot;;
+    transform: translate(-50%, -50%);
+  }
+
+  .form-check-label {
+    display: inline-flex;
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .form-range {
+    height: 44px;
+    touch-action: pan-y;
+  }
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+/* Model-authored chart rules can otherwise stretch icons after these styles load. */
+svg.lucide {
+  display: block;
+  width: var(--icon-size) !important;
+  height: var(--icon-size) !important;
+  flex: none;
+  margin: 0 !important;
+  stroke-width: 1.6;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;script type=&quot;application/json&quot; id=&quot;codex-visualization-widget-state&quot;&gt;__CODEX_VISUALIZATION_WIDGET_STATE__&lt;/script&gt;
+&lt;script&gt;(() =&gt; {
+  const root = document.documentElement;
+  const mediaQuery = globalThis.matchMedia(&quot;(prefers-color-scheme: dark)&quot;);
+  const apply = Reflect.apply;
+  const isArray = Array.isArray;
+  const hasOwn = Object.hasOwn;
+  const parentWindow = globalThis.parent;
+  const stringify = JSON.stringify;
+  const parse = JSON.parse;
+  const encode = TextEncoder.prototype.encode.bind(new TextEncoder());
+  const initialStateElement = document.getElementById(
+    &quot;codex-visualization-widget-state&quot;,
+  );
+  const initialGlobals = parse(initialStateElement?.textContent ?? &quot;{}&quot;);
+  initialStateElement?.remove();
+  /** @type {Record&lt;string, unknown&gt; | null} */
+  let state = initialGlobals.widgetState ?? null;
+  const statePersistence = initialGlobals.statePersistence ?? &quot;none&quot;;
+  let nextStateRequestId = 0;
+  /** @type {Map&lt;number, { resolve: () =&gt; void; reject: (error: Error) =&gt; void; timeout: ReturnType&lt;typeof globalThis.setTimeout&gt;; serializedState: string }&gt;} */
+  const pendingStateWrites = new Map();
+  const persistenceError = () =&gt;
+    Object.assign(
+      new Error(&quot;The host could not persist the widget state update&quot;),
+      {
+        code: -32000,
+        data: { code: &quot;widget_state_persistence_failed&quot;, retryable: false },
+      },
+    );
+  /**
+   * @param {object} prototype
+   * @param {string} property
+   */
+  const getPrototypeGetter = (prototype, property) =&gt; {
+    // oxlint-disable-next-line typescript/unbound-method -- invoked through captured Reflect.apply
+    const getter = Object.getOwnPropertyDescriptor(prototype, property)?.get;
+    if (getter == null) {
+      throw new Error(`Missing ${property} getter`);
+    }
+    return getter;
+  };
+  const getMessageData = getPrototypeGetter(MessageEvent.prototype, &quot;data&quot;);
+  const getMessagePorts = getPrototypeGetter(MessageEvent.prototype, &quot;ports&quot;);
+  const getMessageSource = getPrototypeGetter(MessageEvent.prototype, &quot;source&quot;);
+  // oxlint-disable-next-line typescript/unbound-method -- captured before the untrusted fragment runs
+  const addHostMessageListener = MessagePort.prototype.addEventListener;
+  // oxlint-disable-next-line typescript/unbound-method -- captured before the untrusted fragment runs
+  const postHostMessage = MessagePort.prototype.postMessage;
+  // oxlint-disable-next-line typescript/unbound-method -- captured before the untrusted fragment runs
+  const startHostPort = MessagePort.prototype.start;
+  // oxlint-disable-next-line typescript/unbound-method -- captured before the untrusted fragment runs
+  const stopMessagePropagation = Event.prototype.stopImmediatePropagation;
+  /** @type {MessagePort | null} */
+  let hostPort = null;
+  const postToHost = (type, payload) =&gt; {
+    if (hostPort != null) {
+      apply(postHostMessage, hostPort, [{ type, ...payload }]);
+    }
+  };
+  const openExternal = ({ href }) =&gt; {
+    if (globalThis.navigator.userActivation?.isActive === true) {
+      postToHost(&quot;open-external&quot;, { href });
+    }
+  };
+  const sendFollowUpMessage = ({ context, prompt, title }) =&gt; {
+    if (globalThis.navigator.userActivation?.isActive === true) {
+      postToHost(&quot;follow-up&quot;, { context, prompt, title });
+    }
+    return Promise.resolve();
+  };
+  /**
+   * @param {Record&lt;string, unknown&gt; | ((previous: Record&lt;string, unknown&gt; | null) =&gt; Record&lt;string, unknown&gt;)} next
+   * @returns {Promise&lt;void&gt;}
+   */
+  const setWidgetState = async (next) =&gt; {
+    const nextState = typeof next === &quot;function&quot; ? next(state) : next;
+    if (
+      nextState == null ||
+      typeof nextState !== &quot;object&quot; ||
+      isArray(nextState)
+    ) {
+      throw new TypeError(&quot;Widget state must be a JSON object&quot;);
+    }
+    const inputState = stringify(
+      nextState,
+      (_key, /** @type {unknown} */ value) =&gt; {
+        if (
+          typeof value === &quot;undefined&quot; ||
+          typeof value === &quot;function&quot; ||
+          typeof value === &quot;symbol&quot; ||
+          (typeof value === &quot;number&quot; &amp;&amp; !Number.isFinite(value))
+        ) {
+          throw new TypeError(&quot;Widget state must be a JSON object&quot;);
+        }
+        return value;
+      },
+    );
+    const parsedState = parse(inputState);
+    if (
+      parsedState == null ||
+      typeof parsedState !== &quot;object&quot; ||
+      isArray(parsedState)
+    ) {
+      throw new TypeError(&quot;Widget state must be a JSON object&quot;);
+    }
+    const storedState = {
+      modelContent: null,
+      privateContent: null,
+      ...parsedState,
+    };
+    const serializedState = stringify(storedState);
+    if (encode(serializedState).length &gt; 16 * 1024) {
+      throw new TypeError(
+        &quot;Widget state must be a JSON object of at most 16 KiB&quot;,
+      );
+    }
+    if (
+      hasOwn(storedState, &quot;imageIds&quot;) &amp;&amp;
+      (!isArray(storedState.imageIds) ||
+        storedState.imageIds.some(
+          (/** @type {unknown} */ id) =&gt; typeof id !== &quot;string&quot;,
+        ))
+    ) {
+      throw new TypeError(&quot;Widget state imageIds must be an array of strings&quot;);
+    }
+    if (storedState.imageIds?.length &gt; 0) {
+      throw Object.assign(
+        new TypeError(&quot;Visualization state does not support image attachments&quot;),
+        { code: -32602, data: { code: &quot;images_unsupported&quot; } },
+      );
+    }
+    state = storedState;
+    globalThis.openai.widgetState = state;
+    globalThis.dispatchEvent(
+      new CustomEvent(&quot;openai:set_globals&quot;, {
+        detail: { globals: { widgetState: state } },
+      }),
+    );
+    if (statePersistence === &quot;none&quot;) {
+      throw persistenceError();
+    }
+    const id = ++nextStateRequestId;
+    return new Promise((resolve, reject) =&gt; {
+      const timeout = globalThis.setTimeout(() =&gt; {
+        pendingStateWrites.delete(id);
+        reject(persistenceError());
+      }, 30_000);
+      pendingStateWrites.set(id, { resolve, reject, timeout, serializedState });
+      postToHost(&quot;widget-state-write&quot;, { id, state: serializedState });
+    });
+  };
+  const syncTheme = () =&gt; {
+    const theme = mediaQuery.matches ? &quot;dark&quot; : &quot;light&quot;;
+    root.dataset.theme = theme;
+    globalThis.openai = {
+      ...globalThis.openai,
+      openExternal,
+      sendFollowUpMessage,
+      setWidgetState,
+      theme,
+      visualizationStyleVariables: {},
+      visualizationTheme: theme,
+      widgetState: state,
+      statePersistence,
+      stateModelContext: &quot;none&quot;,
+    };
+    globalThis.dispatchEvent(
+      new CustomEvent(&quot;openai:set_globals&quot;, {
+        detail: { globals: globalThis.openai },
+      }),
+    );
+  };
+  const sendHeight = () =&gt; {
+    postToHost(&quot;height&quot;, {
+      height: Math.ceil(
+        Math.max(
+          document.body.scrollHeight,
+          document.body.getBoundingClientRect().height,
+        ),
+      ),
+    });
+  };
+
+  globalThis.addEventListener(
+    &quot;message&quot;,
+    (event) =&gt; {
+      const data = apply(getMessageData, event, []);
+      const ports = apply(getMessagePorts, event, []);
+      const source = apply(getMessageSource, event, []);
+      if (
+        hostPort != null ||
+        source !== parentWindow ||
+        typeof data !== &quot;object&quot; ||
+        data?.type !== &quot;codex-visualization-initialize&quot; ||
+        !isArray(ports) ||
+        ports.length !== 1
+      ) {
+        return;
+      }
+      apply(stopMessagePropagation, event, []);
+      const nextHostPort = ports[0];
+      try {
+        apply(addHostMessageListener, nextHostPort, [
+          &quot;message&quot;,
+          (event) =&gt; {
+            const data = apply(getMessageData, event, []);
+            if (typeof data === &quot;object&quot; &amp;&amp; data?.type === &quot;measure&quot;) {
+              sendHeight();
+            } else if (
+              typeof data === &quot;object&quot; &amp;&amp;
+              data?.type === &quot;widget-state-result&quot;
+            ) {
+              /** @type {unknown} */
+              const id = data.id;
+              if (typeof id !== &quot;number&quot;) {
+                return;
+              }
+              const pending = pendingStateWrites.get(id);
+              if (pending != null) {
+                pendingStateWrites.delete(id);
+                globalThis.clearTimeout(pending.timeout);
+                if (data.ok === true) {
+                  pending.resolve();
+                } else {
+                  pending.reject(persistenceError());
+                }
+              }
+            }
+          },
+        ]);
+        apply(startHostPort, nextHostPort, []);
+      } catch {
+        return;
+      }
+      hostPort = nextHostPort;
+      for (const [id, { serializedState }] of pendingStateWrites) {
+        postToHost(&quot;widget-state-write&quot;, { id, state: serializedState });
+      }
+      sendHeight();
+    },
+    { capture: true },
+  );
+  document.currentScript?.remove();
+  mediaQuery.addEventListener(&quot;change&quot;, syncTheme);
+  globalThis.addEventListener(&quot;click&quot;, (event) =&gt; {
+    if (event.defaultPrevented) {
+      return;
+    }
+    let element = null;
+    if (event.target instanceof globalThis.Element) {
+      element = event.target;
+    } else if (event.target instanceof globalThis.Node) {
+      element = event.target.parentElement;
+    }
+    const link = element?.closest(&quot;a[href]&quot;);
+    const href = link?.getAttribute(&quot;href&quot;);
+    if (href == null) {
+      return;
+    }
+    if (href.startsWith(&quot;#&quot;)) {
+      let id;
+      try {
+        id = decodeURIComponent(href.slice(1));
+      } catch {
+        return;
+      }
+      const target = id.length === 0 ? root : document.getElementById(id);
+      if (
+        target == null ||
+        globalThis.navigator.userActivation?.isActive !== true
+      ) {
+        return;
+      }
+      event.preventDefault();
+      postToHost(&quot;scroll-to&quot;, {
+        top: target.getBoundingClientRect().top + globalThis.scrollY,
+      });
+      return;
+    }
+    event.preventDefault();
+    openExternal({ href });
+  });
+  new ResizeObserver(sendHeight).observe(document.body);
+  syncTheme();
+})();
+&lt;/script&gt;
+&lt;div id=&quot;vllm-life-r1&quot;&gt;
+  &lt;style&gt;
+    #vllm-life-r1 { color: var(--foreground); }
+    #vllm-life-r1 .life-heading { padding-right: 90px; margin-bottom: 6px; }
+    #vllm-life-r1 .life-context { margin-bottom: 12px; overflow-wrap: anywhere; }
+    #vllm-life-r1 .life-controls { margin: 12px 0; }
+    #vllm-life-r1 .life-controls .life-counter { margin-left: auto; }
+    #vllm-life-r1 .life-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 8px 0; }
+    #vllm-life-r1 .life-legend span { display: inline-flex; align-items: center; gap: 6px; }
+    #vllm-life-r1 .life-swatch { display: inline-block; width: 22px; height: 2px; background: var(--border); }
+    #vllm-life-r1 .life-swatch.data { background: var(--viz-series-2); }
+    #vllm-life-r1 .life-swatch.result { height: 0; border-top: 2px dashed var(--viz-series-3); background: transparent; }
+    #vllm-life-r1 .life-diagram { display: block; width: 100%; overflow: visible; }
+    #vllm-life-r1 .life-diagram text, #vllm-life-r1 .life-kv text { fill: var(--foreground); }
+    #vllm-life-r1 .life-diagram .secondary { fill: var(--muted-foreground); }
+    #vllm-life-r1 .life-diagram .node-base { fill: var(--background); stroke: var(--border); stroke-width: 1; }
+    #vllm-life-r1 .life-diagram .node-active { fill: color-mix(in srgb, var(--viz-series-1) 12%, var(--background)); }
+    #vllm-life-r1 .life-diagram .process-outline { fill: none; stroke: var(--border); stroke-width: 1; }
+    #vllm-life-r1 .life-diagram .edge { fill: none; stroke-width: 1.5; }
+    #vllm-life-r1 .life-diagram .edge.control { color: var(--muted-foreground); stroke: currentColor; }
+    #vllm-life-r1 .life-diagram .edge.data { color: var(--viz-series-2); stroke: currentColor; }
+    #vllm-life-r1 .life-diagram .edge.result { color: var(--viz-series-3); stroke: currentColor; stroke-dasharray: 5 4; }
+    #vllm-life-r1 .life-diagram .edge.active { stroke-width: 2.5; }
+    #vllm-life-r1 .life-diagram .inactive { opacity: .25; }
+    #vllm-life-r1 .life-diagram .edge-label-bg { fill: var(--background); }
+    #vllm-life-r1 .life-diagram .step-number { fill: var(--accent); }
+    #vllm-life-r1 .life-diagram .pulse { fill: var(--viz-series-1); }
+    #vllm-life-r1 .life-state { min-height: 28px; margin: 10px 0; overflow-wrap: anywhere; }
+    #vllm-life-r1 .life-detail { margin: 12px 0 18px; }
+    #vllm-life-r1 .life-detail h3 { margin: 0 0 8px; }
+    #vllm-life-r1 .life-facts { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 6px 10px; margin: 0 0 10px; }
+    #vllm-life-r1 .life-facts dt { color: var(--muted-foreground); }
+    #vllm-life-r1 .life-facts dd { margin: 0; overflow-wrap: anywhere; }
+    #vllm-life-r1 .life-kv { display: block; width: 100%; margin-top: 7px; }
+    #vllm-life-r1 .life-token-label { display: flex; gap: 8px 16px; flex-wrap: wrap; margin-top: 10px; }
+    #vllm-life-r1 .life-rounds { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin: 14px 0; }
+    #vllm-life-r1 .life-round { padding: 6px 0; border-top: 2px solid var(--border); }
+    #vllm-life-r1 .life-round.current { border-top-color: var(--viz-series-1); }
+    #vllm-life-r1 .life-round span { display: block; overflow-wrap: anywhere; }
+    #vllm-life-r1 .life-full { margin-top: 20px; }
+    #vllm-life-r1 .life-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px 28px; list-style: none; margin: 12px 0 0; padding: 0; }
+    #vllm-life-r1 .life-list li { display: grid; grid-template-columns: 24px minmax(0,1fr); gap: 4px 6px; align-items: start; }
+    #vllm-life-r1 .life-list .life-item-number { padding-top: 7px; color: var(--muted-foreground); }
+    #vllm-life-r1 .life-list .life-item-description { grid-column: 2; overflow-wrap: anywhere; }
+    #vllm-life-r1 details { margin-top: 18px; }
+    #vllm-life-r1 summary { color: var(--foreground); }
+    #vllm-life-r1 .life-branches { display: grid; grid-template-columns: 96px minmax(0,1fr); gap: 10px; margin-top: 12px; }
+    #vllm-life-r1 .life-branches dt { font-weight: 500; }
+    #vllm-life-r1 .life-branches dd { margin: 0; overflow-wrap: anywhere; }
+    #vllm-life-r1 .life-sources { padding-left: 20px; }
+    #vllm-life-r1 .life-sources li { margin: 6px 0; overflow-wrap: anywhere; }
+    @media (max-width: 559px) {
+      #vllm-life-r1 .life-list { grid-template-columns: minmax(0,1fr); }
+      #vllm-life-r1 .life-rounds { grid-template-columns: minmax(0,1fr); gap: 4px; }
+      #vllm-life-r1 .life-round { display: flex; gap: 12px; flex-wrap: wrap; }
+      #vllm-life-r1 .life-branches { grid-template-columns: minmax(0,1fr); gap: 5px; }
+      #vllm-life-r1 .life-branches dd { margin-bottom: 8px; }
+    }
+  &lt;/style&gt;
+  &lt;h2 class=&quot;life-heading&quot;&gt;一个 vLLM 请求的一生&lt;/h2&gt;
+  &lt;div class=&quot;life-context text-small text-muted&quot;&gt;v0.11.0 · V1 · 单卡 / UniProcExecutor · 流式聊天 · 同步调度&lt;/div&gt;
+  &lt;div class=&quot;text-small&quot;&gt;教学请求 R1：prompt = [p1, p2, p3, p4]，max_tokens = 3&lt;/div&gt;
+  &lt;div class=&quot;life-controls viz-controls&quot; aria-label=&quot;请求生命周期逐步查看&quot;&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-action=&quot;overview&quot; aria-pressed=&quot;true&quot;&gt;全局关系&lt;/button&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-action=&quot;prev&quot; disabled&gt;上一步&lt;/button&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn btn-primary&quot; data-action=&quot;next&quot;&gt;下一步&lt;/button&gt;
+    &lt;span class=&quot;life-counter text-small tabular-nums&quot; data-slot=&quot;counter&quot;&gt;20 步&lt;/span&gt;
+  &lt;/div&gt;
+  &lt;div class=&quot;life-legend text-small&quot;&gt;
+    &lt;span&gt;&lt;i class=&quot;life-swatch&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;调用 / 调度&lt;/span&gt;
+    &lt;span&gt;&lt;i class=&quot;life-swatch data&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;输入数据&lt;/span&gt;
+    &lt;span&gt;&lt;i class=&quot;life-swatch result&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;结果 / 完成通知&lt;/span&gt;
+  &lt;/div&gt;
+  &lt;svg class=&quot;life-diagram&quot; role=&quot;img&quot; aria-label=&quot;客户端、前端进程、EngineCore 进程和 GPU 之间的编号请求流程&quot;&gt;&lt;/svg&gt;
+  &lt;div class=&quot;life-state text-small&quot; data-slot=&quot;state&quot; aria-live=&quot;polite&quot;&gt;&lt;/div&gt;
+  &lt;div class=&quot;life-token-label text-small&quot;&gt;
+    &lt;span data-slot=&quot;kv-title&quot;&gt;&lt;/span&gt;&lt;span data-slot=&quot;output&quot;&gt;&lt;/span&gt;
+  &lt;/div&gt;
+  &lt;svg class=&quot;life-kv&quot; role=&quot;img&quot; aria-label=&quot;教学 KV 块 B7 的十六个槽位&quot;&gt;&lt;/svg&gt;
+  &lt;div class=&quot;life-rounds&quot; aria-label=&quot;三轮模型计算&quot;&gt;
+    &lt;div class=&quot;life-round&quot; data-round=&quot;1&quot;&gt;&lt;span&gt;① Prefill&lt;/span&gt;&lt;span class=&quot;text-small&quot;&gt;输入 p1…p4 → 采样 t1&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;life-round&quot; data-round=&quot;2&quot;&gt;&lt;span&gt;② Decode&lt;/span&gt;&lt;span class=&quot;text-small&quot;&gt;输入 t1 → 采样 t2&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;life-round&quot; data-round=&quot;3&quot;&gt;&lt;span&gt;③ Decode&lt;/span&gt;&lt;span class=&quot;text-small&quot;&gt;输入 t2 → 采样 t3&lt;/span&gt;&lt;/div&gt;
+  &lt;/div&gt;
+  &lt;div class=&quot;life-detail&quot; data-slot=&quot;detail&quot; hidden&gt;&lt;/div&gt;
+  &lt;div class=&quot;life-full&quot; data-slot=&quot;full&quot;&gt;
+    &lt;h3&gt;完整编号流程&lt;/h3&gt;
+    &lt;ol class=&quot;life-list&quot;&gt;&lt;/ol&gt;
+  &lt;/div&gt;
+  &lt;details&gt;
+    &lt;summary&gt;等待、中断与缓存分支&lt;/summary&gt;
+    &lt;dl class=&quot;life-branches text-small&quot;&gt;
+      &lt;dt&gt;预算 / 块不足&lt;/dt&gt;&lt;dd&gt;新请求留在 WAITING → 后续轮次重试步骤 6；已有请求可被抢占，释放占用并回等待队列，之后重算或命中缓存。&lt;/dd&gt;
+      &lt;dt&gt;分块 Prefill&lt;/dt&gt;&lt;dd&gt;步骤 6–10 可分多轮处理 prompt；中间轮不向客户端输出有效 token，完成 prompt 的那一轮才产生 t1。&lt;/dd&gt;
+      &lt;dt&gt;前缀命中&lt;/dt&gt;&lt;dd&gt;步骤 6 复用已缓存完整块，减少待算 token；本例无命中。每次 Decode 先用已有块，空间耗尽才需要新块。&lt;/dd&gt;
+      &lt;dt&gt;EOS / token stop&lt;/dt&gt;&lt;dd&gt;Scheduler 可提前判停 → 步骤 18；本例假设无提前停止，输出 3 个 token 后以 length 结束。&lt;/dd&gt;
+      &lt;dt&gt;字符串 stop&lt;/dt&gt;&lt;dd&gt;前端 OutputProcessor 识别 → 结束前端输出并反向 ABORT → Scheduler 清理；与本例的长度终止路径不同。&lt;/dd&gt;
+      &lt;dt&gt;客户端断连&lt;/dt&gt;&lt;dd&gt;generate 被取消 → 前端清理并发送 ABORT → Scheduler 移出队列、释放引用 → Worker 后续清理。&lt;/dd&gt;
+    &lt;/dl&gt;
+  &lt;/details&gt;
+  &lt;details&gt;
+    &lt;summary&gt;适用范围与源码依据&lt;/summary&gt;
+    &lt;div class=&quot;text-small life-context&quot;&gt;模型权重与 GPU KV 池已在启动阶段准备好。示例为纯文本、decoder-only full attention、单请求展示，token 预算足够；无投机解码、无 PD 分离。p/t、R1、B7 与 16 槽均为教学标识，不是实测输出。&lt;/div&gt;
+    &lt;div class=&quot;text-small life-context&quot;&gt;编号是一种合法交错顺序；前端发送与引擎后续计算可重叠。步骤 19 与 20 都依赖 18，彼此没有固定先后。SSE chunk、文本片段与 token 不保证一一对应。&lt;/div&gt;
+    &lt;ul class=&quot;life-sources text-small&quot;&gt;&lt;/ul&gt;
+  &lt;/details&gt;
+&lt;/div&gt;
+&lt;script&gt;
+(() =&gt; {
+  const root = document.getElementById(&#x27;vllm-life-r1&#x27;);
+  const NS = &#x27;http://www.w3.org/2000/svg&#x27;;
+  const base = &#x27;https://github.com/vllm-project/vllm/blob/v0.11.0/&#x27;;
+  const sources = {
+    api: [&#x27;HTTP 与 SSE 入口&#x27;, &#x27;vllm/entrypoints/openai/api_server.py#L583-L621&#x27;],
+    preprocess: [&#x27;聊天模板与分词&#x27;, &#x27;vllm/entrypoints/openai/serving_engine.py#L736-L851&#x27;],
+    async: [&#x27;AsyncLLM 注册与提交&#x27;, &#x27;vllm/v1/engine/async_llm.py#L261-L313&#x27;],
+    ipc: [&#x27;跨进程 ADD 请求&#x27;, &#x27;vllm/v1/engine/core_client.py#L849-L910&#x27;],
+    add: [&#x27;Scheduler 等待队列&#x27;, &#x27;vllm/v1/core/sched/scheduler.py#L1097-L1101&#x27;],
+    sched: [&#x27;调度与 KV 块分配&#x27;, &#x27;vllm/v1/core/sched/scheduler.py#L379-L529&#x27;],
+    core: [&#x27;schedule → execute → update&#x27;, &#x27;vllm/v1/engine/core.py#L272-L291&#x27;],
+    runner: [&#x27;GPUModelRunner 前向与采样&#x27;, &#x27;vllm/v1/worker/gpu_model_runner.py#L2231-L2367&#x27;],
+    return: [&#x27;采样结果回传 CPU&#x27;, &#x27;vllm/v1/worker/gpu_model_runner.py#L2136-L2153&#x27;],
+    update: [&#x27;追加 token、判停与输出&#x27;, &#x27;vllm/v1/core/sched/scheduler.py#L884-L979&#x27;],
+    output: [&#x27;增量解码与前端清理&#x27;, &#x27;vllm/v1/engine/output_processor.py#L423-L467&#x27;],
+    sse: [&#x27;首个 role SSE 与内容流&#x27;, &#x27;vllm/entrypoints/openai/serving_chat.py#L574-L620&#x27;],
+    decode: [&#x27;RUNNING 请求的调度&#x27;, &#x27;vllm/v1/core/sched/scheduler.py#L208-L303&#x27;],
+    free: [&#x27;释放请求与 KV 引用&#x27;, &#x27;vllm/v1/core/sched/scheduler.py#L1147-L1165&#x27;],
+    done: [&#x27;结束 chunk、可选 usage、DONE&#x27;, &#x27;vllm/entrypoints/openai/serving_chat.py#L1055-L1149&#x27;],
+    clean: [&#x27;Worker 清理 finished_req_ids&#x27;, &#x27;vllm/v1/worker/gpu_model_runner.py#L526-L546&#x27;],
+    uniproc: [&#x27;单卡 Worker 的同进程调用&#x27;, &#x27;vllm/executor/uniproc_executor.py#L31-L83&#x27;],
+    pool: [&#x27;块引用归零后回可用队列&#x27;, &#x27;vllm/v1/core/block_pool.py#L338-L353&#x27;]
+  };
+  const steps = [
+    {title:&#x27;HTTP 请求到达&#x27;,phase:&#x27;接入&#x27;,actors:[&#x27;C&#x27;,&#x27;H&#x27;],edges:[&#x27;ch&#x27;],local:[],input:&#x27;R1：messages、stream=true、max_tokens=3。&#x27;,action:&#x27;客户端 POST /v1/chat/completions；API handler 接收并检查请求。&#x27;,result:&#x27;OpenAIServingChat 接手；尚无模型输出。&#x27;,flow:&#x27;客户端 → HTTP 请求 → API Server&#x27;,source:&#x27;api&#x27;,state:&#x27;接入中&#x27;,kv:0,out:0,shown:0,round:0},
+    {title:&#x27;套模板并分词&#x27;,phase:&#x27;接入&#x27;,actors:[&#x27;H&#x27;],edges:[],local:[&#x27;H&#x27;],input:&#x27;聊天 messages 与模型对应的 chat template / tokenizer。&#x27;,action:&#x27;检查模型与参数，应用聊天模板，将输入编码成 token IDs。&#x27;,result:&#x27;教学 prompt P=[p1,p2,p3,p4] 与 SamplingParams；流式输出使用 DELTA。&#x27;,flow:&#x27;ServingChat → prompt token IDs → AsyncLLM&#x27;,source:&#x27;preprocess&#x27;,state:&#x27;已分词&#x27;,kv:0,out:0,shown:0,round:0},
+    {title:&#x27;注册前端请求&#x27;,phase:&#x27;接入&#x27;,actors:[&#x27;H&#x27;,&#x27;A&#x27;],edges:[&#x27;ha&#x27;],local:[&#x27;A&#x27;],input:&#x27;R1、prompt token IDs、SamplingParams。&#x27;,action:&#x27;AsyncLLM.generate / add_request 构造 EngineCoreRequest，并先向 OutputProcessor 注册 collector。&#x27;,result:&#x27;前端保存 R1 的输出状态，等待引擎返回。&#x27;,flow:&#x27;AsyncLLM → 注册输出接收器 → 等待结果&#x27;,source:&#x27;async&#x27;,state:&#x27;前端已注册&#x27;,kv:0,out:0,shown:0,round:0},
+    {title:&#x27;ADD 跨进程发送&#x27;,phase:&#x27;接入&#x27;,actors:[&#x27;A&#x27;,&#x27;S&#x27;],edges:[&#x27;as&#x27;],local:[],input:&#x27;CPU 上的 EngineCoreRequest。&#x27;,action:&#x27;AsyncMPClient 编码 ADD，经 ZeroMQ IPC 发送到 EngineCore 后台进程。&#x27;,result:&#x27;EngineCore 收到 prompt IDs 与参数；不传模型权重或 KV 张量。&#x27;,flow:&#x27;前端进程 → ADD / IPC → EngineCore 进程&#x27;,source:&#x27;ipc&#x27;,state:&#x27;ADD 已接收&#x27;,kv:0,out:0,shown:0,round:0},
+    {title:&#x27;加入等待队列&#x27;,phase:&#x27;调度&#x27;,actors:[&#x27;S&#x27;],edges:[],local:[&#x27;S&#x27;],input:&#x27;收到的 EngineCoreRequest。&#x27;,action:&#x27;EngineCore 构造 Request，调用 Scheduler.add_request。&#x27;,result:&#x27;R1 进入 WAITING，num_computed_tokens=0；还没有请求专属 KV 块。&#x27;,flow:&#x27;EngineCore → Request(WAITING) → Scheduler&#x27;,source:&#x27;add&#x27;,state:&#x27;WAITING&#x27;,kv:0,out:0,shown:0,round:0},
+    {title:&#x27;调度 Prefill，分配块&#x27;,phase:&#x27;调度&#x27;,actors:[&#x27;S&#x27;],edges:[],local:[&#x27;S&#x27;],input:&#x27;WAITING 的 R1；本轮预算 ≥4；前缀缓存无命中。&#x27;,action:&#x27;schedule 选择 4 个待处理 token；allocate_slots 为 R1 取得教学块 B7。&#x27;,result:&#x27;R1 → RUNNING，块表 [B7]；已安排 4 个 token，物理 KV 尚未写入。&#x27;,flow:&#x27;Scheduler → token 数 + 块表 → 本轮执行计划&#x27;,source:&#x27;sched&#x27;,state:&#x27;RUNNING · 已安排 4&#x27;,kv:0,out:0,shown:0,round:1,allocated:true},
+    {title:&#x27;Worker 准备设备输入&#x27;,phase:&#x27;Prefill&#x27;,actors:[&#x27;S&#x27;,&#x27;W&#x27;,&#x27;G&#x27;],edges:[&#x27;sw&#x27;,&#x27;wg&#x27;],local:[&#x27;W&#x27;],input:&#x27;SchedulerOutput：R1、4 个 token、块表 [B7]。&#x27;,action:&#x27;同进程 Executor / Worker 调用 GPUModelRunner；准备 token、position、slot mapping 等设备输入。&#x27;,result:&#x27;GPU 本轮处理 p1…p4；调度计划与实际张量传入是两个环节。&#x27;,flow:&#x27;Scheduler → Worker → GPU 输入与元数据&#x27;,source:&#x27;runner&#x27;,state:&#x27;RUNNING · Prefill 待执行&#x27;,kv:0,out:0,shown:0,round:1,allocated:true},
+    {title:&#x27;Prefill 产生首 token&#x27;,phase:&#x27;Prefill&#x27;,actors:[&#x27;G&#x27;],edges:[],local:[&#x27;G&#x27;],input:&#x27;p1…p4 与 GPU 上的模型权重。&#x27;,action:&#x27;模型前向把 prompt 的 K/V 写入 B7；取采样位置 hidden state → logits → sampler。&#x27;,result:&#x27;得到 t1；B7 中有 p1…p4 的 KV，t1 自身的 KV 尚未计算。&#x27;,flow:&#x27;GPU → prompt KV + 采样 t1 → Runner&#x27;,source:&#x27;runner&#x27;,state:&#x27;RUNNING · 首 token 已生成&#x27;,kv:4,out:1,shown:0,round:1,allocated:true},
+    {title:&#x27;采样结果回到调度器&#x27;,phase:&#x27;Prefill&#x27;,actors:[&#x27;G&#x27;,&#x27;W&#x27;,&#x27;S&#x27;],edges:[&#x27;gw&#x27;,&#x27;ws&#x27;],local:[],input:&#x27;GPU 的采样 ID t1。&#x27;,action:&#x27;同步执行路径完成结果拷回 CPU，Runner 封装 ModelRunnerOutput 并沿调用栈返回。&#x27;,result:&#x27;Scheduler 得到采样 ID；KV 张量仍留在 GPU。&#x27;,flow:&#x27;GPU → CPU token ID → Scheduler&#x27;,source:&#x27;return&#x27;,state:&#x27;RUNNING · 结果待更新&#x27;,kv:4,out:1,shown:0,round:1,allocated:true},
+    {title:&#x27;记录 t1，判断继续&#x27;,phase:&#x27;Prefill&#x27;,actors:[&#x27;S&#x27;],edges:[],local:[&#x27;S&#x27;],input:&#x27;ModelRunnerOutput：R1 的 t1。&#x27;,action:&#x27;update_from_output 追加 t1，并检查长度、EOS、stop token。&#x27;,result:&#x27;输出数 1&lt;3，继续 RUNNING；构造非最终 EngineCoreOutput。&#x27;,flow:&#x27;Scheduler → 保存 t1 / 未结束 → 输出通路&#x27;,source:&#x27;update&#x27;,state:&#x27;RUNNING · 1/3&#x27;,kv:4,out:1,shown:0,round:1,allocated:true},
+    {title:&#x27;前端增量解码&#x27;,phase:&#x27;返回&#x27;,actors:[&#x27;S&#x27;,&#x27;A&#x27;],edges:[&#x27;sa&#x27;],local:[&#x27;A&#x27;],input:&#x27;含 R1、t1、未结束标志的 EngineCoreOutput。&#x27;,action:&#x27;结果经 IPC 到前端；output_handler 调用 OutputProcessor，增量 detokenize 并写入 collector。&#x27;,result:&#x27;AsyncLLM.generate 可 yield RequestOutput；token 可缓冲，不保证每个 token 都立即形成文本。&#x27;,flow:&#x27;EngineCore → IPC 结果 → OutputProcessor&#x27;,source:&#x27;output&#x27;,state:&#x27;RUNNING · 前端处理 t1&#x27;,kv:4,out:1,shown:0,round:1,allocated:true},
+    {title:&#x27;首段 SSE 到客户端&#x27;,phase:&#x27;返回&#x27;,actors:[&#x27;A&#x27;,&#x27;H&#x27;,&#x27;C&#x27;],edges:[&#x27;ah&#x27;,&#x27;hc&#x27;],local:[],input:&#x27;第一个 RequestOutput 与可输出的文本片段。&#x27;,action:&#x27;ServingChat 先发送 assistant role chunk，再发送内容 delta。&#x27;,result:&#x27;客户端消费首段文本；引擎可同时继续后续计算。&#x27;,flow:&#x27;AsyncLLM → ServingChat → SSE → 客户端&#x27;,source:&#x27;sse&#x27;,state:&#x27;RUNNING · 首段已返回&#x27;,kv:4,out:1,shown:1,round:1,allocated:true},
+    {title:&#x27;调度第一轮 Decode&#x27;,phase:&#x27;Decode&#x27;,actors:[&#x27;S&#x27;,&#x27;W&#x27;],edges:[&#x27;sw&#x27;],local:[&#x27;S&#x27;,&#x27;W&#x27;],input:&#x27;已知序列 P+t1；prompt KV 已就绪。&#x27;,action:&#x27;Scheduler 只安排尚未计算的 t1；Worker 复用 R1 状态与块表。&#x27;,result:&#x27;本轮 1 个输入 token，继续使用 B7 的空槽，无需再分配一整块。&#x27;,flow:&#x27;Scheduler → 1 token 计划 → Worker&#x27;,source:&#x27;decode&#x27;,state:&#x27;RUNNING · 已安排 5&#x27;,kv:4,out:1,shown:1,round:2,allocated:true},
+    {title:&#x27;输入 t1，生成 t2&#x27;,phase:&#x27;Decode&#x27;,actors:[&#x27;W&#x27;,&#x27;G&#x27;],edges:[&#x27;wg&#x27;],local:[&#x27;G&#x27;],input:&#x27;t1 + p1…p4 的历史 KV。&#x27;,action:&#x27;GPU 前向计算 t1 的 KV，读取历史 KV 做 attention，再计算 logits 并采样。&#x27;,result:&#x27;得到 t2；物理 KV 覆盖 P+t1，共 5 个 token。&#x27;,flow:&#x27;Worker → GPU Decode(t1) → t2&#x27;,source:&#x27;runner&#x27;,state:&#x27;RUNNING · t2 已生成&#x27;,kv:5,out:2,shown:1,round:2,allocated:true},
+    {title:&#x27;记录并返回第二段&#x27;,phase:&#x27;Decode&#x27;,actors:[&#x27;G&#x27;,&#x27;W&#x27;,&#x27;S&#x27;,&#x27;A&#x27;,&#x27;H&#x27;,&#x27;C&#x27;],edges:[&#x27;gw&#x27;,&#x27;ws&#x27;,&#x27;sa&#x27;,&#x27;ah&#x27;,&#x27;hc&#x27;],local:[&#x27;S&#x27;,&#x27;A&#x27;],input:&#x27;t2 的采样结果。&#x27;,action:&#x27;重复结果回传、追加 token、判停、IPC 输出、detokenize 与 SSE；这些环节沿用步骤 9–12。&#x27;,result:&#x27;输出数 2&lt;3；客户端可消费第二段，R1 仍在 RUNNING。&#x27;,flow:&#x27;GPU → Scheduler → 前端 → 客户端&#x27;,source:&#x27;update&#x27;,state:&#x27;RUNNING · 2/3&#x27;,kv:5,out:2,shown:2,round:2,allocated:true},
+    {title:&#x27;调度第二轮 Decode&#x27;,phase:&#x27;Decode&#x27;,actors:[&#x27;S&#x27;,&#x27;W&#x27;],edges:[&#x27;sw&#x27;],local:[&#x27;S&#x27;,&#x27;W&#x27;],input:&#x27;已知序列 P+t1+t2，物理 KV 覆盖 P+t1。&#x27;,action:&#x27;Scheduler 安排 t2；Worker 继续使用 B7 和持久 batch 状态。&#x27;,result:&#x27;本轮仍只输入 1 个 token。&#x27;,flow:&#x27;Scheduler → t2 的执行计划 → Worker&#x27;,source:&#x27;decode&#x27;,state:&#x27;RUNNING · 已安排 6&#x27;,kv:5,out:2,shown:2,round:3,allocated:true},
+    {title:&#x27;输入 t2，生成 t3&#x27;,phase:&#x27;Decode&#x27;,actors:[&#x27;W&#x27;,&#x27;G&#x27;],edges:[&#x27;wg&#x27;],local:[&#x27;G&#x27;],input:&#x27;t2 + P+t1 的历史 KV。&#x27;,action:&#x27;GPU 计算 t2 的 KV，读取历史 KV，并采样 t3。&#x27;,result:&#x27;3 个输出 token 已生成；实际前向输入共 4+2=6 个，t3 自身没有 KV。&#x27;,flow:&#x27;Worker → GPU Decode(t2) → t3&#x27;,source:&#x27;runner&#x27;,state:&#x27;RUNNING · t3 已生成&#x27;,kv:6,out:3,shown:2,round:3,allocated:true},
+    {title:&#x27;达到长度上限，释放占用&#x27;,phase:&#x27;结束&#x27;,actors:[&#x27;G&#x27;,&#x27;W&#x27;,&#x27;S&#x27;],edges:[&#x27;gw&#x27;,&#x27;ws&#x27;],local:[&#x27;S&#x27;],input:&#x27;回到 Scheduler 的 t3；追加后输出数为 3。&#x27;,action:&#x27;check_stop 判为 FINISHED_LENGTH_CAPPED；_free_request 移除请求并释放 KV 块引用。&#x27;,result:&#x27;R1→B7 映射删除，B7 引用归零可复用；随后构造 finish_reason=length 的最终输出。&#x27;,flow:&#x27;Scheduler → 结束 R1 / 释放引用 → 最终输出&#x27;,source:&#x27;free&#x27;,state:&#x27;FINISHED · LENGTH&#x27;,kv:6,out:3,shown:2,round:3,freed:true},
+    {title:&#x27;最终 SSE 与 DONE&#x27;,phase:&#x27;结束&#x27;,actors:[&#x27;S&#x27;,&#x27;A&#x27;,&#x27;H&#x27;,&#x27;C&#x27;],edges:[&#x27;sa&#x27;,&#x27;ah&#x27;,&#x27;hc&#x27;],local:[&#x27;A&#x27;],input:&#x27;最终 t3 + finish_reason=length。&#x27;,action:&#x27;前端完成 detokenize 并清理 R1 输出状态；ServingChat 发结束 chunk、可选 usage，最后 [DONE]。&#x27;,result:&#x27;客户端流结束；结束前 KV 请求引用已释放。&#x27;,flow:&#x27;EngineCore → 最终输出 → SSE [DONE]&#x27;,source:&#x27;done&#x27;,state:&#x27;客户端完成&#x27;,kv:6,out:3,shown:3,round:3,freed:true},
+    {title:&#x27;Worker 清理请求状态&#x27;,phase:&#x27;结束&#x27;,actors:[&#x27;S&#x27;,&#x27;W&#x27;],edges:[&#x27;sw&#x27;],local:[&#x27;W&#x27;],input:&#x27;Scheduler 记录的 finished_req_ids={R1}。&#x27;,action:&#x27;后续调度轮把完成 ID 交给 Worker；_update_states 清理请求缓存与持久 batch 槽。&#x27;,result:&#x27;R1 状态清理闭合；若无其他工作则零 token 返回。模型与 GPU KV 池继续驻留。&#x27;,flow:&#x27;Scheduler → finished_req_ids → Worker 清理&#x27;,source:&#x27;clean&#x27;,state:&#x27;R1 已清理&#x27;,kv:6,out:3,shown:3,round:3,freed:true}
+  ].map((s,i)=&gt;({...s,id:i+1}));
+  const participants = [
+    {id:&#x27;C&#x27;,title:&#x27;客户端&#x27;,sub:&#x27;HTTP / SSE&#x27;,global:&#x27;提交请求 · 消费文本&#x27;},
+    {id:&#x27;H&#x27;,title:&#x27;API Server&#x27;,sub:&#x27;OpenAIServingChat&#x27;,global:&#x27;校验 · 模板 · SSE 封装&#x27;},
+    {id:&#x27;A&#x27;,title:&#x27;AsyncLLM&#x27;,sub:&#x27;Processor / OutputProcessor&#x27;,global:&#x27;输入处理 · 增量解码 · collector&#x27;},
+    {id:&#x27;S&#x27;,title:&#x27;EngineCore / Scheduler&#x27;,sub:&#x27;KVCacheManager · CPU&#x27;,global:&#x27;排队 · 调度 · 块表 · 判停&#x27;},
+    {id:&#x27;W&#x27;,title:&#x27;Executor / Worker&#x27;,sub:&#x27;GPUModelRunner · CPU&#x27;,global:&#x27;组装输入 · 持久 batch · 结果&#x27;},
+    {id:&#x27;G&#x27;,title:&#x27;GPU device&#x27;,sub:&#x27;模型权重 + KV 张量池&#x27;,global:&#x27;Forward → logits → sampler&#x27;}
+  ];
+  const edgeDefs = [
+    {id:&#x27;ch&#x27;,from:&#x27;C&#x27;,to:&#x27;H&#x27;,kind:&#x27;data&#x27;,label:&#x27;HTTP&#x27;},
+    {id:&#x27;hc&#x27;,from:&#x27;H&#x27;,to:&#x27;C&#x27;,kind:&#x27;result&#x27;,label:&#x27;SSE&#x27;},
+    {id:&#x27;ha&#x27;,from:&#x27;H&#x27;,to:&#x27;A&#x27;,kind:&#x27;control&#x27;,label:&#x27;generate&#x27;},
+    {id:&#x27;ah&#x27;,from:&#x27;A&#x27;,to:&#x27;H&#x27;,kind:&#x27;result&#x27;,label:&#x27;文本增量&#x27;},
+    {id:&#x27;as&#x27;,from:&#x27;A&#x27;,to:&#x27;S&#x27;,kind:&#x27;data&#x27;,label:&#x27;ADD / IPC&#x27;},
+    {id:&#x27;sa&#x27;,from:&#x27;S&#x27;,to:&#x27;A&#x27;,kind:&#x27;result&#x27;,label:&#x27;结果 / IPC&#x27;},
+    {id:&#x27;sw&#x27;,from:&#x27;S&#x27;,to:&#x27;W&#x27;,kind:&#x27;control&#x27;,label:&#x27;调度计划&#x27;},
+    {id:&#x27;ws&#x27;,from:&#x27;W&#x27;,to:&#x27;S&#x27;,kind:&#x27;result&#x27;,label:&#x27;token IDs&#x27;},
+    {id:&#x27;wg&#x27;,from:&#x27;W&#x27;,to:&#x27;G&#x27;,kind:&#x27;data&#x27;,label:&#x27;设备输入&#x27;},
+    {id:&#x27;gw&#x27;,from:&#x27;G&#x27;,to:&#x27;W&#x27;,kind:&#x27;result&#x27;,label:&#x27;采样 IDs&#x27;}
+  ];
+  const el = (tag, attrs={}, text=&#x27;&#x27;) =&gt; { const n=document.createElementNS(NS,tag); Object.entries(attrs).forEach(([k,v])=&gt;n.setAttribute(k,v)); if(text) n.textContent=text; return n; };
+  const diagram=root.querySelector(&#x27;.life-diagram&#x27;), kvSvg=root.querySelector(&#x27;.life-kv&#x27;);
+  const slot=(name)=&gt;root.querySelector(`[data-slot=&quot;${name}&quot;]`);
+  let current=0, lastWidth=0;
+  const stateFor=(id,s)=&gt; {
+    if(!s) return participants.find(p=&gt;p.id===id).global;
+    if(id===&#x27;C&#x27;) return s.shown ? `已消费输出 ${s.shown}/3${s.id&gt;=19?&#x27; · DONE&#x27;:&#x27;&#x27;}` : &#x27;等待输出&#x27;;
+    if(id===&#x27;H&#x27;) return s.id&lt;3 ? (s.id===1?&#x27;接收 messages&#x27;:&#x27;prompt 已编码&#x27;) : s.id&gt;=19?&#x27;流已结束&#x27;:s.id&gt;=12?&#x27;流式发送文本&#x27;:&#x27;等待首个 RequestOutput&#x27;;
+    if(id===&#x27;A&#x27;) return s.id&lt;3?&#x27;未注册 R1&#x27;:s.id&gt;=19?&#x27;R1 输出状态已移除&#x27;:s.id&gt;=11?&#x27;collector / 增量解码&#x27;:&#x27;已注册 · 等待引擎&#x27;;
+    if(id===&#x27;S&#x27;) {
+      if(s.id&lt;5)return &#x27;未入队&#x27;;
+      if(s.id===5)return &#x27;WAITING · 尚未安排 token&#x27;;
+      if(s.freed)return &#x27;R1 已结束 · 块表已移除&#x27;;
+      const scheduled=s.id&gt;=16?6:s.id&gt;=13?5:4;
+      const registered=s.id&gt;=15?2:s.id&gt;=10?1:0;
+      return `RUNNING · 已安排 ${scheduled} · 已登记 ${registered}`;
+    }
+    if(id===&#x27;W&#x27;) return s.id&lt;7?&#x27;R1 尚未进入 batch&#x27;:s.id===20?&#x27;R1 已从 batch 移除&#x27;:s.freed?&#x27;等待 finished_req_ids&#x27;:&#x27;R1 持久 batch 状态&#x27;;
+    return s.freed?&#x27;B7 可复用 · 字节未擦除&#x27;:s.allocated?`B7 已分配 · ${s.kv} 个 KV 就绪`:&#x27;KV 池已预分配&#x27;;
+  };
+  const addText=(parent,text,x,y,attrs={})=&gt; {const n=el(&#x27;text&#x27;,{x,y,...attrs},text);parent.append(n);return n;};
+  function wrapText(parent,text,x,y,maxWidth,attrs={}) {
+    const node=addText(parent,&#x27;&#x27;,x,y,attrs); let line=&#x27;&#x27;, row=0;
+    const canvas=wrapText.canvas||(wrapText.canvas=document.createElement(&#x27;canvas&#x27;));
+    const ctx=canvas.getContext(&#x27;2d&#x27;);const cs=getComputedStyle(node);ctx.font=`${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    for(const c of Array.from(text)){ if(line &amp;&amp; ctx.measureText(line+c).width&gt;maxWidth){node.append(el(&#x27;tspan&#x27;,{x,dy:row?18:0},line));line=c;row++;}else line+=c; }
+    node.append(el(&#x27;tspan&#x27;,{x,dy:row?18:0},line));return row+1;
+  }
+  function draw(animate=false){
+    const w=Math.max(280,root.getBoundingClientRect().width), narrow=w&lt;560, s=steps[current-1];lastWidth=w;
+    diagram.replaceChildren();
+    const defs=el(&#x27;defs&#x27;);
+    [&#x27;control&#x27;,&#x27;data&#x27;,&#x27;result&#x27;].forEach(kind=&gt;{const m=el(&#x27;marker&#x27;,{id:`life-arrow-${kind}`,viewBox:&#x27;0 0 8 8&#x27;,refX:7,refY:4,markerWidth:7,markerHeight:7,orient:&#x27;auto-start-reverse&#x27;});m.append(el(&#x27;path&#x27;,{d:&#x27;M 0 0 L 8 4 L 0 8 z&#x27;,fill:kind===&#x27;data&#x27;?&#x27;var(--viz-series-2)&#x27;:kind===&#x27;result&#x27;?&#x27;var(--viz-series-3)&#x27;:&#x27;var(--muted-foreground)&#x27;}));defs.append(m);});diagram.append(defs);
+    diagram.append(el(&#x27;title&#x27;,{},s?`${s.id}. ${s.title}`:&#x27;完整请求流程：前端 → EngineCore → GPU → 前端 → 客户端&#x27;));
+    const nodes={};
+    const nh=116, gap=narrow?86:112, nw=narrow?w-32:(w-132)/2;
+    if(narrow) participants.forEach((p,i)=&gt;nodes[p.id]={x:16,y:32+i*(nh+gap),w:nw,h:nh});
+    else {const positions={C:[0,0],H:[1,0],S:[0,1],A:[1,1],W:[0,2],G:[1,2]};participants.forEach(p=&gt;{const [col,row]=positions[p.id];nodes[p.id]={x:16+col*(nw+100),y:32+row*(nh+gap),w:nw,h:nh};});}
+    const height=narrow?32+6*nh+5*gap+10:32+3*nh+2*gap+10;diagram.setAttribute(&#x27;viewBox&#x27;,`0 0 ${w} ${height}`);diagram.style.height=`${height}px`;
+    if(!narrow){
+      const h=nodes.H,a=nodes.A,sc=nodes.S,wo=nodes.W;
+      diagram.append(el(&#x27;rect&#x27;,{x:h.x-8,y:h.y-24,width:h.w+16,height:a.y+a.h-h.y+32,rx:6,class:&#x27;process-outline&#x27;}));
+      diagram.append(el(&#x27;rect&#x27;,{x:sc.x-8,y:sc.y-24,width:sc.w+16,height:wo.y+wo.h-sc.y+32,rx:6,class:&#x27;process-outline&#x27;}));
+      addText(diagram,&#x27;前端进程&#x27;,h.x+6,h.y-9,{class:&#x27;text-small secondary&#x27;});
+      addText(diagram,&#x27;EngineCore 进程 · Worker 同进程&#x27;,sc.x+6,sc.y-9,{class:&#x27;text-small secondary&#x27;});
+    }
+    edgeDefs.forEach(e=&gt;{
+      const ids=steps.filter(t=&gt;t.edges.includes(e.id)).map(t=&gt;t.id), active=!s||s.edges.includes(e.id);
+      const n1=nodes[e.from],n2=nodes[e.to];let path,labelX,labelY,contentY;
+      if(!narrow &amp;&amp; n1.y===n2.y){
+        const right=n2.x&gt;n1.x, yy=n1.y+(e.kind===&#x27;result&#x27;?82:35), x1=right?n1.x+n1.w:n1.x, x2=right?n2.x:n2.x+n2.w;
+        path=`M ${x1} ${yy} L ${x2} ${yy}`;labelX=(x1+x2)/2;labelY=yy-9;contentY=yy+19;
+      }else{
+        const down=n2.y&gt;n1.y, off=e.kind===&#x27;result&#x27;?54:-54,xx=n1.x+n1.w/2+off;
+        const y1=down?n1.y+n1.h:n1.y, y2=down?n2.y:n2.y+n2.h;
+        path=`M ${xx} ${y1} L ${xx} ${y2}`;labelX=xx;labelY=(y1+y2)/2-4;contentY=labelY+18;
+      }
+      const g=el(&#x27;g&#x27;,{class:active?&#x27;&#x27;:&#x27;inactive&#x27;}), p=el(&#x27;path&#x27;,{d:path,class:`edge ${e.kind}${s&amp;&amp;active?&#x27; active&#x27;:&#x27;&#x27;}`,&#x27;marker-end&#x27;:`url(#life-arrow-${e.kind})`});g.append(p);
+      if(active){
+        const number=s?String(s.id):ids.join(&#x27;·&#x27;);const tw=Math.max(number.length*7.5,e.label.length*11)+10;
+        g.append(el(&#x27;rect&#x27;,{x:labelX-tw/2,y:labelY-14,width:tw,height:38,rx:3,class:&#x27;edge-label-bg&#x27;}));
+        addText(g,number,labelX,labelY,{&#x27;text-anchor&#x27;:&#x27;middle&#x27;,class:&#x27;text-small tabular-nums&#x27;});
+        addText(g,e.label,labelX,contentY,{&#x27;text-anchor&#x27;:&#x27;middle&#x27;,class:&#x27;text-small&#x27;});
+      }
+      diagram.append(g);
+      if(animate&amp;&amp;s&amp;&amp;active&amp;&amp;!matchMedia(&#x27;(prefers-reduced-motion: reduce)&#x27;).matches){const dot=el(&#x27;circle&#x27;,{r:3,class:&#x27;pulse&#x27;});const motion=el(&#x27;animateMotion&#x27;,{path,dur:&#x27;.65s&#x27;,repeatCount:&#x27;1&#x27;,fill:&#x27;freeze&#x27;});dot.append(motion);diagram.append(dot);motion.beginElement();motion.addEventListener(&#x27;endEvent&#x27;,()=&gt;dot.remove());}
+    });
+    participants.forEach(p=&gt;{
+      const n=nodes[p.id],active=s&amp;&amp;s.actors.includes(p.id),g=el(&#x27;g&#x27;,{&#x27;data-node&#x27;:p.id});
+      g.append(el(&#x27;rect&#x27;,{x:n.x,y:n.y,width:n.w,height:n.h,rx:6,class:`node-base${active?&#x27; node-active&#x27;:&#x27;&#x27;}`}));
+      const caption=narrow?(p.id===&#x27;H&#x27;||p.id===&#x27;A&#x27;?&#x27;前端进程&#x27;:p.id===&#x27;S&#x27;||p.id===&#x27;W&#x27;?&#x27;EngineCore 进程&#x27;:p.id===&#x27;G&#x27;?&#x27;设备侧&#x27;:&#x27;请求方&#x27;):p.id===&#x27;G&#x27;?&#x27;设备侧&#x27;:p.id===&#x27;C&#x27;?&#x27;请求方&#x27;:&#x27;&#x27;;
+      if(caption) addText(g,caption,n.x+12,n.y+18,{class:&#x27;text-small secondary&#x27;});
+      const yy=n.y+(caption?40:28);
+      wrapText(g,p.title,n.x+12,yy,n.w-24,{&#x27;font-weight&#x27;:500});
+      wrapText(g,p.sub,n.x+12,yy+22,n.w-24,{class:&#x27;text-small secondary&#x27;});
+      wrapText(g,stateFor(p.id,s),n.x+12,yy+46,n.w-24,{class:&#x27;text-small&#x27;});
+      const local=steps.filter(t=&gt;t.local.includes(p.id)).map(t=&gt;t.id);
+      const nums=s?(s.local.includes(p.id)?String(s.id):&#x27;&#x27;):local.join(&#x27;·&#x27;);
+      if(nums){ const bw=nums.length*7+14;g.append(el(&#x27;rect&#x27;,{x:n.x+n.w-bw-8,y:n.y+n.h-21,width:bw,height:18,rx:7,class:&#x27;step-number&#x27;}));addText(g,nums,n.x+n.w-8-bw/2,n.y+n.h-8,{&#x27;text-anchor&#x27;:&#x27;middle&#x27;,class:&#x27;text-small tabular-nums&#x27;}); }
+      diagram.append(g);
+    });
+    drawKv(w,s);
+  }
+  function drawKv(w,s){
+    kvSvg.replaceChildren(); const cols=w&lt;560?8:16,rows=16/cols,pad=2,cell=(w-(cols-1)*4)/cols;
+    const h=rows*36;kvSvg.setAttribute(&#x27;viewBox&#x27;,`0 0 ${w} ${h}`);kvSvg.style.height=`${h}px`;
+    const ready=s?s.kv:6,freed=!!s?.freed,allocated=!s||s.allocated||freed;
+    for(let i=0;i&lt;16;i++){const x=(i%cols)*(cell+4),y=Math.floor(i/cols)*36;
+      const fill=allocated&amp;&amp;i&lt;ready?(freed?&#x27;var(--muted)&#x27;:&#x27;color-mix(in srgb, var(--viz-series-2) 25%, var(--background))&#x27;):&#x27;var(--muted)&#x27;;
+      kvSvg.append(el(&#x27;rect&#x27;,{x,y:y+pad,width:cell,height:28,rx:3,fill}));
+      const t=allocated&amp;&amp;i&lt;ready?([&#x27;p1&#x27;,&#x27;p2&#x27;,&#x27;p3&#x27;,&#x27;p4&#x27;,&#x27;t1&#x27;,&#x27;t2&#x27;][i]):&#x27;·&#x27;;
+      addText(kvSvg,t,x+cell/2,y+21,{&#x27;text-anchor&#x27;:&#x27;middle&#x27;,class:&#x27;text-small&#x27;});
+    }
+    slot(&#x27;kv-title&#x27;).textContent=s?(freed?&#x27;B7：引用已释放，旧字节可被覆盖&#x27;:allocated?`R1 → B7：${ready}/16 槽 KV 就绪`:&#x27;R1 尚未分配 KV 块&#x27;):&#x27;KV 示例：B7 的前 6 槽被计算过&#x27;;
+    slot(&#x27;output&#x27;).textContent=s?`已采样 ${s.out}/3 · 客户端已消费 ${s.shown}/3`:&#x27;输出 t1、t2、t3；t3 无需计算自身 KV&#x27;;
+  }
+  function sourceLink(key){const [label,path]=sources[key];return `&lt;a href=&quot;${base+path}&quot; target=&quot;_blank&quot; rel=&quot;noopener noreferrer&quot;&gt;${label} ↗&lt;/a&gt;`;}
+  const list=root.querySelector(&#x27;.life-list&#x27;);
+  steps.forEach(s=&gt;{const li=document.createElement(&#x27;li&#x27;);li.innerHTML=`&lt;span class=&quot;life-item-number tabular-nums&quot;&gt;${s.id}&lt;/span&gt;&lt;div&gt;&lt;button type=&quot;button&quot; class=&quot;btn btn-ghost&quot; data-step=&quot;${s.id}&quot;&gt;${s.title}&lt;/button&gt;&lt;/div&gt;&lt;span class=&quot;life-item-description text-small text-muted&quot;&gt;${s.flow}&lt;/span&gt;`;list.append(li);});
+  root.querySelector(&#x27;.life-sources&#x27;).innerHTML=[&#x27;api&#x27;,&#x27;preprocess&#x27;,&#x27;async&#x27;,&#x27;ipc&#x27;,&#x27;core&#x27;,&#x27;sched&#x27;,&#x27;runner&#x27;,&#x27;update&#x27;,&#x27;output&#x27;,&#x27;done&#x27;,&#x27;free&#x27;,&#x27;clean&#x27;,&#x27;uniproc&#x27;,&#x27;pool&#x27;].map(k=&gt;`&lt;li&gt;${sourceLink(k)}&lt;/li&gt;`).join(&#x27;&#x27;);
+  function render(animate=false){
+    const s=steps[current-1];
+    root.querySelector(&#x27;[data-action=&quot;overview&quot;]&#x27;).setAttribute(&#x27;aria-pressed&#x27;,String(current===0));
+    root.querySelector(&#x27;[data-action=&quot;prev&quot;]&#x27;).disabled=current&lt;=1;
+    root.querySelector(&#x27;[data-action=&quot;next&quot;]&#x27;).disabled=current===steps.length;
+    slot(&#x27;counter&#x27;).textContent=s?`${current} / ${steps.length} · ${s.phase}`:&#x27;20 步 · 全局&#x27;;
+    slot(&#x27;full&#x27;).hidden=!!s;slot(&#x27;detail&#x27;).hidden=!s;
+    slot(&#x27;state&#x27;).textContent=s?`${s.id}. ${s.title}${s.id===20?&#x27; · 与步骤 19 无固定先后&#x27;:&#x27;&#x27;}`:&#x27;数字对应下方步骤；节点内编号为本地动作。前端与引擎可并行推进。&#x27;;
+    if(s)slot(&#x27;detail&#x27;).innerHTML=`&lt;h3&gt;${s.title}&lt;/h3&gt;&lt;dl class=&quot;life-facts&quot;&gt;&lt;dt&gt;输入&lt;/dt&gt;&lt;dd&gt;${s.input}&lt;/dd&gt;&lt;dt&gt;动作&lt;/dt&gt;&lt;dd&gt;${s.action}&lt;/dd&gt;&lt;dt&gt;结果&lt;/dt&gt;&lt;dd&gt;${s.result}&lt;/dd&gt;&lt;/dl&gt;&lt;div class=&quot;text-small&quot;&gt;${sourceLink(s.source)}&lt;/div&gt;`;
+    root.querySelectorAll(&#x27;[data-round]&#x27;).forEach(n=&gt;n.classList.toggle(&#x27;current&#x27;,!!s&amp;&amp;Number(n.dataset.round)===s.round));
+    draw(animate);
+  }
+  function save(){try{window.openai?.setWidgetState?.({modelContent:{version:&#x27;v0.11.0&#x27;,request:&#x27;R1&#x27;,step:current,stage:current?steps[current-1].title:&#x27;全局关系&#x27;},privateContent:{schema:&#x27;vllm-r1-v1&#x27;,step:current}})?.catch(()=&gt;{});}catch{}}
+  function restore(state){const p=state?.privateContent;if(p?.schema===&#x27;vllm-r1-v1&#x27;&amp;&amp;Number.isInteger(p.step)&amp;&amp;p.step&gt;=0&amp;&amp;p.step&lt;=steps.length)current=p.step;else current=0;}
+  root.addEventListener(&#x27;click&#x27;,e=&gt;{const b=e.target.closest(&#x27;button&#x27;);if(!b||!root.contains(b))return;const action=b.dataset.action;if(b.dataset.step)current=Number(b.dataset.step);else if(action===&#x27;overview&#x27;)current=0;else if(action===&#x27;prev&#x27;)current=Math.max(1,current-1);else if(action===&#x27;next&#x27;)current=Math.min(steps.length,current+1);else return;render(true);save();});
+  window.addEventListener(&#x27;openai:set_globals&#x27;,e=&gt;{if(e.detail?.globals&amp;&amp;Object.prototype.hasOwnProperty.call(e.detail.globals,&#x27;widgetState&#x27;)){restore(e.detail.globals.widgetState);render();}});
+  restore(window.openai?.widgetState);render();
+  new ResizeObserver(()=&gt;{if(Math.abs(root.getBoundingClientRect().width-lastWidth)&gt;1)draw();}).observe(root);
+})();
+&lt;/script&gt;
+
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+  let lastPointerWasTouch = false;
+  let pinnedByTouch = false;
+
+  const getTrigger = (event) =&gt; {
+    for (const target of event.composedPath()) {
+      if (target?.nodeType === Node.ELEMENT_NODE) {
+        const trigger = target.closest(&quot;[data-tooltip]&quot;);
+        if (trigger) return trigger;
+      }
+    }
+    return null;
+  };
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    pinnedByTouch = false;
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handlePointer = (event) =&gt; {
+    lastPointerWasTouch =
+      event.type === &quot;pointerdown&quot; &amp;&amp; event.pointerType === &quot;touch&quot;;
+  };
+  const handleTouchClick = (event) =&gt; {
+    const isTouch = event.pointerType === &quot;touch&quot; || lastPointerWasTouch;
+    lastPointerWasTouch = false;
+    if (!isTouch || event.detail === 0) {
+      return;
+    }
+    const trigger = getTrigger(event);
+    if (
+      trigger == null ||
+      !trigger.isConnected ||
+      getContent(trigger).length === 0 ||
+      (pinnedByTouch &amp;&amp; activeTrigger === trigger)
+    ) {
+      if (pinnedByTouch) {
+        closeTooltip();
+      }
+      return;
+    }
+    openTooltip(trigger);
+    pinnedByTouch = activeTrigger === trigger;
+    window.setTimeout(() =&gt; {
+      if (activeTrigger === trigger &amp;&amp; !trigger.isConnected) {
+        closeTooltip(false);
+      }
+    }, 0);
+  };
+  const handleLeave = (event) =&gt; {
+    if (pinnedByTouch) {
+      return;
+    }
+    const trigger = getTrigger(event);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    lastPointerWasTouch = false;
+    const trigger = getTrigger(event);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handlers = {
+    pointerover: handlePointerOpen,
+    pointerdown: handlePointer,
+    pointercancel: handlePointer,
+    click: handleTouchClick,
+    pointerout: handleLeave,
+    focusin: handleFocusIn,
+    focusout: handleLeave,
+    keydown: handleKeyDown,
+    contextmenu: handleContextMenu,
+  };
+  const roots = new Map();
+  const handledEvents = new WeakSet();
+  const handleEvent = (event) =&gt; {
+    if (handledEvents.has(event)) return;
+    handledEvents.add(event);
+    handlers[event.type](event);
+  };
+  const discoverRoots = (node) =&gt; {
+    if (node.shadowRoot) listen(node.shadowRoot);
+    for (const element of node.querySelectorAll(&quot;*&quot;)) {
+      if (element.shadowRoot) listen(element.shadowRoot);
+    }
+  };
+  const listen = (root) =&gt; {
+    if (roots.has(root)) return;
+    for (const type of Object.keys(handlers)) root.addEventListener(type, handleEvent);
+    const observer = new window.MutationObserver((records) =&gt; {
+      for (const { addedNodes } of records) {
+        for (const node of addedNodes) {
+          if (node.nodeType === Node.ELEMENT_NODE) discoverRoots(node);
+        }
+      }
+      for (const [root, cleanup] of roots) {
+        if (root.host &amp;&amp; !root.host.isConnected) {
+          cleanup();
+          roots.delete(root);
+        }
+      }
+      if (activeTrigger &amp;&amp; !activeTrigger.isConnected) closeTooltip(false);
+    });
+    observer.observe(root, { childList: true, subtree: true });
+    roots.set(root, () =&gt; {
+      observer.disconnect();
+      for (const type of Object.keys(handlers)) root.removeEventListener(type, handleEvent);
+    });
+    discoverRoots(root);
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    lastPointerWasTouch = false;
+    for (const cleanup of roots.values()) cleanup();
+    roots.clear();
+    tooltip = null;
+  };
+
+  // Events between children of one shadow root never reach the document.
+  listen(document);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-tabs&quot;&gt;
+(() =&gt; {
+  const selector = &#x27;.nav[role=&quot;tablist&quot;] [role=&quot;tab&quot;]&#x27;;
+  const disabled = &#x27;:disabled,[aria-disabled=&quot;true&quot;]&#x27;;
+  const selectTab = (selected) =&gt; {
+    const panelId = selected.getAttribute(&quot;aria-controls&quot;);
+    for (const tab of selected.closest(&#x27;[role=&quot;tablist&quot;]&#x27;).querySelectorAll(&#x27;[role=&quot;tab&quot;]&#x27;)) {
+      const active = tab === selected;
+      tab.classList.toggle(&quot;active&quot;, active);
+      tab.setAttribute(&quot;aria-selected&quot;, String(active));
+      const id = tab.getAttribute(&quot;aria-controls&quot;);
+      const panel = id &amp;&amp; document.getElementById(id);
+      if (panel != null) {
+        panel.hidden = id !== panelId;
+        if (!panel.hidden &amp;&amp; selected.id) {
+          panel.setAttribute(&quot;aria-labelledby&quot;, selected.id);
+        }
+      }
+    }
+  };
+  const interact = (event) =&gt; {
+    const tab = event.target?.closest?.(selector);
+    if (event.defaultPrevented || tab == null || tab.matches(disabled)) {
+      return;
+    }
+    if (event.type === &quot;click&quot;) {
+      selectTab(tab);
+      return;
+    }
+    const tabs = Array.from(
+      tab.closest(&#x27;[role=&quot;tablist&quot;]&#x27;).querySelectorAll(&#x27;[role=&quot;tab&quot;]&#x27;),
+    ).filter((candidate) =&gt; !candidate.matches(disabled));
+    const current = tabs.indexOf(tab);
+    let next;
+    if (event.key === &quot;ArrowRight&quot; || event.key === &quot;ArrowDown&quot;) {
+      next = (current + 1) % tabs.length;
+    } else if (event.key === &quot;ArrowLeft&quot; || event.key === &quot;ArrowUp&quot;) {
+      next = (current + tabs.length - 1) % tabs.length;
+    } else if (event.key === &quot;Home&quot;) {
+      next = 0;
+    } else if (event.key === &quot;End&quot;) {
+      next = tabs.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    tabs[next].focus();
+    selectTab(tabs[next]);
+  };
+
+  for (const list of document.querySelectorAll(&#x27;.nav[role=&quot;tablist&quot;]&#x27;)) {
+    const selected =
+      list.querySelector(&#x27;[role=&quot;tab&quot;][aria-selected=&quot;true&quot;]&#x27;) ??
+      list.querySelector(&#x27;[role=&quot;tab&quot;].active&#x27;) ??
+      list.querySelector(&#x27;[role=&quot;tab&quot;]&#x27;);
+    if (selected != null) {
+      selectTab(selected);
+    }
+  }
+  document.addEventListener(&quot;click&quot;, interact);
+  document.addEventListener(&quot;keydown&quot;, interact);
+  window.addEventListener(&quot;pagehide&quot;, () =&gt; {
+    document.removeEventListener(&quot;click&quot;, interact);
+    document.removeEventListener(&quot;keydown&quot;, interact);
+  }, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-carousel&quot;&gt;
+  (() =&gt; {
+    for (const root of document.querySelectorAll(&quot;.viz-carousel&quot;)) {
+      const panels = Array.from(
+        root.querySelectorAll(&quot;:scope &gt; [data-variant]&quot;),
+      );
+      if (panels.length === 0) {
+        continue;
+      }
+      root.setAttribute(&quot;role&quot;, &quot;group&quot;);
+      panels.forEach((panel, index) =&gt; {
+        panel.hidden = index !== 0;
+        panel.setAttribute(&quot;role&quot;, &quot;group&quot;);
+        if (!panel.hasAttribute(&quot;aria-label&quot;)) {
+          panel.setAttribute(&quot;aria-label&quot;, panel.dataset.variant);
+        }
+      });
+      root.dataset.activeVariant = panels[0].dataset.variant;
+      if (panels.length === 1) {
+        continue;
+      }
+
+      const controls = document.createElement(&quot;div&quot;);
+      controls.className = &quot;viz-carousel-controls&quot;;
+      // Portable copy of the settings dropdown&#x27;s legacy glyph; no 14px icon-package preset matches it.
+      // https://github.com/openai/openai/blob/master/codex/codex-apps/webview/src/icons/chevron.svg
+      controls.innerHTML = `
+      &lt;button type=&quot;button&quot; class=&quot;viz-carousel-previous cursor-interaction&quot;&gt;&lt;i data-lucide=&quot;chevron-left&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;
+      &lt;details class=&quot;viz-carousel-picker&quot;&gt;
+        &lt;summary class=&quot;cursor-interaction&quot;&gt;
+          &lt;span class=&quot;viz-carousel-count tabular-nums&quot;&gt;&lt;/span&gt;
+          &lt;span class=&quot;viz-carousel-name&quot;&gt;&lt;/span&gt;
+          &lt;svg class=&quot;viz-carousel-caret&quot; width=&quot;14&quot; height=&quot;14&quot; viewBox=&quot;0 0 20 21&quot; fill=&quot;none&quot; aria-hidden=&quot;true&quot; focusable=&quot;false&quot;&gt;
+            &lt;path d=&quot;M15.2793 7.71101C15.539 7.45131 15.961 7.45131 16.2207 7.71101C16.4804 7.97071 16.4804 8.39272 16.2207 8.65242L10.4707 14.4024C10.211 14.6621 9.78902 14.6621 9.52932 14.4024L3.77932 8.65242L3.69436 8.54792C3.52385 8.28979 3.55205 7.93828 3.77932 7.71101C4.00659 7.48374 4.3581 7.45554 4.61623 7.62605L4.72073 7.71101L10 12.9903L15.2793 7.71101Z&quot; fill=&quot;currentColor&quot; stroke=&quot;currentColor&quot; stroke-width=&quot;0.6&quot; /&gt;
+          &lt;/svg&gt;
+        &lt;/summary&gt;
+        &lt;div class=&quot;viz-carousel-options&quot;&gt;&lt;/div&gt;
+      &lt;/details&gt;
+      &lt;button type=&quot;button&quot; class=&quot;viz-carousel-next cursor-interaction&quot;&gt;&lt;i data-lucide=&quot;chevron-right&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;`;
+      const previous = controls.querySelector(&quot;.viz-carousel-previous&quot;);
+      const next = controls.querySelector(&quot;.viz-carousel-next&quot;);
+      const picker = controls.querySelector(&quot;.viz-carousel-picker&quot;);
+      const summary = picker.querySelector(&quot;summary&quot;);
+      const count = controls.querySelector(&quot;.viz-carousel-count&quot;);
+      const name = controls.querySelector(&quot;.viz-carousel-name&quot;);
+      const options = controls.querySelector(&quot;.viz-carousel-options&quot;);
+      const status = document.createElement(&quot;span&quot;);
+      status.className = &quot;sr-only&quot;;
+      status.setAttribute(&quot;role&quot;, &quot;status&quot;);
+      status.setAttribute(&quot;aria-live&quot;, &quot;polite&quot;);
+      status.setAttribute(&quot;aria-atomic&quot;, &quot;true&quot;);
+      previous.setAttribute(
+        &quot;aria-label&quot;,
+        root.dataset.previousLabel ?? &quot;Previous variant&quot;,
+      );
+      next.setAttribute(&quot;aria-label&quot;, root.dataset.nextLabel ?? &quot;Next variant&quot;);
+
+      let active = 0;
+      let mousePointerId = null;
+      let summaryPointerHandled = false;
+      summary.addEventListener(&quot;pointerdown&quot;, (event) =&gt; {
+        summaryPointerHandled =
+          event.pointerType === &quot;mouse&quot; &amp;&amp; event.button === 0 &amp;&amp; !event.ctrlKey;
+        if (!summaryPointerHandled) {
+          return;
+        }
+        event.preventDefault();
+        summary.focus({ preventScroll: true });
+        picker.open = !picker.open;
+        mousePointerId = picker.open ? event.pointerId : null;
+      });
+      summary.addEventListener(&quot;click&quot;, (event) =&gt; {
+        if (summaryPointerHandled &amp;&amp; event.detail &gt; 0) {
+          event.preventDefault();
+        }
+      });
+      const choices = panels.map((panel, index) =&gt; {
+        const choice = document.createElement(&quot;button&quot;);
+        choice.type = &quot;button&quot;;
+        choice.className = &quot;cursor-interaction&quot;;
+        choice.textContent = panel.dataset.variant;
+        choice.addEventListener(&quot;click&quot;, () =&gt; {
+          select(index);
+          summary.focus();
+        });
+        choice.addEventListener(&quot;pointerup&quot;, (event) =&gt; {
+          if (
+            picker.open &amp;&amp;
+            event.pointerType === &quot;mouse&quot; &amp;&amp;
+            event.button === 0 &amp;&amp;
+            event.pointerId === mousePointerId
+          ) {
+            choice.click();
+          }
+        });
+        options.appendChild(choice);
+        return choice;
+      });
+      const select = (index) =&gt; {
+        const changed = active !== index;
+        active = index;
+        panels.forEach((panel, position) =&gt; {
+          panel.hidden = position !== active;
+          choices[position].setAttribute(
+            &quot;aria-current&quot;,
+            String(position === active),
+          );
+        });
+        root.dataset.activeVariant = panels[active].dataset.variant;
+        count.textContent = `${active + 1} / ${panels.length}`;
+        name.textContent = panels[active].dataset.variant;
+        picker.open = false;
+        mousePointerId = null;
+        if (changed) {
+          status.textContent = `${count.textContent}: ${name.textContent}`;
+        }
+      };
+      previous.addEventListener(&quot;click&quot;, () =&gt;
+        select((active + panels.length - 1) % panels.length),
+      );
+      next.addEventListener(&quot;click&quot;, () =&gt;
+        select((active + 1) % panels.length),
+      );
+      picker.addEventListener(&quot;keydown&quot;, (event) =&gt; {
+        if (event.key === &quot;Escape&quot; &amp;&amp; picker.open) {
+          event.preventDefault();
+          picker.open = false;
+          mousePointerId = null;
+          summary.focus();
+          return;
+        }
+        if (event.altKey || event.ctrlKey || event.metaKey) {
+          return;
+        }
+        const index = choices.indexOf(document.activeElement);
+        let nextIndex;
+        if (event.key === &quot;ArrowDown&quot;) {
+          nextIndex = index &lt; 0 ? active : (index + 1) % choices.length;
+        } else if (event.key === &quot;ArrowUp&quot;) {
+          nextIndex = index &lt; 0 ? active : (index + choices.length - 1) % choices.length;
+        } else if (picker.open &amp;&amp; event.key === &quot;Home&quot;) {
+          nextIndex = 0;
+        } else if (picker.open &amp;&amp; event.key === &quot;End&quot;) {
+          nextIndex = choices.length - 1;
+        } else {
+          return;
+        }
+        event.preventDefault();
+        picker.open = true;
+        choices[nextIndex].focus();
+      });
+      picker.addEventListener(&quot;focusout&quot;, (event) =&gt; {
+        if (!picker.contains(event.relatedTarget)) {
+          picker.open = false;
+          mousePointerId = null;
+        }
+      });
+      const dismiss = (event) =&gt; {
+        if (!summary.contains(event.target)) {
+          mousePointerId = null;
+        }
+        if (!picker.contains(event.target)) {
+          picker.open = false;
+        }
+      };
+      const endPointerSelection = () =&gt; {
+        mousePointerId = null;
+      };
+      const sizePicker = () =&gt; {
+        root.style.setProperty(
+          &quot;--viz-carousel-picker-height&quot;,
+          `${picker.open ? options.offsetHeight : 0}px`,
+        );
+      };
+      picker.addEventListener(&quot;toggle&quot;, sizePicker);
+      window.addEventListener(&quot;resize&quot;, sizePicker);
+      document.addEventListener(&quot;pointerdown&quot;, dismiss);
+      document.addEventListener(&quot;pointerup&quot;, endPointerSelection);
+      document.addEventListener(&quot;pointercancel&quot;, endPointerSelection);
+      window.addEventListener(&quot;blur&quot;, endPointerSelection);
+      window.addEventListener(
+        &quot;pagehide&quot;,
+        () =&gt; {
+          document.removeEventListener(&quot;pointerdown&quot;, dismiss);
+          document.removeEventListener(&quot;pointerup&quot;, endPointerSelection);
+          document.removeEventListener(&quot;pointercancel&quot;, endPointerSelection);
+          window.removeEventListener(&quot;blur&quot;, endPointerSelection);
+          window.removeEventListener(&quot;resize&quot;, sizePicker);
+        },
+        { once: true },
+      );
+      root.append(controls, status);
+      select(0);
+    }
+  })();
+&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+
+<script>(() => {
+  const frame = document.getElementById("codex-visualization");
+  if (!(frame instanceof HTMLIFrameElement)) {
+    return;
+  }
+  let viewportHeight = globalThis.innerHeight;
+  const storageKey = `codex:visualization-widget-state-v2:${JSON.stringify([
+    globalThis.location.pathname,
+    globalThis.location.search,
+  ])}`;
+  const parseState = (serializedState) => {
+    if (
+      typeof serializedState !== "string" ||
+      new TextEncoder().encode(serializedState).length > 16 * 1024
+    ) {
+      throw new TypeError(
+        "Widget state must be a JSON object of at most 16 KiB",
+      );
+    }
+    /** @type {unknown} */
+    const state = JSON.parse(serializedState);
+    if (
+      state == null ||
+      typeof state !== "object" ||
+      Array.isArray(state) ||
+      ("imageIds" in state &&
+        (!Array.isArray(state.imageIds) || state.imageIds.length > 0))
+    ) {
+      throw new TypeError("Widget state must be a JSON object");
+    }
+    const storedState = { modelContent: null, privateContent: null, ...state };
+    const canonicalState = JSON.stringify(
+      storedState,
+      (_key, /** @type {unknown} */ value) => {
+        if (typeof value === "number" && !Number.isFinite(value)) {
+          throw new TypeError("Widget state must contain finite numbers");
+        }
+        return value;
+      },
+    );
+    if (new TextEncoder().encode(canonicalState).length > 16 * 1024) {
+      throw new TypeError(
+        "Widget state must be a JSON object of at most 16 KiB",
+      );
+    }
+    return storedState;
+  };
+  let storage = null;
+  let state = null;
+  try {
+    const localStorage = globalThis.localStorage;
+    const probeKey = `${storageKey}:probe`;
+    localStorage.setItem(probeKey, "1");
+    localStorage.removeItem(probeKey);
+    storage = localStorage;
+    const savedState = storage.getItem(storageKey);
+    if (savedState != null) {
+      try {
+        state = parseState(savedState);
+      } catch {
+        // Invalid saved state does not disable future writes.
+      }
+    }
+  } catch {
+    storage = null;
+  }
+  const initialGlobals = {
+    widgetState: state,
+    statePersistence: storage == null ? "none" : "local",
+  };
+
+  const channel = new MessageChannel();
+  channel.port1.addEventListener("message", (event) => {
+    const data = event.data;
+    if (typeof data !== "object" || data == null) {
+      return;
+    }
+    if (data.type === "widget-state-write") {
+      if (!Number.isSafeInteger(data.id) || data.id <= 0) {
+        return;
+      }
+      let ok = false;
+      try {
+        if (storage != null) {
+          const state = parseState(data.state);
+          storage.setItem(storageKey, JSON.stringify(state));
+          ok = true;
+        }
+      } catch {
+        // Storage denial, quota limits, and invalid state return a failed receipt.
+      }
+      channel.port1.postMessage({
+        type: "widget-state-result",
+        id: data.id,
+        ok,
+      });
+      return;
+    }
+    if (data.type === "height") {
+      const height = data.height;
+      if (
+        typeof height === "number" &&
+        Number.isFinite(height) &&
+        height >= 0 &&
+        height <= 10_000
+      ) {
+        frame.style.height = Math.ceil(height) + "px";
+      }
+      return;
+    }
+    if (data.type === "scroll-to") {
+      const top = data.top;
+      if (
+        typeof top === "number" &&
+        Number.isFinite(top) &&
+        top >= 0 &&
+        globalThis.navigator.userActivation?.isActive === true
+      ) {
+        globalThis.scrollTo({
+          top: Math.ceil(
+            globalThis.scrollY + frame.getBoundingClientRect().top + top,
+          ),
+        });
+      }
+      return;
+    }
+    if (data.type === "open-external") {
+      const rawHref = data.href;
+      if (typeof rawHref !== "string") {
+        return;
+      }
+      let href;
+      try {
+        const url = new URL(rawHref, document.baseURI);
+        if (url.protocol !== "https:") {
+          return;
+        }
+        href = url.href;
+      } catch {
+        return;
+      }
+      if (globalThis.navigator.userActivation?.isActive === true) {
+        const anchor = document.createElement("a");
+        anchor.href = href;
+        anchor.rel = "noopener noreferrer";
+        anchor.target = "_blank";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
+      return;
+    }
+    if (data.type === "follow-up") {
+      const prompt = data.prompt;
+      if (
+        typeof prompt !== "string" ||
+        globalThis.navigator.userActivation?.isActive !== true
+      ) {
+        return;
+      }
+      const title = data.title;
+      globalThis.prompt(typeof title === "string" ? title : prompt, prompt);
+    }
+  });
+  channel.port1.start();
+  const srcdoc = frame.dataset.srcdoc;
+  if (srcdoc == null) {
+    return;
+  }
+  globalThis.addEventListener("resize", () => {
+    const height = Number.parseFloat(frame.style.height);
+    if (!Number.isFinite(height) || height <= viewportHeight) {
+      frame.style.removeProperty("height");
+    }
+    viewportHeight = globalThis.innerHeight;
+    channel.port1.postMessage({ type: "measure" });
+  });
+  frame.addEventListener(
+    "load",
+    () => {
+      frame.contentWindow?.postMessage(
+        { type: "codex-visualization-initialize" },
+        "*",
+        [channel.port2],
+      );
+    },
+    { once: true },
+  );
+  // Match the trusted bootstrap element, not the same text in an authored title.
+  frame.srcdoc = srcdoc.replace(
+    '<script type="application/json" id="codex-visualization-widget-state">__CODEX_VISUALIZATION_WIDGET_STATE__<\/script>',
+    () =>
+      '<script type="application/json" id="codex-visualization-widget-state">' +
+      JSON.stringify(initialGlobals).replaceAll("<", "\\u003c") +
+      "<\/script>",
+  );
+  delete frame.dataset.srcdoc;
+})();
+</script>
+</body>
+</html>

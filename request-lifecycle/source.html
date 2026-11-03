@@ -1,0 +1,294 @@
+<div id="vllm-life-r1">
+  <style>
+    #vllm-life-r1 { color: var(--foreground); }
+    #vllm-life-r1 .life-heading { padding-right: 90px; margin-bottom: 6px; }
+    #vllm-life-r1 .life-context { margin-bottom: 12px; overflow-wrap: anywhere; }
+    #vllm-life-r1 .life-controls { margin: 12px 0; }
+    #vllm-life-r1 .life-controls .life-counter { margin-left: auto; }
+    #vllm-life-r1 .life-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 8px 0; }
+    #vllm-life-r1 .life-legend span { display: inline-flex; align-items: center; gap: 6px; }
+    #vllm-life-r1 .life-swatch { display: inline-block; width: 22px; height: 2px; background: var(--border); }
+    #vllm-life-r1 .life-swatch.data { background: var(--viz-series-2); }
+    #vllm-life-r1 .life-swatch.result { height: 0; border-top: 2px dashed var(--viz-series-3); background: transparent; }
+    #vllm-life-r1 .life-diagram { display: block; width: 100%; overflow: visible; }
+    #vllm-life-r1 .life-diagram text, #vllm-life-r1 .life-kv text { fill: var(--foreground); }
+    #vllm-life-r1 .life-diagram .secondary { fill: var(--muted-foreground); }
+    #vllm-life-r1 .life-diagram .node-base { fill: var(--background); stroke: var(--border); stroke-width: 1; }
+    #vllm-life-r1 .life-diagram .node-active { fill: color-mix(in srgb, var(--viz-series-1) 12%, var(--background)); }
+    #vllm-life-r1 .life-diagram .process-outline { fill: none; stroke: var(--border); stroke-width: 1; }
+    #vllm-life-r1 .life-diagram .edge { fill: none; stroke-width: 1.5; }
+    #vllm-life-r1 .life-diagram .edge.control { color: var(--muted-foreground); stroke: currentColor; }
+    #vllm-life-r1 .life-diagram .edge.data { color: var(--viz-series-2); stroke: currentColor; }
+    #vllm-life-r1 .life-diagram .edge.result { color: var(--viz-series-3); stroke: currentColor; stroke-dasharray: 5 4; }
+    #vllm-life-r1 .life-diagram .edge.active { stroke-width: 2.5; }
+    #vllm-life-r1 .life-diagram .inactive { opacity: .25; }
+    #vllm-life-r1 .life-diagram .edge-label-bg { fill: var(--background); }
+    #vllm-life-r1 .life-diagram .step-number { fill: var(--accent); }
+    #vllm-life-r1 .life-diagram .pulse { fill: var(--viz-series-1); }
+    #vllm-life-r1 .life-state { min-height: 28px; margin: 10px 0; overflow-wrap: anywhere; }
+    #vllm-life-r1 .life-detail { margin: 12px 0 18px; }
+    #vllm-life-r1 .life-detail h3 { margin: 0 0 8px; }
+    #vllm-life-r1 .life-facts { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 6px 10px; margin: 0 0 10px; }
+    #vllm-life-r1 .life-facts dt { color: var(--muted-foreground); }
+    #vllm-life-r1 .life-facts dd { margin: 0; overflow-wrap: anywhere; }
+    #vllm-life-r1 .life-kv { display: block; width: 100%; margin-top: 7px; }
+    #vllm-life-r1 .life-token-label { display: flex; gap: 8px 16px; flex-wrap: wrap; margin-top: 10px; }
+    #vllm-life-r1 .life-rounds { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin: 14px 0; }
+    #vllm-life-r1 .life-round { padding: 6px 0; border-top: 2px solid var(--border); }
+    #vllm-life-r1 .life-round.current { border-top-color: var(--viz-series-1); }
+    #vllm-life-r1 .life-round span { display: block; overflow-wrap: anywhere; }
+    #vllm-life-r1 .life-full { margin-top: 20px; }
+    #vllm-life-r1 .life-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px 28px; list-style: none; margin: 12px 0 0; padding: 0; }
+    #vllm-life-r1 .life-list li { display: grid; grid-template-columns: 24px minmax(0,1fr); gap: 4px 6px; align-items: start; }
+    #vllm-life-r1 .life-list .life-item-number { padding-top: 7px; color: var(--muted-foreground); }
+    #vllm-life-r1 .life-list .life-item-description { grid-column: 2; overflow-wrap: anywhere; }
+    #vllm-life-r1 details { margin-top: 18px; }
+    #vllm-life-r1 summary { color: var(--foreground); }
+    #vllm-life-r1 .life-branches { display: grid; grid-template-columns: 96px minmax(0,1fr); gap: 10px; margin-top: 12px; }
+    #vllm-life-r1 .life-branches dt { font-weight: 500; }
+    #vllm-life-r1 .life-branches dd { margin: 0; overflow-wrap: anywhere; }
+    #vllm-life-r1 .life-sources { padding-left: 20px; }
+    #vllm-life-r1 .life-sources li { margin: 6px 0; overflow-wrap: anywhere; }
+    @media (max-width: 559px) {
+      #vllm-life-r1 .life-list { grid-template-columns: minmax(0,1fr); }
+      #vllm-life-r1 .life-rounds { grid-template-columns: minmax(0,1fr); gap: 4px; }
+      #vllm-life-r1 .life-round { display: flex; gap: 12px; flex-wrap: wrap; }
+      #vllm-life-r1 .life-branches { grid-template-columns: minmax(0,1fr); gap: 5px; }
+      #vllm-life-r1 .life-branches dd { margin-bottom: 8px; }
+    }
+  </style>
+  <h2 class="life-heading">一个 vLLM 请求的一生</h2>
+  <div class="life-context text-small text-muted">v0.11.0 · V1 · 单卡 / UniProcExecutor · 流式聊天 · 同步调度</div>
+  <div class="text-small">教学请求 R1：prompt = [p1, p2, p3, p4]，max_tokens = 3</div>
+  <div class="life-controls viz-controls" aria-label="请求生命周期逐步查看">
+    <button type="button" class="btn" data-action="overview" aria-pressed="true">全局关系</button>
+    <button type="button" class="btn" data-action="prev" disabled>上一步</button>
+    <button type="button" class="btn btn-primary" data-action="next">下一步</button>
+    <span class="life-counter text-small tabular-nums" data-slot="counter">20 步</span>
+  </div>
+  <div class="life-legend text-small">
+    <span><i class="life-swatch" aria-hidden="true"></i>调用 / 调度</span>
+    <span><i class="life-swatch data" aria-hidden="true"></i>输入数据</span>
+    <span><i class="life-swatch result" aria-hidden="true"></i>结果 / 完成通知</span>
+  </div>
+  <svg class="life-diagram" role="img" aria-label="客户端、前端进程、EngineCore 进程和 GPU 之间的编号请求流程"></svg>
+  <div class="life-state text-small" data-slot="state" aria-live="polite"></div>
+  <div class="life-token-label text-small">
+    <span data-slot="kv-title"></span><span data-slot="output"></span>
+  </div>
+  <svg class="life-kv" role="img" aria-label="教学 KV 块 B7 的十六个槽位"></svg>
+  <div class="life-rounds" aria-label="三轮模型计算">
+    <div class="life-round" data-round="1"><span>① Prefill</span><span class="text-small">输入 p1…p4 → 采样 t1</span></div>
+    <div class="life-round" data-round="2"><span>② Decode</span><span class="text-small">输入 t1 → 采样 t2</span></div>
+    <div class="life-round" data-round="3"><span>③ Decode</span><span class="text-small">输入 t2 → 采样 t3</span></div>
+  </div>
+  <div class="life-detail" data-slot="detail" hidden></div>
+  <div class="life-full" data-slot="full">
+    <h3>完整编号流程</h3>
+    <ol class="life-list"></ol>
+  </div>
+  <details>
+    <summary>等待、中断与缓存分支</summary>
+    <dl class="life-branches text-small">
+      <dt>预算 / 块不足</dt><dd>新请求留在 WAITING → 后续轮次重试步骤 6；已有请求可被抢占，释放占用并回等待队列，之后重算或命中缓存。</dd>
+      <dt>分块 Prefill</dt><dd>步骤 6–10 可分多轮处理 prompt；中间轮不向客户端输出有效 token，完成 prompt 的那一轮才产生 t1。</dd>
+      <dt>前缀命中</dt><dd>步骤 6 复用已缓存完整块，减少待算 token；本例无命中。每次 Decode 先用已有块，空间耗尽才需要新块。</dd>
+      <dt>EOS / token stop</dt><dd>Scheduler 可提前判停 → 步骤 18；本例假设无提前停止，输出 3 个 token 后以 length 结束。</dd>
+      <dt>字符串 stop</dt><dd>前端 OutputProcessor 识别 → 结束前端输出并反向 ABORT → Scheduler 清理；与本例的长度终止路径不同。</dd>
+      <dt>客户端断连</dt><dd>generate 被取消 → 前端清理并发送 ABORT → Scheduler 移出队列、释放引用 → Worker 后续清理。</dd>
+    </dl>
+  </details>
+  <details>
+    <summary>适用范围与源码依据</summary>
+    <div class="text-small life-context">模型权重与 GPU KV 池已在启动阶段准备好。示例为纯文本、decoder-only full attention、单请求展示，token 预算足够；无投机解码、无 PD 分离。p/t、R1、B7 与 16 槽均为教学标识，不是实测输出。</div>
+    <div class="text-small life-context">编号是一种合法交错顺序；前端发送与引擎后续计算可重叠。步骤 19 与 20 都依赖 18，彼此没有固定先后。SSE chunk、文本片段与 token 不保证一一对应。</div>
+    <ul class="life-sources text-small"></ul>
+  </details>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('vllm-life-r1');
+  const NS = 'http://www.w3.org/2000/svg';
+  const base = 'https://github.com/vllm-project/vllm/blob/v0.11.0/';
+  const sources = {
+    api: ['HTTP 与 SSE 入口', 'vllm/entrypoints/openai/api_server.py#L583-L621'],
+    preprocess: ['聊天模板与分词', 'vllm/entrypoints/openai/serving_engine.py#L736-L851'],
+    async: ['AsyncLLM 注册与提交', 'vllm/v1/engine/async_llm.py#L261-L313'],
+    ipc: ['跨进程 ADD 请求', 'vllm/v1/engine/core_client.py#L849-L910'],
+    add: ['Scheduler 等待队列', 'vllm/v1/core/sched/scheduler.py#L1097-L1101'],
+    sched: ['调度与 KV 块分配', 'vllm/v1/core/sched/scheduler.py#L379-L529'],
+    core: ['schedule → execute → update', 'vllm/v1/engine/core.py#L272-L291'],
+    runner: ['GPUModelRunner 前向与采样', 'vllm/v1/worker/gpu_model_runner.py#L2231-L2367'],
+    return: ['采样结果回传 CPU', 'vllm/v1/worker/gpu_model_runner.py#L2136-L2153'],
+    update: ['追加 token、判停与输出', 'vllm/v1/core/sched/scheduler.py#L884-L979'],
+    output: ['增量解码与前端清理', 'vllm/v1/engine/output_processor.py#L423-L467'],
+    sse: ['首个 role SSE 与内容流', 'vllm/entrypoints/openai/serving_chat.py#L574-L620'],
+    decode: ['RUNNING 请求的调度', 'vllm/v1/core/sched/scheduler.py#L208-L303'],
+    free: ['释放请求与 KV 引用', 'vllm/v1/core/sched/scheduler.py#L1147-L1165'],
+    done: ['结束 chunk、可选 usage、DONE', 'vllm/entrypoints/openai/serving_chat.py#L1055-L1149'],
+    clean: ['Worker 清理 finished_req_ids', 'vllm/v1/worker/gpu_model_runner.py#L526-L546'],
+    uniproc: ['单卡 Worker 的同进程调用', 'vllm/executor/uniproc_executor.py#L31-L83'],
+    pool: ['块引用归零后回可用队列', 'vllm/v1/core/block_pool.py#L338-L353']
+  };
+  const steps = [
+    {title:'HTTP 请求到达',phase:'接入',actors:['C','H'],edges:['ch'],local:[],input:'R1：messages、stream=true、max_tokens=3。',action:'客户端 POST /v1/chat/completions；API handler 接收并检查请求。',result:'OpenAIServingChat 接手；尚无模型输出。',flow:'客户端 → HTTP 请求 → API Server',source:'api',state:'接入中',kv:0,out:0,shown:0,round:0},
+    {title:'套模板并分词',phase:'接入',actors:['H'],edges:[],local:['H'],input:'聊天 messages 与模型对应的 chat template / tokenizer。',action:'检查模型与参数，应用聊天模板，将输入编码成 token IDs。',result:'教学 prompt P=[p1,p2,p3,p4] 与 SamplingParams；流式输出使用 DELTA。',flow:'ServingChat → prompt token IDs → AsyncLLM',source:'preprocess',state:'已分词',kv:0,out:0,shown:0,round:0},
+    {title:'注册前端请求',phase:'接入',actors:['H','A'],edges:['ha'],local:['A'],input:'R1、prompt token IDs、SamplingParams。',action:'AsyncLLM.generate / add_request 构造 EngineCoreRequest，并先向 OutputProcessor 注册 collector。',result:'前端保存 R1 的输出状态，等待引擎返回。',flow:'AsyncLLM → 注册输出接收器 → 等待结果',source:'async',state:'前端已注册',kv:0,out:0,shown:0,round:0},
+    {title:'ADD 跨进程发送',phase:'接入',actors:['A','S'],edges:['as'],local:[],input:'CPU 上的 EngineCoreRequest。',action:'AsyncMPClient 编码 ADD，经 ZeroMQ IPC 发送到 EngineCore 后台进程。',result:'EngineCore 收到 prompt IDs 与参数；不传模型权重或 KV 张量。',flow:'前端进程 → ADD / IPC → EngineCore 进程',source:'ipc',state:'ADD 已接收',kv:0,out:0,shown:0,round:0},
+    {title:'加入等待队列',phase:'调度',actors:['S'],edges:[],local:['S'],input:'收到的 EngineCoreRequest。',action:'EngineCore 构造 Request，调用 Scheduler.add_request。',result:'R1 进入 WAITING，num_computed_tokens=0；还没有请求专属 KV 块。',flow:'EngineCore → Request(WAITING) → Scheduler',source:'add',state:'WAITING',kv:0,out:0,shown:0,round:0},
+    {title:'调度 Prefill，分配块',phase:'调度',actors:['S'],edges:[],local:['S'],input:'WAITING 的 R1；本轮预算 ≥4；前缀缓存无命中。',action:'schedule 选择 4 个待处理 token；allocate_slots 为 R1 取得教学块 B7。',result:'R1 → RUNNING，块表 [B7]；已安排 4 个 token，物理 KV 尚未写入。',flow:'Scheduler → token 数 + 块表 → 本轮执行计划',source:'sched',state:'RUNNING · 已安排 4',kv:0,out:0,shown:0,round:1,allocated:true},
+    {title:'Worker 准备设备输入',phase:'Prefill',actors:['S','W','G'],edges:['sw','wg'],local:['W'],input:'SchedulerOutput：R1、4 个 token、块表 [B7]。',action:'同进程 Executor / Worker 调用 GPUModelRunner；准备 token、position、slot mapping 等设备输入。',result:'GPU 本轮处理 p1…p4；调度计划与实际张量传入是两个环节。',flow:'Scheduler → Worker → GPU 输入与元数据',source:'runner',state:'RUNNING · Prefill 待执行',kv:0,out:0,shown:0,round:1,allocated:true},
+    {title:'Prefill 产生首 token',phase:'Prefill',actors:['G'],edges:[],local:['G'],input:'p1…p4 与 GPU 上的模型权重。',action:'模型前向把 prompt 的 K/V 写入 B7；取采样位置 hidden state → logits → sampler。',result:'得到 t1；B7 中有 p1…p4 的 KV，t1 自身的 KV 尚未计算。',flow:'GPU → prompt KV + 采样 t1 → Runner',source:'runner',state:'RUNNING · 首 token 已生成',kv:4,out:1,shown:0,round:1,allocated:true},
+    {title:'采样结果回到调度器',phase:'Prefill',actors:['G','W','S'],edges:['gw','ws'],local:[],input:'GPU 的采样 ID t1。',action:'同步执行路径完成结果拷回 CPU，Runner 封装 ModelRunnerOutput 并沿调用栈返回。',result:'Scheduler 得到采样 ID；KV 张量仍留在 GPU。',flow:'GPU → CPU token ID → Scheduler',source:'return',state:'RUNNING · 结果待更新',kv:4,out:1,shown:0,round:1,allocated:true},
+    {title:'记录 t1，判断继续',phase:'Prefill',actors:['S'],edges:[],local:['S'],input:'ModelRunnerOutput：R1 的 t1。',action:'update_from_output 追加 t1，并检查长度、EOS、stop token。',result:'输出数 1<3，继续 RUNNING；构造非最终 EngineCoreOutput。',flow:'Scheduler → 保存 t1 / 未结束 → 输出通路',source:'update',state:'RUNNING · 1/3',kv:4,out:1,shown:0,round:1,allocated:true},
+    {title:'前端增量解码',phase:'返回',actors:['S','A'],edges:['sa'],local:['A'],input:'含 R1、t1、未结束标志的 EngineCoreOutput。',action:'结果经 IPC 到前端；output_handler 调用 OutputProcessor，增量 detokenize 并写入 collector。',result:'AsyncLLM.generate 可 yield RequestOutput；token 可缓冲，不保证每个 token 都立即形成文本。',flow:'EngineCore → IPC 结果 → OutputProcessor',source:'output',state:'RUNNING · 前端处理 t1',kv:4,out:1,shown:0,round:1,allocated:true},
+    {title:'首段 SSE 到客户端',phase:'返回',actors:['A','H','C'],edges:['ah','hc'],local:[],input:'第一个 RequestOutput 与可输出的文本片段。',action:'ServingChat 先发送 assistant role chunk，再发送内容 delta。',result:'客户端消费首段文本；引擎可同时继续后续计算。',flow:'AsyncLLM → ServingChat → SSE → 客户端',source:'sse',state:'RUNNING · 首段已返回',kv:4,out:1,shown:1,round:1,allocated:true},
+    {title:'调度第一轮 Decode',phase:'Decode',actors:['S','W'],edges:['sw'],local:['S','W'],input:'已知序列 P+t1；prompt KV 已就绪。',action:'Scheduler 只安排尚未计算的 t1；Worker 复用 R1 状态与块表。',result:'本轮 1 个输入 token，继续使用 B7 的空槽，无需再分配一整块。',flow:'Scheduler → 1 token 计划 → Worker',source:'decode',state:'RUNNING · 已安排 5',kv:4,out:1,shown:1,round:2,allocated:true},
+    {title:'输入 t1，生成 t2',phase:'Decode',actors:['W','G'],edges:['wg'],local:['G'],input:'t1 + p1…p4 的历史 KV。',action:'GPU 前向计算 t1 的 KV，读取历史 KV 做 attention，再计算 logits 并采样。',result:'得到 t2；物理 KV 覆盖 P+t1，共 5 个 token。',flow:'Worker → GPU Decode(t1) → t2',source:'runner',state:'RUNNING · t2 已生成',kv:5,out:2,shown:1,round:2,allocated:true},
+    {title:'记录并返回第二段',phase:'Decode',actors:['G','W','S','A','H','C'],edges:['gw','ws','sa','ah','hc'],local:['S','A'],input:'t2 的采样结果。',action:'重复结果回传、追加 token、判停、IPC 输出、detokenize 与 SSE；这些环节沿用步骤 9–12。',result:'输出数 2<3；客户端可消费第二段，R1 仍在 RUNNING。',flow:'GPU → Scheduler → 前端 → 客户端',source:'update',state:'RUNNING · 2/3',kv:5,out:2,shown:2,round:2,allocated:true},
+    {title:'调度第二轮 Decode',phase:'Decode',actors:['S','W'],edges:['sw'],local:['S','W'],input:'已知序列 P+t1+t2，物理 KV 覆盖 P+t1。',action:'Scheduler 安排 t2；Worker 继续使用 B7 和持久 batch 状态。',result:'本轮仍只输入 1 个 token。',flow:'Scheduler → t2 的执行计划 → Worker',source:'decode',state:'RUNNING · 已安排 6',kv:5,out:2,shown:2,round:3,allocated:true},
+    {title:'输入 t2，生成 t3',phase:'Decode',actors:['W','G'],edges:['wg'],local:['G'],input:'t2 + P+t1 的历史 KV。',action:'GPU 计算 t2 的 KV，读取历史 KV，并采样 t3。',result:'3 个输出 token 已生成；实际前向输入共 4+2=6 个，t3 自身没有 KV。',flow:'Worker → GPU Decode(t2) → t3',source:'runner',state:'RUNNING · t3 已生成',kv:6,out:3,shown:2,round:3,allocated:true},
+    {title:'达到长度上限，释放占用',phase:'结束',actors:['G','W','S'],edges:['gw','ws'],local:['S'],input:'回到 Scheduler 的 t3；追加后输出数为 3。',action:'check_stop 判为 FINISHED_LENGTH_CAPPED；_free_request 移除请求并释放 KV 块引用。',result:'R1→B7 映射删除，B7 引用归零可复用；随后构造 finish_reason=length 的最终输出。',flow:'Scheduler → 结束 R1 / 释放引用 → 最终输出',source:'free',state:'FINISHED · LENGTH',kv:6,out:3,shown:2,round:3,freed:true},
+    {title:'最终 SSE 与 DONE',phase:'结束',actors:['S','A','H','C'],edges:['sa','ah','hc'],local:['A'],input:'最终 t3 + finish_reason=length。',action:'前端完成 detokenize 并清理 R1 输出状态；ServingChat 发结束 chunk、可选 usage，最后 [DONE]。',result:'客户端流结束；结束前 KV 请求引用已释放。',flow:'EngineCore → 最终输出 → SSE [DONE]',source:'done',state:'客户端完成',kv:6,out:3,shown:3,round:3,freed:true},
+    {title:'Worker 清理请求状态',phase:'结束',actors:['S','W'],edges:['sw'],local:['W'],input:'Scheduler 记录的 finished_req_ids={R1}。',action:'后续调度轮把完成 ID 交给 Worker；_update_states 清理请求缓存与持久 batch 槽。',result:'R1 状态清理闭合；若无其他工作则零 token 返回。模型与 GPU KV 池继续驻留。',flow:'Scheduler → finished_req_ids → Worker 清理',source:'clean',state:'R1 已清理',kv:6,out:3,shown:3,round:3,freed:true}
+  ].map((s,i)=>({...s,id:i+1}));
+  const participants = [
+    {id:'C',title:'客户端',sub:'HTTP / SSE',global:'提交请求 · 消费文本'},
+    {id:'H',title:'API Server',sub:'OpenAIServingChat',global:'校验 · 模板 · SSE 封装'},
+    {id:'A',title:'AsyncLLM',sub:'Processor / OutputProcessor',global:'输入处理 · 增量解码 · collector'},
+    {id:'S',title:'EngineCore / Scheduler',sub:'KVCacheManager · CPU',global:'排队 · 调度 · 块表 · 判停'},
+    {id:'W',title:'Executor / Worker',sub:'GPUModelRunner · CPU',global:'组装输入 · 持久 batch · 结果'},
+    {id:'G',title:'GPU device',sub:'模型权重 + KV 张量池',global:'Forward → logits → sampler'}
+  ];
+  const edgeDefs = [
+    {id:'ch',from:'C',to:'H',kind:'data',label:'HTTP'},
+    {id:'hc',from:'H',to:'C',kind:'result',label:'SSE'},
+    {id:'ha',from:'H',to:'A',kind:'control',label:'generate'},
+    {id:'ah',from:'A',to:'H',kind:'result',label:'文本增量'},
+    {id:'as',from:'A',to:'S',kind:'data',label:'ADD / IPC'},
+    {id:'sa',from:'S',to:'A',kind:'result',label:'结果 / IPC'},
+    {id:'sw',from:'S',to:'W',kind:'control',label:'调度计划'},
+    {id:'ws',from:'W',to:'S',kind:'result',label:'token IDs'},
+    {id:'wg',from:'W',to:'G',kind:'data',label:'设备输入'},
+    {id:'gw',from:'G',to:'W',kind:'result',label:'采样 IDs'}
+  ];
+  const el = (tag, attrs={}, text='') => { const n=document.createElementNS(NS,tag); Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,v)); if(text) n.textContent=text; return n; };
+  const diagram=root.querySelector('.life-diagram'), kvSvg=root.querySelector('.life-kv');
+  const slot=(name)=>root.querySelector(`[data-slot="${name}"]`);
+  let current=0, lastWidth=0;
+  const stateFor=(id,s)=> {
+    if(!s) return participants.find(p=>p.id===id).global;
+    if(id==='C') return s.shown ? `已消费输出 ${s.shown}/3${s.id>=19?' · DONE':''}` : '等待输出';
+    if(id==='H') return s.id<3 ? (s.id===1?'接收 messages':'prompt 已编码') : s.id>=19?'流已结束':s.id>=12?'流式发送文本':'等待首个 RequestOutput';
+    if(id==='A') return s.id<3?'未注册 R1':s.id>=19?'R1 输出状态已移除':s.id>=11?'collector / 增量解码':'已注册 · 等待引擎';
+    if(id==='S') {
+      if(s.id<5)return '未入队';
+      if(s.id===5)return 'WAITING · 尚未安排 token';
+      if(s.freed)return 'R1 已结束 · 块表已移除';
+      const scheduled=s.id>=16?6:s.id>=13?5:4;
+      const registered=s.id>=15?2:s.id>=10?1:0;
+      return `RUNNING · 已安排 ${scheduled} · 已登记 ${registered}`;
+    }
+    if(id==='W') return s.id<7?'R1 尚未进入 batch':s.id===20?'R1 已从 batch 移除':s.freed?'等待 finished_req_ids':'R1 持久 batch 状态';
+    return s.freed?'B7 可复用 · 字节未擦除':s.allocated?`B7 已分配 · ${s.kv} 个 KV 就绪`:'KV 池已预分配';
+  };
+  const addText=(parent,text,x,y,attrs={})=> {const n=el('text',{x,y,...attrs},text);parent.append(n);return n;};
+  function wrapText(parent,text,x,y,maxWidth,attrs={}) {
+    const node=addText(parent,'',x,y,attrs); let line='', row=0;
+    const canvas=wrapText.canvas||(wrapText.canvas=document.createElement('canvas'));
+    const ctx=canvas.getContext('2d');const cs=getComputedStyle(node);ctx.font=`${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    for(const c of Array.from(text)){ if(line && ctx.measureText(line+c).width>maxWidth){node.append(el('tspan',{x,dy:row?18:0},line));line=c;row++;}else line+=c; }
+    node.append(el('tspan',{x,dy:row?18:0},line));return row+1;
+  }
+  function draw(animate=false){
+    const w=Math.max(280,root.getBoundingClientRect().width), narrow=w<560, s=steps[current-1];lastWidth=w;
+    diagram.replaceChildren();
+    const defs=el('defs');
+    ['control','data','result'].forEach(kind=>{const m=el('marker',{id:`life-arrow-${kind}`,viewBox:'0 0 8 8',refX:7,refY:4,markerWidth:7,markerHeight:7,orient:'auto-start-reverse'});m.append(el('path',{d:'M 0 0 L 8 4 L 0 8 z',fill:kind==='data'?'var(--viz-series-2)':kind==='result'?'var(--viz-series-3)':'var(--muted-foreground)'}));defs.append(m);});diagram.append(defs);
+    diagram.append(el('title',{},s?`${s.id}. ${s.title}`:'完整请求流程：前端 → EngineCore → GPU → 前端 → 客户端'));
+    const nodes={};
+    const nh=116, gap=narrow?86:112, nw=narrow?w-32:(w-132)/2;
+    if(narrow) participants.forEach((p,i)=>nodes[p.id]={x:16,y:32+i*(nh+gap),w:nw,h:nh});
+    else {const positions={C:[0,0],H:[1,0],S:[0,1],A:[1,1],W:[0,2],G:[1,2]};participants.forEach(p=>{const [col,row]=positions[p.id];nodes[p.id]={x:16+col*(nw+100),y:32+row*(nh+gap),w:nw,h:nh};});}
+    const height=narrow?32+6*nh+5*gap+10:32+3*nh+2*gap+10;diagram.setAttribute('viewBox',`0 0 ${w} ${height}`);diagram.style.height=`${height}px`;
+    if(!narrow){
+      const h=nodes.H,a=nodes.A,sc=nodes.S,wo=nodes.W;
+      diagram.append(el('rect',{x:h.x-8,y:h.y-24,width:h.w+16,height:a.y+a.h-h.y+32,rx:6,class:'process-outline'}));
+      diagram.append(el('rect',{x:sc.x-8,y:sc.y-24,width:sc.w+16,height:wo.y+wo.h-sc.y+32,rx:6,class:'process-outline'}));
+      addText(diagram,'前端进程',h.x+6,h.y-9,{class:'text-small secondary'});
+      addText(diagram,'EngineCore 进程 · Worker 同进程',sc.x+6,sc.y-9,{class:'text-small secondary'});
+    }
+    edgeDefs.forEach(e=>{
+      const ids=steps.filter(t=>t.edges.includes(e.id)).map(t=>t.id), active=!s||s.edges.includes(e.id);
+      const n1=nodes[e.from],n2=nodes[e.to];let path,labelX,labelY,contentY;
+      if(!narrow && n1.y===n2.y){
+        const right=n2.x>n1.x, yy=n1.y+(e.kind==='result'?82:35), x1=right?n1.x+n1.w:n1.x, x2=right?n2.x:n2.x+n2.w;
+        path=`M ${x1} ${yy} L ${x2} ${yy}`;labelX=(x1+x2)/2;labelY=yy-9;contentY=yy+19;
+      }else{
+        const down=n2.y>n1.y, off=e.kind==='result'?54:-54,xx=n1.x+n1.w/2+off;
+        const y1=down?n1.y+n1.h:n1.y, y2=down?n2.y:n2.y+n2.h;
+        path=`M ${xx} ${y1} L ${xx} ${y2}`;labelX=xx;labelY=(y1+y2)/2-4;contentY=labelY+18;
+      }
+      const g=el('g',{class:active?'':'inactive'}), p=el('path',{d:path,class:`edge ${e.kind}${s&&active?' active':''}`,'marker-end':`url(#life-arrow-${e.kind})`});g.append(p);
+      if(active){
+        const number=s?String(s.id):ids.join('·');const tw=Math.max(number.length*7.5,e.label.length*11)+10;
+        g.append(el('rect',{x:labelX-tw/2,y:labelY-14,width:tw,height:38,rx:3,class:'edge-label-bg'}));
+        addText(g,number,labelX,labelY,{'text-anchor':'middle',class:'text-small tabular-nums'});
+        addText(g,e.label,labelX,contentY,{'text-anchor':'middle',class:'text-small'});
+      }
+      diagram.append(g);
+      if(animate&&s&&active&&!matchMedia('(prefers-reduced-motion: reduce)').matches){const dot=el('circle',{r:3,class:'pulse'});const motion=el('animateMotion',{path,dur:'.65s',repeatCount:'1',fill:'freeze'});dot.append(motion);diagram.append(dot);motion.beginElement();motion.addEventListener('endEvent',()=>dot.remove());}
+    });
+    participants.forEach(p=>{
+      const n=nodes[p.id],active=s&&s.actors.includes(p.id),g=el('g',{'data-node':p.id});
+      g.append(el('rect',{x:n.x,y:n.y,width:n.w,height:n.h,rx:6,class:`node-base${active?' node-active':''}`}));
+      const caption=narrow?(p.id==='H'||p.id==='A'?'前端进程':p.id==='S'||p.id==='W'?'EngineCore 进程':p.id==='G'?'设备侧':'请求方'):p.id==='G'?'设备侧':p.id==='C'?'请求方':'';
+      if(caption) addText(g,caption,n.x+12,n.y+18,{class:'text-small secondary'});
+      const yy=n.y+(caption?40:28);
+      wrapText(g,p.title,n.x+12,yy,n.w-24,{'font-weight':500});
+      wrapText(g,p.sub,n.x+12,yy+22,n.w-24,{class:'text-small secondary'});
+      wrapText(g,stateFor(p.id,s),n.x+12,yy+46,n.w-24,{class:'text-small'});
+      const local=steps.filter(t=>t.local.includes(p.id)).map(t=>t.id);
+      const nums=s?(s.local.includes(p.id)?String(s.id):''):local.join('·');
+      if(nums){ const bw=nums.length*7+14;g.append(el('rect',{x:n.x+n.w-bw-8,y:n.y+n.h-21,width:bw,height:18,rx:7,class:'step-number'}));addText(g,nums,n.x+n.w-8-bw/2,n.y+n.h-8,{'text-anchor':'middle',class:'text-small tabular-nums'}); }
+      diagram.append(g);
+    });
+    drawKv(w,s);
+  }
+  function drawKv(w,s){
+    kvSvg.replaceChildren(); const cols=w<560?8:16,rows=16/cols,pad=2,cell=(w-(cols-1)*4)/cols;
+    const h=rows*36;kvSvg.setAttribute('viewBox',`0 0 ${w} ${h}`);kvSvg.style.height=`${h}px`;
+    const ready=s?s.kv:6,freed=!!s?.freed,allocated=!s||s.allocated||freed;
+    for(let i=0;i<16;i++){const x=(i%cols)*(cell+4),y=Math.floor(i/cols)*36;
+      const fill=allocated&&i<ready?(freed?'var(--muted)':'color-mix(in srgb, var(--viz-series-2) 25%, var(--background))'):'var(--muted)';
+      kvSvg.append(el('rect',{x,y:y+pad,width:cell,height:28,rx:3,fill}));
+      const t=allocated&&i<ready?(['p1','p2','p3','p4','t1','t2'][i]):'·';
+      addText(kvSvg,t,x+cell/2,y+21,{'text-anchor':'middle',class:'text-small'});
+    }
+    slot('kv-title').textContent=s?(freed?'B7：引用已释放，旧字节可被覆盖':allocated?`R1 → B7：${ready}/16 槽 KV 就绪`:'R1 尚未分配 KV 块'):'KV 示例：B7 的前 6 槽被计算过';
+    slot('output').textContent=s?`已采样 ${s.out}/3 · 客户端已消费 ${s.shown}/3`:'输出 t1、t2、t3；t3 无需计算自身 KV';
+  }
+  function sourceLink(key){const [label,path]=sources[key];return `<a href="${base+path}" target="_blank" rel="noopener noreferrer">${label} ↗</a>`;}
+  const list=root.querySelector('.life-list');
+  steps.forEach(s=>{const li=document.createElement('li');li.innerHTML=`<span class="life-item-number tabular-nums">${s.id}</span><div><button type="button" class="btn btn-ghost" data-step="${s.id}">${s.title}</button></div><span class="life-item-description text-small text-muted">${s.flow}</span>`;list.append(li);});
+  root.querySelector('.life-sources').innerHTML=['api','preprocess','async','ipc','core','sched','runner','update','output','done','free','clean','uniproc','pool'].map(k=>`<li>${sourceLink(k)}</li>`).join('');
+  function render(animate=false){
+    const s=steps[current-1];
+    root.querySelector('[data-action="overview"]').setAttribute('aria-pressed',String(current===0));
+    root.querySelector('[data-action="prev"]').disabled=current<=1;
+    root.querySelector('[data-action="next"]').disabled=current===steps.length;
+    slot('counter').textContent=s?`${current} / ${steps.length} · ${s.phase}`:'20 步 · 全局';
+    slot('full').hidden=!!s;slot('detail').hidden=!s;
+    slot('state').textContent=s?`${s.id}. ${s.title}${s.id===20?' · 与步骤 19 无固定先后':''}`:'数字对应下方步骤；节点内编号为本地动作。前端与引擎可并行推进。';
+    if(s)slot('detail').innerHTML=`<h3>${s.title}</h3><dl class="life-facts"><dt>输入</dt><dd>${s.input}</dd><dt>动作</dt><dd>${s.action}</dd><dt>结果</dt><dd>${s.result}</dd></dl><div class="text-small">${sourceLink(s.source)}</div>`;
+    root.querySelectorAll('[data-round]').forEach(n=>n.classList.toggle('current',!!s&&Number(n.dataset.round)===s.round));
+    draw(animate);
+  }
+  function save(){try{window.openai?.setWidgetState?.({modelContent:{version:'v0.11.0',request:'R1',step:current,stage:current?steps[current-1].title:'全局关系'},privateContent:{schema:'vllm-r1-v1',step:current}})?.catch(()=>{});}catch{}}
+  function restore(state){const p=state?.privateContent;if(p?.schema==='vllm-r1-v1'&&Number.isInteger(p.step)&&p.step>=0&&p.step<=steps.length)current=p.step;else current=0;}
+  root.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!root.contains(b))return;const action=b.dataset.action;if(b.dataset.step)current=Number(b.dataset.step);else if(action==='overview')current=0;else if(action==='prev')current=Math.max(1,current-1);else if(action==='next')current=Math.min(steps.length,current+1);else return;render(true);save();});
+  window.addEventListener('openai:set_globals',e=>{if(e.detail?.globals&&Object.prototype.hasOwnProperty.call(e.detail.globals,'widgetState')){restore(e.detail.globals.widgetState);render();}});
+  restore(window.openai?.widgetState);render();
+  new ResizeObserver(()=>{if(Math.abs(root.getBoundingClientRect().width-lastWidth)>1)draw();}).observe(root);
+})();
+</script>
