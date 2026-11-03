@@ -1,0 +1,361 @@
+{
+  "schema_version": 1,
+  "title": "三 GPU 数据并行训练：本地梯度 → All-Reduce 平均 → 相同更新",
+  "world_size": 3,
+  "X": [
+    [
+      3,
+      0
+    ],
+    [
+      0,
+      3
+    ],
+    [
+      3,
+      3
+    ]
+  ],
+  "T": [
+    [
+      2,
+      6
+    ],
+    [
+      0,
+      2
+    ],
+    [
+      2,
+      8
+    ]
+  ],
+  "W": [
+    [
+      1,
+      2
+    ],
+    [
+      0,
+      1
+    ]
+  ],
+  "learning_rate": 0.1,
+  "ranks": [
+    {
+      "rank": 0,
+      "X": [
+        [
+          3,
+          0
+        ]
+      ],
+      "T": [
+        [
+          2,
+          6
+        ]
+      ],
+      "W": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "Y": [
+        [
+          3,
+          6
+        ]
+      ],
+      "residual": [
+        [
+          1,
+          0
+        ]
+      ],
+      "loss": 0.5,
+      "G": [
+        [
+          3,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "gradient_after_allreduce": [
+        [
+          2,
+          1
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "Wnext": [
+        [
+          0.8,
+          1.9
+        ],
+        [
+          -0.1,
+          0.8
+        ]
+      ]
+    },
+    {
+      "rank": 1,
+      "X": [
+        [
+          0,
+          3
+        ]
+      ],
+      "T": [
+        [
+          0,
+          2
+        ]
+      ],
+      "W": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "Y": [
+        [
+          0,
+          3
+        ]
+      ],
+      "residual": [
+        [
+          0,
+          1
+        ]
+      ],
+      "loss": 0.5,
+      "G": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          3
+        ]
+      ],
+      "gradient_after_allreduce": [
+        [
+          2,
+          1
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "Wnext": [
+        [
+          0.8,
+          1.9
+        ],
+        [
+          -0.1,
+          0.8
+        ]
+      ]
+    },
+    {
+      "rank": 2,
+      "X": [
+        [
+          3,
+          3
+        ]
+      ],
+      "T": [
+        [
+          2,
+          8
+        ]
+      ],
+      "W": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "Y": [
+        [
+          3,
+          9
+        ]
+      ],
+      "residual": [
+        [
+          1,
+          1
+        ]
+      ],
+      "loss": 1,
+      "G": [
+        [
+          3,
+          3
+        ],
+        [
+          3,
+          3
+        ]
+      ],
+      "gradient_after_allreduce": [
+        [
+          2,
+          1
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "Wnext": [
+        [
+          0.8,
+          1.9
+        ],
+        [
+          -0.1,
+          0.8
+        ]
+      ]
+    }
+  ],
+  "gradient_sum": [
+    [
+      6,
+      3
+    ],
+    [
+      3,
+      6
+    ]
+  ],
+  "gradient_mean": [
+    [
+      2,
+      1
+    ],
+    [
+      1,
+      2
+    ]
+  ],
+  "Wnext": [
+    [
+      0.8,
+      1.9
+    ],
+    [
+      -0.1,
+      0.8
+    ]
+  ],
+  "losses": [
+    0.5,
+    0.5,
+    1
+  ],
+  "loss_sum": 2,
+  "loss_mean": 0.6666666666666666,
+  "batch_gradient_mean": [
+    [
+      2,
+      1
+    ],
+    [
+      1,
+      2
+    ]
+  ],
+  "formulas": {
+    "forward": "Y_i = X_i @ W",
+    "loss": "L_i = 0.5 * sum((Y_i - T_i)^2)",
+    "local_gradient": "G_i = X_i.T @ (Y_i - T_i)",
+    "allreduce": "G_mean = (G_0 + G_1 + G_2) / 3",
+    "update": "W_next = W - 0.1 * G_mean",
+    "batch_objective": "L_batch = (L_0 + L_1 + L_2) / 3",
+    "batch_gradient": "grad_W L_batch = X.T @ (X @ W - T) / 3"
+  },
+  "steps": [
+    {
+      "n": 1,
+      "operation": "按样本行切分输入",
+      "detail": "X[3,2] 分为三份 X_i[1,2]，对应目标 T_i 一起分配；W 完整复制。"
+    },
+    {
+      "n": 2,
+      "operation": "本地 FWD",
+      "detail": "每端独立计算 Y_i=X_i W 与局部 loss。"
+    },
+    {
+      "n": 3,
+      "operation": "本地 BWD",
+      "detail": "各自计算完整 2×2 梯度 G_i=X_i.T@(Y_i−T_i)。"
+    },
+    {
+      "n": 4,
+      "operation": "All-Reduce SUM / 3",
+      "detail": "三个梯度逐元素求和并平均，逻辑集合操作不是中心服务器。"
+    },
+    {
+      "n": 5,
+      "operation": "平均梯度在每端就绪",
+      "detail": "每端获得同一完整 G_mean；返回的是梯度而非更新后的权重。"
+    },
+    {
+      "n": 6,
+      "operation": "本地 SGD 更新",
+      "detail": "每端执行 W_next=W−0.1×G_mean，用于下一轮前向。"
+    }
+  ],
+  "boundaries": [
+    "这是通用同步 DP/DDP 训练的算法算例，不是 vLLM 推理路径；无 bias、动量、weight decay、梯度累积或自定义通信 hook。",
+    "每 rank 恰好一个样本，world_size 固定为 3，因此 rank 梯度平均等于本例全批次平均 loss 的梯度。",
+    "W 按 [input_feature, output_feature] 存储，Y=XW；常见 torch.nn.Linear.weight 使用转置的 [output_feature, input_feature] 布局。",
+    "All-Reduce 逻辑节点表示所有 rank 共同参与的 collective，不表示中心服务器、参数服务器或专属 GPU。",
+    "图中若沿用 push / pull，push 仅表示贡献本地梯度，pull 仅表示归约结果在各 rank 就绪；它们不是 DDP 的实际 push/pull API。",
+    "默认 DDP 在 backward 中同步并平均梯度；各 rank 的 optimizer 使用相同梯度本地更新。真实实现可按 bucket 将通信与 backward 重叠，本图只展开一个 W 的语义依赖。",
+    "这里 loss_mean 仅用于验算；演示梯度 All-Reduce 不等于自动同步或平均用户记录的 loss。",
+    "数值由独立纯 Python 脚本重算验证；未运行三 GPU 分布式训练。"
+  ],
+  "sources": [
+    {
+      "title": "PyTorch DistributedDataParallel API",
+      "url": "https://docs.pytorch.org/docs/2.15/generated/torch.nn.parallel.DistributedDataParallel.html",
+      "supports": "跨副本同步梯度；各 rank 本地 optimizer 更新；参数不会在每一步广播。"
+    },
+    {
+      "title": "PyTorch DDP design note",
+      "url": "https://docs.pytorch.org/docs/2.15/notes/ddp.html",
+      "supports": "backward 中梯度 bucket allreduce 求平均，完成后各副本使用相同梯度。该设计说明注明实现细节基于 v1.4，本例只采用稳定算法语义。"
+    }
+  ],
+  "source_checked_date": "2026-11-03"
+}

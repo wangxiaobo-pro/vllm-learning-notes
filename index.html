@@ -41,7 +41,7 @@
     </section>
     <section aria-labelledby="parallelism-title">
       <h2 id="parallelism-title">vLLM 并行流程</h2>
-      <p>沿编号箭头追踪 TP、EP、SP、PP、CP、DP 的上下层数据传递，查看真实计算的教学激活矩阵，并逐步播放张量流动。</p>
+      <p>用 GPU 虚线框查看 TP、EP、SP、PP、CP、DP 的权重分配与矩阵切分，沿箭头播放计算和通信；DP 可对照训练梯度同步与 vLLM 推理请求分流。</p>
       <nav aria-label="并行流程项目">
         <a href="parallelism/index.html">打开六种并行流程</a>
       </nav>
