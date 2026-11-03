@@ -12,6 +12,25 @@
 - 蓝色为本地激活/计算，橙色为跨 rank 张量，绿色标出常驻权重/KV，控制虚线为请求、调度或 token。图中只表示逻辑数据依赖，不指定 collective 的 ring/tree 网络算法。
 - 节点展示实际数值矩阵；下方“数值输入、权重与验算”可查看完整权重与参考结果。“完整流程”列出所有编号步骤。
 
+## 节点属于哪一层
+
+设备结构图用独立的层标签说明输入、权重、计算、输出和通信所属的模型部分；标签与步骤编号、GPU 所有权分别表达不同信息。10 个场景的输出边界如下：
+
+| 场景 | 所属层与输出含义 |
+| --- | --- |
+| TP | 教学 FFN：第一投影 → ReLU → 第二投影；All-Reduce 前是部分和，之后才是完整 FFN 输出。 |
+| EP | MoE-FFN 的路由、专家与归并；Combine 后得到源 token 顺序的 MoE 输出，专家本身简化为 Linear+ReLU。 |
+| SP | Attention 与 `o_proj`；Reduce-Scatter 求和后得到完整 Attention 输出的 token 分片。 |
+| PP | 每个 stage 仅含一个教学 Linear+ReLU，输出是该教学层的 hidden，不代表完整 Decoder 或 FFN。 |
+| CP | 从已投影 Q/K/V 开始的 Attention core；LSE merge 后的 O 是单 head 输出，仍在 `o_proj` 之前。 |
+| 推理 DP | Embedding → 教学 FFN → LM head → 采样；Y 是 FFN 输出，logits 是 LM head 输出。 |
+| 训练 DP | 单个教学 Linear 产生预测 Y；Loss/BWD、梯度平均和 SGD 属于训练过程。 |
+| TP+SP | 与 SP 同一 Attention 数值链；head/权重按 TP 切分，最终 Attention 输出按 token 分片。 |
+| DP+EP | 教学前置 Linear → MoE-FFN → 教学后置 Linear；最终 Y 是后置 Linear 输出，前后 dense 不代表 Attention。 |
+| DP+TP+PP | 两阶段教学 MLP；stage 内 TP 归约得到该 stage 的完整输出，PP 传递 hidden，最终为第二 stage 的输出。 |
+
+未计算的 Norm、残差相加不补造数值，也不把输入 X 称为 Norm 输出。SP/TP+SP 的后续 Norm/MoE 仅标为“入口（未计算）”；CP 的 O 未经过 `o_proj` 或 Norm，不能与 SP 的投影后输出混称。Host 调度、执行计划和结果返回属于控制/结果路径，不是模型层。
+
 ## 六种连续算例
 
 | 方式 | 展示的数据链 | 数值结果 |

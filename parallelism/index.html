@@ -1819,6 +1819,8 @@ html&gt;body{padding:0}&lt;/style&gt;
   &lt;div class=&quot;viz-controls&quot; id=&quot;pf-dp-scenarios&quot; role=&quot;group&quot; aria-label=&quot;DP 场景&quot;&gt;&lt;button class=&quot;btn&quot; type=&quot;button&quot; data-scenario=&quot;dpt&quot;&gt;训练 DP · 梯度同步&lt;/button&gt;&lt;button class=&quot;btn&quot; type=&quot;button&quot; data-scenario=&quot;dp&quot;&gt;vLLM 推理 DP · 请求分流&lt;/button&gt;&lt;/div&gt;
   &lt;div&gt;&lt;h3 id=&quot;pf-title&quot;&gt;&lt;/h3&gt;&lt;p id=&quot;pf-scope&quot; class=&quot;text-small&quot;&gt;&lt;/p&gt;&lt;/div&gt;
   &lt;p id=&quot;pf-split&quot;&gt;&lt;/p&gt;
+  &lt;p id=&quot;pf-layer-scope&quot; class=&quot;text-small&quot;&gt;&lt;/p&gt;
+  &lt;details id=&quot;pf-layer-context&quot;&gt;&lt;summary&gt;查看层位置与 Norm 输出名称&lt;/summary&gt;&lt;p class=&quot;text-small&quot;&gt;常见 Pre-Norm Decoder 的定位参考：hidden → Norm 1 输出 n₁ → Attention 输出 a → 残差相加 h₁ → Norm 2 输出 n₂ → FFN/MoE 输出 f → 残差相加 h₂。FFN 是前馈网络，MLP 是其常见实现。&lt;/p&gt;&lt;p class=&quot;text-small&quot;&gt;本页的数值算例没有计算 Norm 与残差；n₁/n₂ 只表示参考位置，不给它们编造数值。节点的“所属层”标明本例实际计算范围，给定的 X 不自动等于已经算出的 Norm 输出。CP 的 head 输出还在 o_proj 之前。&lt;/p&gt;&lt;/details&gt;
   &lt;div class=&quot;viz-controls&quot; id=&quot;pf-views&quot; role=&quot;group&quot; aria-label=&quot;图形视图&quot;&gt;&lt;button class=&quot;btn&quot; type=&quot;button&quot; data-view=&quot;device&quot;&gt;设备结构&lt;/button&gt;&lt;button class=&quot;btn&quot; type=&quot;button&quot; data-view=&quot;detail&quot;&gt;逐层数值&lt;/button&gt;&lt;/div&gt;
   &lt;div class=&quot;viz-controls&quot;&gt;
     &lt;button class=&quot;btn&quot; id=&quot;pf-overview&quot; type=&quot;button&quot;&gt;全局关系&lt;/button&gt;
@@ -1857,6 +1859,8 @@ html&gt;body{padding:0}&lt;/style&gt;
   #pf-list{display:grid;gap:calc(var(--font-size-base)*.6);padding-left:calc(var(--font-size-base)*1.7);margin:calc(var(--font-size-base)*.6) 0 0}
   #pf-list strong{font-weight:500}
   #pf-detail,#pf-boundary,#pf-math-note,#pf-list li{overflow-wrap:anywhere}
+  #pf-layer-scope,#pf-layer-context{overflow-wrap:anywhere}
+  #pf-layer-context p{margin-top:calc(var(--font-size-base)*.5)}
   #parallelism-flows details p{margin-top:calc(var(--font-size-base)*.5)}
   #parallelism-flows details ul{padding-left:calc(var(--font-size-base)*1.5)}
   #parallelism-flows [hidden]{display:none}
@@ -2036,6 +2040,32 @@ html&gt;body{padding:0}&lt;/style&gt;
     m.sources=[source(&#x27;dense DP 独立 world&#x27;,&#x27;vllm/v1/engine/core.py#L1463&#x27;),source(&#x27;独立 DP 配置&#x27;,&#x27;vllm/config/parallel.py#L1157&#x27;),source(&#x27;Worker 的 PP 接收/发送&#x27;,&#x27;vllm/v1/worker/gpu_worker.py#L1281&#x27;),source(&#x27;PP 发送 TP 展平分片&#x27;,&#x27;vllm/distributed/parallel_state.py#L1221&#x27;),source(&#x27;目的 TP 汇集还原&#x27;,&#x27;vllm/distributed/parallel_state.py#L1336&#x27;)];
     splitNotes.dptpp=&#x27;怎么组合：DP 切请求（A/B），PP 切完整层段（stage 0/1），TP 切每层 W1 列与 W2 行。总共 8 张卡；TP 通信只在本 stage，PP 只沿本 DP 的同一 TP rank 传递。&#x27;;
   }
+  const layerScopes={
+    tp:&#x27;本图层范围：一个教学 FFN/MLP（Linear 1 → ReLU → Linear 2）。H 是 FFN 中间激活，归约后的 Y 才是完整 FFN 输出；Attention、Norm、残差未计算。&#x27;,
+    ep:&#x27;本图层范围：一个 MoE/专家 FFN 结构示例。给定 top-2 路由 → 专家 → Combine；回源 Y 为 MoE 输出。前后 Attention、Norm 与残差未计算。&#x27;,
+    sp:&#x27;本图层范围：Attention（含输出投影 Wo）。输入 X 是给定的 Attention 输入；RS 后为完整 Attention 输出的 token 分片，后续 Norm/MoE 尚未计算。&#x27;,
+    tpsp:&#x27;本图层范围：Attention（head 计算 + 输出投影 Wo）。TP 部分和经 SUM RS 得到 Attention 输出；前置 Norm 与后置残差/Norm/MoE 均未计算。&#x27;,
+    pp:&#x27;本图层范围：3 个串行教学层，每层仅 Linear + ReLU。Stage 不是模型层的同义词；本例未展开完整 Decoder、Attention 或 Norm。&#x27;,
+    cp:&#x27;本图层范围：Attention core 内的历史/当前 token 合并。最后是单个 head 的 O，尚未做输出投影 o_proj；LSE/softmax 校正不是 LayerNorm 或 RMSNorm。&#x27;,
+    dp:&#x27;本图层范围：Embedding → 教学 FFN/MLP → LM head → 采样。Y 为 FFN 输出，logits 为 LM head 输出；Attention 与 Norm 未计算。&#x27;,
+    dpt:&#x27;本图层范围：单个 Linear 的训练例。Y 是 Linear 输出，G 是该权重的梯度；loss/BWD/SGD 属于训练流程，未构造 Attention、FFN 或 Norm。&#x27;,
+    dpep:&#x27;本图层范围：前置教学 Dense Linear → MoE/专家 FFN → 后置教学 Dense Linear。前后 Linear 不能标成 Attention；本例没有 Norm 输出。&#x27;,
+    dptpp:&#x27;本图层范围：PP0 执行教学 FFN0，PP1 执行教学 FFN1。FFN0 输出经 PP 传递成为 FFN1 输入；这不是两个完整 Decoder 层，Attention、Norm、残差未展开。&#x27;
+  };
+  const detailedLayers={
+    tp:{x:&#x27;FFN · 给定输入&#x27;,z:&#x27;FFN · 第一投影&#x27;,h:&#x27;FFN · 中间激活&#x27;,p:&#x27;FFN · W2 部分和&#x27;,y:&#x27;FFN · 完整输出&#x27;,next:&#x27;后续层入口 · 未计算&#x27;},
+    ep:{x:&#x27;MoE FFN · 输入&#x27;,route:&#x27;MoE 路由 · 给定 top-2&#x27;,dispatch:&#x27;MoE · 专家输入&#x27;,expert:&#x27;专家 FFN · 未加权输出&#x27;,combine:&#x27;MoE FFN · 完整输出&#x27;,next:&#x27;后续层入口 · 未计算&#x27;},
+    sp:{x:&#x27;Attention · 给定输入&#x27;,gather:&#x27;Attention · 完整输入&#x27;,attn:&#x27;Attention · Wo 部分和&#x27;,scatter:&#x27;Attention · 输出分片&#x27;,next:&#x27;后续 Norm/MoE · 未计算&#x27;},
+    cp:{q:&#x27;Attention core · Query&#x27;,gather:&#x27;Attention core · Query&#x27;,local:&#x27;Attention core · 局部 O&#x27;,correct:&#x27;Attention core · softmax 校正&#x27;,context:&#x27;Attention core · 历史 O&#x27;,query:&#x27;Attention core · 当前 O&#x27;,merge:&#x27;Attention core · head 输出&#x27;},
+    dp:{request:&#x27;请求入口 · 非模型层&#x27;,sched:&#x27;调度器 · 非模型层&#x27;,worker:&#x27;执行准备 · 非模型层&#x27;,x:&#x27;Embedding · 输出&#x27;,z:&#x27;FFN · 第一投影&#x27;,h:&#x27;FFN · 中间激活&#x27;,y:&#x27;FFN · 完整输出&#x27;,logits:&#x27;LM head · 输出 logits&#x27;,host:&#x27;采样与 D2H · 非模型层&#x27;,update:&#x27;调度更新 · 非模型层&#x27;,output:&#x27;请求输出 · 非模型层&#x27;}
+  };
+  for(const [key,m] of Object.entries(modes)){
+    m.layerScope=layerScopes[key];
+    for(const n of m.nodes){
+      const stem=n.id.replace(/\d+$/,&#x27;&#x27;);
+      n.layerTag=key===&#x27;pp&#x27;?(stem===&#x27;stage&#x27;?&#x27;教学层 &#x27;+n.id.slice(-1)+&#x27; · Linear+ReLU&#x27;:&#x27;末教学层 · hidden 输出&#x27;):(detailedLayers[key===&#x27;tpsp&#x27;?&#x27;sp&#x27;:key]?.[stem]||&#x27;本地数据与执行&#x27;);
+    }
+  }
   /* COMBINED_RENDERER_START */
 function renderDPTPPP({svg,width,step,data,reducedMotion}) {
   const W=Math.floor(width),dpCols=W&gt;=900?2:1,tpCols=W&gt;=600?2:1;
@@ -2046,14 +2076,14 @@ function renderDPTPPP({svg,width,step,data,reducedMotion}) {
   const wrap=(value,w)=&gt;{const lines=[];for(const part of String(value).split(&#x27;\n&#x27;)){let line=&#x27;&#x27;,n=0;for(const c of part){const k=/[\x00-\xff]/.test(c)?6.5:12;if(line&amp;&amp;n+k&gt;w){lines.push(line);line=&#x27;&#x27;;n=0;}line+=c;n+=k;}lines.push(line);}return lines;};
   const positions=new Map(),frames=[],groups=[],edges=[],buses=[];
   const table=(label,value)=&gt;({label,value});
-  function node(id,title,tables,ready,kind=&#x27;data&#x27;,note=&#x27;&#x27;){
-    return {id,title,tables,ready,kind,note};
+  function node(id,title,tables,ready,kind=&#x27;data&#x27;,note=&#x27;&#x27;,layerTag=&#x27;&#x27;){
+    return {id,title,tables,ready,kind,note,layerTag};
   }
   function measure(n,w){
-    n.w=w;n.titleLines=wrap(n.title,w-16);n.noteLines=n.note?wrap(n.note,w-16):[];
+    n.w=w;n.layerLines=wrap(n.layerTag,w-16);n.titleLines=wrap(n.title,w-16);n.noteLines=n.note?wrap(n.note,w-16):[];
     n.tableCols=n.tables.length===2&amp;&amp;w&gt;=150?2:1;n.tw=(w-20-(n.tableCols-1)*10)/n.tableCols;
     n.tableHeights=[];for(let i=0;i&lt;n.tables.length;i+=n.tableCols)n.tableHeights.push(Math.max(...n.tables.slice(i,i+n.tableCols).map(t=&gt;wrap(t.label,n.tw).length*16+t.value.length*20+14)));
-    n.h=28+n.titleLines.length*16+n.tableHeights.reduce((a,b)=&gt;a+b,0)+n.noteLines.length*16;
+    n.h=34+n.layerLines.length*16+n.titleLines.length*16+n.tableHeights.reduce((a,b)=&gt;a+b,0)+n.noteLines.length*16;
     return n.h;
   }
   function place(n,x,y,w){measure(n,w);n.x=x;n.y=y;positions.set(n.id,n);return n;}
@@ -2067,7 +2097,8 @@ function renderDPTPPP({svg,width,step,data,reducedMotion}) {
     nodes.push(node(prefix+&#x27;partial&#x27;,&#x27;本地 MLP 部分输出&#x27;,[table(&#x27;ReLU(XW1) × W2&#x27;,r.partialY)],p?6:2));
     nodes.push(node(prefix+&#x27;y&#x27;,&#x27;TP SUM 后完整 Y&#x27;,[table(&#x27;两端均持有此矩阵&#x27;,r.Y)],p?7:3));
     if(p===0)nodes.push(node(prefix+&#x27;send&#x27;,&#x27;Worker · PP Send&#x27;,[table(&#x27;本 rank 只发此半片&#x27;,[transfer.send_flat_chunk])],4));
-    nodes.forEach(n=&gt;measure(n,frameW-24));
+    const layers={x:&#x27;教学 FFN&#x27;+p+&#x27; · 输入&#x27;,w:&#x27;教学 FFN&#x27;+p+&#x27; · TP 权重&#x27;,partial:&#x27;FFN&#x27;+p+&#x27; · W2 部分和&#x27;,y:&#x27;FFN&#x27;+p+&#x27; · 完整输出&#x27;,send:&#x27;FFN0 → FFN1 · PP 片段&#x27;,recv:&#x27;FFN0 → FFN1 · PP 片段&#x27;};
+    nodes.forEach(n=&gt;{n.layerTag=layers[n.id.slice(prefix.length)];measure(n,frameW-24);});
     const h=48+nodes.reduce((s,n)=&gt;s+n.h,0)+22*(nodes.length-1)+12;
     return {id:&#x27;combo-gpu-&#x27;+g,gpu:g,local:r.world_local_rank,dp:d,pp:p,tp:t,prefix,nodes,w:frameW,h};
   }
@@ -2075,11 +2106,11 @@ function renderDPTPPP({svg,width,step,data,reducedMotion}) {
   for(let d=0;d&lt;2;d++){
     const gx=dpCols===2?d*(groupW+gap):0,gy=dpCols===2?8:nextGroupY;
     const group={d,x:gx,y:gy,w:groupW,request:d?&#x27;B&#x27;:&#x27;A&#x27;};
-    const host=place(node(&#x27;combo-host-&#x27;+d,&#x27;DP &#x27;+d+&#x27; · 请求 &#x27;+group.request+&#x27; / 独立 Scheduler&#x27;,[],1,&#x27;control&#x27;,&#x27;下发请求计划；数值从 Worker 的 X 开始&#x27;),gx+pad,gy+54,groupW-2*pad);
+    const host=place(node(&#x27;combo-host-&#x27;+d,&#x27;DP &#x27;+d+&#x27; · 请求 &#x27;+group.request+&#x27; / 独立 Scheduler&#x27;,[],1,&#x27;control&#x27;,&#x27;下发请求计划；数值从 Worker 的 X 开始&#x27;,&#x27;请求调度 · 非模型层&#x27;),gx+pad,gy+54,groupW-2*pad);
     let cursor=host.y+host.h+30;
     for(let p=0;p&lt;2;p++){
       if(p===1){
-        const ag=place(node(&#x27;combo-ag-&#x27;+d,&#x27;⑤ 目的 TP 组 All-Gather&#x27;,[],5,&#x27;bus&#x27;,&#x27;按 TP rank 顺序拼接并 reshape&#x27;),gx+pad,cursor,groupW-2*pad);
+        const ag=place(node(&#x27;combo-ag-&#x27;+d,&#x27;⑤ 目的 TP 组 All-Gather&#x27;,[],5,&#x27;bus&#x27;,&#x27;按 TP rank 顺序拼接并 reshape&#x27;,&#x27;层间传输 · 恢复 FFN0 输出&#x27;),gx+pad,cursor,groupW-2*pad);
         buses.push({n:ag,kind:&#x27;ag&#x27;,d,p,step:5});cursor+=ag.h+30;
       }
       const pair=[frameFor(d,p,0),frameFor(d,p,1)],pairTop=cursor;
@@ -2095,10 +2126,10 @@ function renderDPTPPP({svg,width,step,data,reducedMotion}) {
         if(p===0)edges.push({from:eid(&#x27;y&#x27;),to:eid(&#x27;send&#x27;),s:4,type:&#x27;local&#x27;});
         if(p===0)edges.push({from:host.id,to:eid(&#x27;x&#x27;),s:1,type:&#x27;control&#x27;,host:true});
       }
-      const ar=place(node(&#x27;combo-ar-&#x27;+d+&#x27;-&#x27;+p,&#x27;TP All-Reduce · SUM&#x27;,[],p?7:3,&#x27;bus&#x27;,&#x27;仅 GPU &#x27;+pair.map(f=&gt;f.gpu).join(&#x27; / &#x27;)+&#x27; 参与&#x27;),gx+pad,bottom+26,groupW-2*pad);
+      const ar=place(node(&#x27;combo-ar-&#x27;+d+&#x27;-&#x27;+p,&#x27;TP All-Reduce · SUM&#x27;,[],p?7:3,&#x27;bus&#x27;,&#x27;仅 GPU &#x27;+pair.map(f=&gt;f.gpu).join(&#x27; / &#x27;)+&#x27; 参与&#x27;,&#x27;FFN&#x27;+p+&#x27; · 输出归约&#x27;),gx+pad,bottom+26,groupW-2*pad);
       buses.push({n:ar,kind:&#x27;ar&#x27;,d,p,step:p?7:3});cursor=ar.y+ar.h+36;
     }
-    const output=place(node(&#x27;combo-result-&#x27;+d,&#x27;请求 &#x27;+group.request+&#x27; · 后续计算的输入&#x27;,[table(&#x27;最终 hidden&#x27;,data.reference[group.request].final_hidden)],8,&#x27;control&#x27;,&#x27;两端 TP 同值；此处代表展示&#x27;),gx+pad,cursor,groupW-2*pad);
+    const output=place(node(&#x27;combo-result-&#x27;+d,&#x27;请求 &#x27;+group.request+&#x27; · 后续计算的输入&#x27;,[table(&#x27;最终 hidden&#x27;,data.reference[group.request].final_hidden)],8,&#x27;control&#x27;,&#x27;两端 TP 同值；此处代表展示&#x27;,&#x27;教学 FFN1 · 最终输出&#x27;),gx+pad,cursor,groupW-2*pad);
     edges.push({from:&#x27;combo-g&#x27;+(d*4+2)+&#x27;-y&#x27;,to:output.id,s:8,type:&#x27;local&#x27;,result:true});
     group.h=output.y+output.h+18-gy;groups.push(group);maxBottom=Math.max(maxBottom,gy+group.h);nextGroupY=gy+group.h+28;
   }
@@ -2138,9 +2169,10 @@ function renderDPTPPP({svg,width,step,data,reducedMotion}) {
   }
   for(const n of positions.values()){
     const active=step===0||step===n.ready,type=n.kind===&#x27;bus&#x27;?&#x27;remote&#x27;:n.kind===&#x27;data&#x27;?&#x27;local&#x27;:n.kind;
-    const g=el(&#x27;g&#x27;,{&#x27;data-node&#x27;:n.id,&#x27;data-node-ready&#x27;:n.ready,&#x27;data-node-owner&#x27;:n.frame?n.frame.id:&#x27;group-operation&#x27;},undefined,cards);
+    const g=el(&#x27;g&#x27;,{&#x27;data-node&#x27;:n.id,&#x27;data-node-ready&#x27;:n.ready,&#x27;data-node-owner&#x27;:n.frame?n.frame.id:&#x27;group-operation&#x27;,&#x27;data-node-layer&#x27;:n.layerTag},undefined,cards);
     el(&#x27;rect&#x27;,{x:n.x,y:n.y,width:n.w,height:n.h,rx:5,fill:C.bg,stroke:active?C[type]:C.border,&#x27;stroke-width&#x27;:1.2},undefined,g);
-    let y=n.y+18;text(n.x+n.w/2,y,n.title,n.w-16,g);y+=n.titleLines.length*16+6;
+    let y=n.y+18;const layer=text(n.x+n.w/2,y,n.layerTag,n.w-16,g);layer.setAttribute(&#x27;class&#x27;,&#x27;pf-muted&#x27;);layer.setAttribute(&#x27;data-layer-tag&#x27;,n.layerTag);y+=n.layerLines.length*16+6;
+    text(n.x+n.w/2,y,n.title,n.w-16,g);y+=n.titleLines.length*16+6;
     if(n.ready){el(&#x27;circle&#x27;,{cx:n.x+1,cy:n.y+1,r:8,fill:C.bg,stroke:C[type]},undefined,g);text(n.x+1,n.y+5,n.ready,22,g);}
     let i=0;for(const h of n.tableHeights){for(let c=0;c&lt;n.tableCols&amp;&amp;i&lt;n.tables.length;c++,i++){
       const t=n.tables[i],x=n.x+10+c*(n.tw+10),caption=wrap(t.label,n.tw).length*16;text(x+n.tw/2,y,t.label,n.tw,g);
@@ -2166,8 +2198,23 @@ function renderDeviceGraph({ svg, width, mode, step = 0, examples, training, com
     control:&#x27;var(--muted-foreground)&#x27;, weight:&#x27;var(--viz-series-3)&#x27;,
     text:&#x27;var(--foreground)&#x27;, bg:&#x27;var(--background)&#x27;, border:&#x27;var(--border)&#x27; };
   const spec = { devices:[], edges:[], buses:[], outside:[] };
+  // Layer attribution is separate from execution steps and tensor ownership.
+  const layerTags = {
+    tp:{x:&#x27;教学 FFN · 输入&#x27;,w1:&#x27;教学 FFN · 第一投影权重&#x27;,z:&#x27;教学 FFN · 第一投影输出&#x27;,h:&#x27;教学 FFN · 激活输出&#x27;,w2:&#x27;教学 FFN · 第二投影权重&#x27;,p:&#x27;教学 FFN · 第二投影部分和&#x27;,y:&#x27;教学 FFN · 完整输出&#x27;,next:&#x27;FFN 输出 → 下游入口&#x27;,&#x27;bus:sum&#x27;:&#x27;FFN · 完整输出归约&#x27;},
+    ep:{x:&#x27;MoE-FFN · 输入&#x27;,router:&#x27;MoE-FFN · 路由&#x27;,packed:&#x27;MoE-FFN · 专家输入&#x27;,weights:&#x27;MoE-FFN · 专家权重&#x27;,fwd:&#x27;MoE-FFN · 专家输出&#x27;,out:&#x27;MoE-FFN · 完整输出&#x27;,next:&#x27;MoE 输出 → 下游入口&#x27;,&#x27;bus:dispatch&#x27;:&#x27;MoE-FFN · 专家派发&#x27;,&#x27;bus:combine&#x27;:&#x27;MoE-FFN · 输出归并&#x27;},
+    sp:{x:&#x27;Attention · 输入&#x27;,gather:&#x27;Attention · 输入&#x27;,w:&#x27;Attention · QKV / o_proj&#x27;,fwd:&#x27;Attention · o_proj 部分和&#x27;,out:&#x27;Attention · 完整输出分片&#x27;,next:&#x27;Norm / MoE · 入口（未计算）&#x27;,&#x27;bus:gather&#x27;:&#x27;Attention · 输入拼接&#x27;,&#x27;bus:rs&#x27;:&#x27;Attention · 输出归约&#x27;},
+    pp:{x:&#x27;教学单层 · 输入&#x27;,w:&#x27;教学单层 · Linear 权重&#x27;,fwd:&#x27;教学单层 · Linear+ReLU&#x27;,out:&#x27;教学单层 · 输出&#x27;,&#x27;bus:send01&#x27;:&#x27;教学层间 · 激活传输&#x27;,&#x27;bus:send12&#x27;:&#x27;教学层间 · 激活传输&#x27;},
+    cp:{q:&#x27;Attention core · Q&#x27;,kv:&#x27;Attention core · 历史 KV&#x27;,gather:&#x27;Attention core · Q heads&#x27;,local:&#x27;Attention core · 局部 O/LSE&#x27;,correct:&#x27;Attention core · 校正 O&#x27;,context:&#x27;Attention core · 历史输出&#x27;,query:&#x27;Attention core · 当前输出&#x27;,out:&#x27;Attention core · 单 head 输出\n未做 o_proj / Norm&#x27;,&#x27;bus:qag&#x27;:&#x27;Attention core · Q&#x27;,&#x27;bus:lse&#x27;:&#x27;Attention core · LSE&#x27;,&#x27;bus:rs&#x27;:&#x27;Attention core · 历史 O&#x27;},
+    dp:{host:&#x27;Host 控制 · 非模型层&#x27;,embedding:&#x27;Embedding · 权重&#x27;,x:&#x27;Embedding · 输出&#x27;,w1:&#x27;教学 FFN · 第一投影权重&#x27;,z:&#x27;教学 FFN · 第一投影输出&#x27;,h:&#x27;教学 FFN · 激活输出&#x27;,w2:&#x27;教学 FFN · 第二投影权重&#x27;,y:&#x27;教学 FFN · 完整输出&#x27;,wh:&#x27;LM head · 权重&#x27;,logits:&#x27;LM head · logits 输出&#x27;,sample:&#x27;采样 · 非模型层&#x27;,return:&#x27;Host 控制 · 非模型层&#x27;},
+    dpt:{x:&#x27;训练数据 · Linear 输入&#x27;,target:&#x27;训练数据 · 标签&#x27;,w:&#x27;教学 Linear · 权重&#x27;,fwd:&#x27;教学 Linear · 预测输出&#x27;,g:&#x27;训练 · Loss/BWD 梯度&#x27;,mean:&#x27;训练 · 平均梯度&#x27;,update:&#x27;训练 · SGD 更新&#x27;,batch:&#x27;训练数据 · 全局输入&#x27;,&#x27;bus:grad&#x27;:&#x27;训练 · 梯度集合通信&#x27;},
+    dpep:{x:&#x27;教学前置 Linear · 输入&#x27;,wpre:&#x27;教学前置 Linear · 权重&#x27;,pre:&#x27;教学前置 Linear · 输出&#x27;,router:&#x27;MoE-FFN · 路由&#x27;,packed:&#x27;MoE-FFN · 专家输入&#x27;,weights:&#x27;MoE-FFN · 专家权重&#x27;,fwd:&#x27;MoE-FFN · 专家输出&#x27;,out:&#x27;MoE-FFN · 完整输出&#x27;,wpost:&#x27;教学后置 Linear · 权重&#x27;,post:&#x27;教学后置 Linear · 输出&#x27;,return:&#x27;Host · 教学结果返回&#x27;,&#x27;bus:dispatch&#x27;:&#x27;MoE-FFN · 专家派发&#x27;,&#x27;bus:combine&#x27;:&#x27;MoE-FFN · 输出归并&#x27;}
+  };
+  const layerTagFor = nodeId =&gt; {
+    const key=nodeId.startsWith(&#x27;bus-&#x27;)?&#x27;bus:&#x27;+nodeId.slice(4):nodeId===&#x27;training-batch&#x27;?&#x27;batch&#x27;:nodeId.replace(/^[a-z]+-\d+-/,&#x27;&#x27;);
+    return (layerTags[mode===&#x27;tpsp&#x27;?&#x27;sp&#x27;:mode]||{})[key]||&#x27;&#x27;;
+  };
   const M = (label, value) =&gt; ({ label, value });
-  const N = (id, title, tables, ready, kind, note) =&gt; ({ id, title, tables:tables || [], ready:ready || 0, kind:kind || &#x27;data&#x27;, note:note || &#x27;&#x27; });
+  const N = (id, title, tables, ready, kind, note) =&gt; ({ id, title, layerTag:layerTagFor(id), tables:tables || [], ready:ready || 0, kind:kind || &#x27;data&#x27;, note:note || &#x27;&#x27; });
   const E = (from, to, s, label, type) =&gt; spec.edges.push({from,to,step:s,label:label || &#x27;&#x27;,type:type || &#x27;local&#x27;});
   const B = (id, title, s, inputs, outputs, extra) =&gt; spec.buses.push(Object.assign({id,title,step:s,inputs,outputs,tables:[]},extra || {}));
   const id = (r,k) =&gt; mode+&#x27;-&#x27;+r+&#x27;-&#x27;+k;
@@ -2360,13 +2407,15 @@ function renderDeviceGraph({ svg, width, mode, step = 0, examples, training, com
   function cardMeasure(a,w){
     a.w=w;
     a.titleLines=wrap(a.title,w-18);
+    a.layerLines=a.layerTag?wrap(a.layerTag,w-18):[];
+    a.layerHeight=a.layerLines.length?a.layerLines.length*16+4:0;
     a.tableColumns=a.tables.length&gt;1&amp;&amp;w&gt;=290?2:1;
     a.tableW=(w-18-(a.tableColumns-1)*10)/a.tableColumns;
     a.tableRows=[];
     for(let j=0;j&lt;a.tables.length;j+=a.tableColumns)
       a.tableRows.push(Math.max.apply(null,a.tables.slice(j,j+a.tableColumns).map(t=&gt;tableH(t,a.tableW))));
     a.noteLines=a.note?wrap(a.note,w-18):[];
-    return a.h=14+a.titleLines.length*16+(a.tables.length?8:0)+a.tableRows.reduce((s,h)=&gt;s+h+8,0)+a.noteLines.length*16+8;
+    return a.h=14+a.titleLines.length*16+a.layerHeight+(a.tables.length?8:0)+a.tableRows.reduce((s,h)=&gt;s+h+8,0)+a.noteLines.length*16+8;
   }
   if(mobile)spec.devices.forEach(d=&gt;{d.rows=d.rows.flatMap(row=&gt;row.map(card=&gt;[card]));});
   spec.devices.forEach(d=&gt;{
@@ -2453,6 +2502,7 @@ function renderDeviceGraph({ svg, width, mode, step = 0, examples, training, com
   function text(x,y,s,w,parent,options){
     const opt=options||{},arr=wrap(s,w);
     const el=create(&#x27;text&#x27;,{x,y,fill:opt.fill||C.text,&#x27;text-anchor&#x27;:opt.anchor||&#x27;middle&#x27;,&#x27;font-size&#x27;:12,&#x27;font-family&#x27;:&#x27;system-ui, sans-serif&#x27;,&#x27;font-weight&#x27;:opt.bold?600:400},undefined,parent);
+    if(opt.layerTag)el.setAttribute(&#x27;data-layer-tag&#x27;,opt.layerTag);
     arr.forEach((line,i)=&gt;create(&#x27;tspan&#x27;,{x,dy:i?16:0},line,el));return arr.length*16;
   }
   spec.devices.forEach(d=&gt;{
@@ -2464,10 +2514,11 @@ function renderDeviceGraph({ svg, width, mode, step = 0, examples, training, com
   function drawCard(a){
     const color=a.kind===&#x27;weight&#x27;?C.weight:a.kind===&#x27;bus&#x27;?C.remote:a.kind===&#x27;host&#x27;?C.control:C.local;
     const readySteps=a.activeSteps||[a.ready],hot=step===0||readySteps.includes(step);
-    const g=create(&#x27;g&#x27;,{&#x27;data-node&#x27;:a.id,&#x27;data-node-step&#x27;:a.ready,&#x27;data-node-steps&#x27;:readySteps.join(&#x27;,&#x27;),&#x27;data-node-owner&#x27;:a.kind===&#x27;host&#x27;?&#x27;host&#x27;:a.device?a.device.id:&#x27;outside&#x27;,&#x27;data-node-x&#x27;:a.x,&#x27;data-node-y&#x27;:a.y,&#x27;data-node-width&#x27;:a.w,&#x27;data-node-height&#x27;:a.h},undefined,cards);
+    const g=create(&#x27;g&#x27;,{&#x27;data-node&#x27;:a.id,&#x27;data-node-layer&#x27;:a.layerTag,&#x27;data-node-step&#x27;:a.ready,&#x27;data-node-steps&#x27;:readySteps.join(&#x27;,&#x27;),&#x27;data-node-owner&#x27;:a.kind===&#x27;host&#x27;?&#x27;host&#x27;:a.device?a.device.id:&#x27;outside&#x27;,&#x27;data-node-x&#x27;:a.x,&#x27;data-node-y&#x27;:a.y,&#x27;data-node-width&#x27;:a.w,&#x27;data-node-height&#x27;:a.h},undefined,cards);
     create(&#x27;rect&#x27;,{x:a.x,y:a.y,width:a.w,height:a.h,rx:a.kind===&#x27;compute&#x27;?12:5,fill:C.bg,stroke:hot?color:C.border,&#x27;stroke-width&#x27;:hot?1.8:1,&#x27;stroke-dasharray&#x27;:a.kind===&#x27;host&#x27;?&#x27;3 3&#x27;:&#x27;none&#x27;},undefined,g);
     let y=a.y+18;
     text(a.x+a.w/2,y,a.title,a.w-18,g,{bold:true});y+=a.titleLines.length*16+4;
+    if(a.layerTag)y+=text(a.x+a.w/2,y,a.layerTag,a.w-18,g,{fill:C.control,layerTag:a.layerTag})+4;
     readySteps.filter(Boolean).forEach((ready,ri)=&gt;{const cx=a.x+1+ri*22;create(&#x27;circle&#x27;,{cx,cy:a.y+1,r:8.5,fill:C.bg,stroke:color},undefined,g);text(cx,a.y+5,String(ready),20,g);});
     let ti=0;
     a.tableRows.forEach(rh=&gt;{
@@ -2646,7 +2697,7 @@ if (typeof module !== &#x27;undefined&#x27; &amp;&amp; module.exports) module.ex
     const centers=cols===1?[width/2]:Array.from({length:cols},(_,i)=&gt;margin+nw/2+i*(nw+gap));
     svg.replaceChildren();const defs=el(&#x27;defs&#x27;);for(const type of Object.keys(colors)){const marker=el(&#x27;marker&#x27;,{id:&#x27;pf-arrow-&#x27;+type,viewBox:&#x27;0 0 8 8&#x27;,refX:7,refY:4,markerWidth:7,markerHeight:7,orient:&#x27;auto&#x27;},undefined,defs);el(&#x27;path&#x27;,{d:&#x27;M1 1 L7 4 L1 7&#x27;,fill:&#x27;none&#x27;,stroke:colors[type]},undefined,marker);}
     const rowHeights=[];const positions=new Map();
-    for(const n of m.nodes){const titleH=wrap(n.title,nw-14).length*17;const noteH=n.note?wrap(n.note,nw-14).length*17:0;const innerH=n.innerSteps?n.innerSteps.length*48:0;const h=27+titleH+n.tables.reduce((a,t)=&gt;a+matrixHeight(t,nw-14)+8,0)+noteH+innerH+12;rowHeights[n.row]=Math.max(rowHeights[n.row]||0,h);positions.set(n.id,{...n,x:centers[n.lane]-nw/2,w:nw,h});}
+    for(const n of m.nodes){const titleH=wrap(n.title,nw-14).length*17;const layerH=wrap(n.layerTag,nw-14).length*17+6;const noteH=n.note?wrap(n.note,nw-14).length*17:0;const innerH=n.innerSteps?n.innerSteps.length*48:0;const h=27+layerH+titleH+n.tables.reduce((a,t)=&gt;a+matrixHeight(t,nw-14)+8,0)+noteH+innerH+12;rowHeights[n.row]=Math.max(rowHeights[n.row]||0,h);positions.set(n.id,{...n,x:centers[n.lane]-nw/2,w:nw,h});}
     const rowY=[];let bottom=76;for(let r=0;r&lt;rowHeights.length;r++){rowY[r]=bottom;bottom+=rowHeights[r]+74;}
     for(const n of positions.values()){n.y=rowY[n.row];n.cx=n.x+nw/2;n.cy=n.y+n.h/2;}
     const height=bottom-50;svg.setAttribute(&#x27;viewBox&#x27;,`0 0 ${width} ${height}`);svg.setAttribute(&#x27;height&#x27;,height);svg.setAttribute(&#x27;aria-label&#x27;,m.title+&#x27;。所有节点和连线保持位置；实线沿激活流动，虚线为控制信息。&#x27;);
@@ -2670,7 +2721,7 @@ if (typeof module !== &#x27;undefined&#x27; &amp;&amp; module.exports) module.ex
     for(const n of positions.values()){
       const hot=step===0||step===n.ready||n.tables.some(t=&gt;t.ready===step);const g=el(&#x27;g&#x27;,{&#x27;data-node&#x27;:n.id,&#x27;data-node-ready&#x27;:n.ready},undefined,nodesLayer);
       el(&#x27;rect&#x27;,{x:n.x,y:n.y,width:n.w,height:n.h,rx:6,fill:hot?&#x27;color-mix(in srgb,var(--viz-series-1) 7%,var(--background))&#x27;:&#x27;var(--background)&#x27;,stroke:hot&amp;&amp;step!==0?&#x27;var(--viz-series-1)&#x27;:&#x27;var(--border)&#x27;,&#x27;stroke-width&#x27;:1},undefined,g);
-      let y=n.y+32;label(n.cx,y,n.title,nw-14,&#x27;pf-bold&#x27;,g);y+=wrap(n.title,nw-14).length*17+10;
+      let y=n.y+32;const lt=label(n.cx,y,n.layerTag,nw-14,&#x27;pf-muted&#x27;,g);lt.setAttribute(&#x27;data-layer-tag&#x27;,n.layerTag);y+=wrap(n.layerTag,nw-14).length*17+6;label(n.cx,y,n.title,nw-14,&#x27;pf-bold&#x27;,g);y+=wrap(n.title,nw-14).length*17+10;
       n.tables.forEach((t,i)=&gt;{const mg=el(&#x27;g&#x27;,{&#x27;data-matrix&#x27;:JSON.stringify(t.value),&#x27;data-matrix-name&#x27;:t.label,&#x27;data-matrix-ready&#x27;:t.ready},undefined,g);matrixSvg(n.cx,y,nw-14,t,mg);y+=matrixHeight(t,nw-14)+8;
         if(i&lt;n.tables.length-1&amp;&amp;n.innerSteps){const sn=n.innerSteps[i];const ip=el(&#x27;path&#x27;,{d:`M${n.cx-45} ${y-3} V${y+29}`,stroke:colors.local,&#x27;stroke-width&#x27;:1.5,fill:&#x27;none&#x27;,&#x27;marker-end&#x27;:&#x27;url(#pf-arrow-local)&#x27;,&#x27;data-inner-step&#x27;:sn},undefined,g);number(n.cx-45,y+12,sn,&#x27;local&#x27;,g);label(n.cx+22,y+11,n.innerLabels[i],nw-45,&#x27;&#x27;,g);if(animate&amp;&amp;step===sn)packets.push({path:ip,type:&#x27;local&#x27;,delay:0});y+=48;}
       });
@@ -2681,7 +2732,7 @@ if (typeof module !== &#x27;undefined&#x27; &amp;&amp; module.exports) module.ex
   }
   function render(animate=false){const m=modes[mode];$(&#x27;#pf-title&#x27;).textContent=m.title;$(&#x27;#pf-scope&#x27;).textContent=m.scope;$(&#x27;#pf-counter&#x27;).textContent=step?`${step} / ${m.steps.length} · ${m.steps[step-1].name}`:`0 / ${m.steps.length} · 全局关系：沿箭头查看完整数值流`;
     $(&#x27;#pf-prev&#x27;).disabled=step===0;$(&#x27;#pf-next&#x27;).disabled=step===m.steps.length;$(&#x27;#pf-overview&#x27;).setAttribute(&#x27;aria-pressed&#x27;,String(step===0));$(&#x27;#pf-detail&#x27;).textContent=step?m.steps[step-1].detail:(view===&#x27;device&#x27;?&#x27;虚线框表示 GPU 所有权，常驻权重连到本地计算；跨框箭头标出实际传递的张量。&#x27;:&#x27;节点在逐步查看时保持原位；未到达的数据用 · 表示。每条箭头的小序号对应下方流程。&#x27;);
-    $(&#x27;#pf-split&#x27;).textContent=splitNotes[mode];$(&#x27;#pf-dp-scenarios&#x27;).hidden=mode!==&#x27;dp&#x27;&amp;&amp;mode!==&#x27;dpt&#x27;;
+    $(&#x27;#pf-split&#x27;).textContent=splitNotes[mode];$(&#x27;#pf-layer-scope&#x27;).textContent=m.layerScope;$(&#x27;#pf-dp-scenarios&#x27;).hidden=mode!==&#x27;dp&#x27;&amp;&amp;mode!==&#x27;dpt&#x27;;
     root.querySelectorAll(&#x27;[data-view]&#x27;).forEach(b=&gt;{b.setAttribute(&#x27;aria-pressed&#x27;,String(b.dataset.view===view));b.disabled=!m.nodes.length&amp;&amp;b.dataset.view===&#x27;detail&#x27;;});
     root.querySelectorAll(&#x27;[data-scenario]&#x27;).forEach(b=&gt;b.setAttribute(&#x27;aria-pressed&#x27;,String(b.dataset.scenario===mode)));
     $(&#x27;#pf-all&#x27;).hidden=step!==0;$(&#x27;#pf-list&#x27;).replaceChildren();m.steps.forEach(s=&gt;{const li=document.createElement(&#x27;li&#x27;),b=document.createElement(&#x27;strong&#x27;);b.textContent=s.name+&#x27;：&#x27;;li.append(b,document.createTextNode(s.detail));$(&#x27;#pf-list&#x27;).append(li);});
