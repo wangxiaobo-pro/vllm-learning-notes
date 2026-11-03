@@ -60,6 +60,13 @@
         <a href="pd-disaggregation/index.html">打开 V0 / V1 动画</a>
       </nav>
     </section>
+    <section aria-labelledby="chunked-prefill-title">
+      <h2 id="chunked-prefill-title">Chunked prefill</h2>
+      <p>对照分块与整段 prefill，逐步追踪 CPU 调度、GPU 执行、KV 与输出 token。默认展示 B 的整段 prefill 持续占用前三个观察轮次，A / C 等待，第 4 轮才开始 Decode。</p>
+      <nav aria-label="Chunked prefill 项目">
+        <a href="chunked-prefill/index.html">打开两种调度策略与四轮流程</a>
+      </nav>
+    </section>
     <section aria-labelledby="parallelism-title">
       <h2 id="parallelism-title">vLLM 并行流程</h2>
       <p>查看 TP、EP、SP、PP、CP、DP 六种单项并行，以及 TP+SP、DP+EP、DP+TP+PP 三种组合，默认打开 TP+SP。用 GPU 虚线框和矩阵追踪权重分配、计算与通信；DP 可对照训练梯度同步与 vLLM 推理请求分流。</p>
