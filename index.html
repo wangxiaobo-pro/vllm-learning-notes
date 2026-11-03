@@ -32,6 +32,13 @@
         <a href="transform/transformer-structure-explorer-matrices.html">打开矩阵计算</a>
       </nav>
     </section>
+    <section aria-labelledby="startup-title">
+      <h2 id="startup-title">vLLM-Ascend 启动流程</h2>
+      <p>从 vllm serve 到 HTTP 服务就绪，逐步查看 API Server、EngineCore 和两个 Worker 的初始化；对照编号清单理解模型分片、物理 KV 分配与调度器创建。</p>
+      <nav aria-label="vLLM-Ascend 启动项目">
+        <a href="vllm-ascend-startup/index.html">打开组件清单与 26 步启动流程</a>
+      </nav>
+    </section>
     <section aria-labelledby="pd-title">
       <h2 id="pd-title">vLLM PD 分离</h2>
       <p>切换 V0 / V1，以 P、D 两侧的 Scheduler 和 Worker 为线索，逐步观察缓存匹配、KV 传输和请求恢复。</p>

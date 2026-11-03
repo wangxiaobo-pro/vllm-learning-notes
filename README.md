@@ -7,6 +7,7 @@
 | 项目 | 内容 | 说明 | HTML 入口 |
 | --- | --- | --- | --- |
 | Transformer 结构与矩阵 | 模型结构、注意力、MLP、逐步矩阵计算 | [transform](transform/README.md) | [transform/index.html](transform/index.html) |
+| vLLM-Ascend 启动流程 | 组件初始化清单、26 步启动流程、TP 分片、物理 KV 与调度器 | [vllm-ascend-startup](vllm-ascend-startup/README.md) | [vllm-ascend-startup/index.html](vllm-ascend-startup/index.html) |
 | vLLM PD 分离 | V0 / V1、P / D、Scheduler / Worker、Mooncake 缓存匹配与传输 | [pd-disaggregation](pd-disaggregation/README.md) | [pd-disaggregation/index.html](pd-disaggregation/index.html) |
 | vLLM 并行流程 | 六种单项并行与 TP+SP、DP+EP、DP+TP+PP 三种组合，默认 TP+SP，附训练 DP 对照 | [parallelism](parallelism/README.md) | [parallelism/index.html](parallelism/index.html) |
 | 通信原语 | 具体数组的发送、归约、汇集、散布与交换 | [communication-primitives](communication-primitives/README.md) | [communication-primitives/index.html](communication-primitives/index.html) |
@@ -15,6 +16,9 @@
 vllm-learning-notes/
 ├── README.md
 ├── index.html                         # 项目导航
+├── vllm-ascend-startup/
+│   ├── README.md
+│   └── index.html                     # 组件启动清单与 26 步源码流程
 ├── transform/
 │   ├── README.md
 │   ├── index.html                     # Transformer 项目入口
