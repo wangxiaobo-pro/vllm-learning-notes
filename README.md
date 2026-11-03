@@ -14,6 +14,7 @@
 | vLLM PD 分离 | V0 / V1、P / D、Scheduler / Worker、Mooncake 缓存匹配与传输 | [pd-disaggregation](pd-disaggregation/README.md) | [pd-disaggregation/index.html](pd-disaggregation/index.html) |
 | Chunked prefill | 分块与整段 prefill 对照、四轮状态、CPU / GPU 调用、KV 与输出变化 | [chunked-prefill](chunked-prefill/README.md) | [chunked-prefill/index.html](chunked-prefill/index.html) |
 | vLLM 并行流程 | 六种单项并行与 TP+SP、DP+EP、DP+TP+PP 三种组合，默认 TP+SP，附训练 DP 对照 | [parallelism](parallelism/README.md) | [parallelism/index.html](parallelism/index.html) |
+| vLLM DPLB 与 EPLB | 请求分流、队列反馈、专家副本与放置，以及请求执行中的同步权重迁移 | [eplb-dplb](eplb-dplb/README.md) | [eplb-dplb/index.html](eplb-dplb/index.html) |
 | 通信原语 | 具体数组的发送、归约、汇集、散布与交换，以及 Ring Attention 的 K/V 环传 | [communication-primitives](communication-primitives/README.md) | [communication-primitives/index.html](communication-primitives/index.html) |
 
 ```text
@@ -56,6 +57,10 @@ vllm-learning-notes/
 │   ├── verify_combinations.py         # 组合算术、所有权与传输验算
 │   ├── training-dp.json               # 三 GPU 训练 DP 算例
 │   └── verify_training_dp.py          # 全批次与分布式梯度等价验算
+├── eplb-dplb/
+│   ├── README.md
+│   ├── index.html                     # DPLB 与 EPLB 五章交互流程
+│   └── source.html                    # 可编辑的可视化源片段
 └── communication-primitives/
     ├── README.md
     ├── index.html                     # 通信原语、数组变化与 Ring Attention

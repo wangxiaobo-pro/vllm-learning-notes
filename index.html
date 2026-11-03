@@ -81,6 +81,13 @@
         <a href="parallelism/index.html">打开六种并行与三种组合</a>
       </nav>
     </section>
+    <section aria-labelledby="eplb-dplb-title">
+      <h2 id="eplb-dplb-title">vLLM DPLB 与 EPLB</h2>
+      <p>用五章流程查看请求如何分配到 DP rank、队列统计如何反馈，以及专家副本的分配与放置；沿同一请求的多个模型步，追踪同步权重迁移、映射切换与继续生成。</p>
+      <nav aria-label="DPLB 与 EPLB 项目">
+        <a href="eplb-dplb/index.html">打开请求、专家与权重流程</a>
+      </nav>
+    </section>
     <section aria-labelledby="communication-title">
       <h2 id="communication-title">通信原语</h2>
       <p>用具体数组观察 Send/Recv、Broadcast、Reduce、All-Reduce、All-Gather、Reduce-Scatter、All-to-All、Scatter、Gather，以及 Ring Attention 中固定 Q、K/V 环传与在线 softmax 累积。</p>
