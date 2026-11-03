@@ -5,19 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com https://persistent.oaistatic.com/plugins/visualize/; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<title>通信原语：3 ranks 交互流程</title>
+<title>通信原语与 Ring Attention</title>
 <style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;max-width:960px;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
 
 </head>
 <body>
-<iframe id="codex-visualization" sandbox="allow-scripts" referrerpolicy="no-referrer" title="通信原语：3 ranks 交互流程" data-srcdoc="&lt;!doctype html&gt;
+<iframe id="codex-visualization" sandbox="allow-scripts" referrerpolicy="no-referrer" title="通信原语与 Ring Attention" data-srcdoc="&lt;!doctype html&gt;
 &lt;html lang=&quot;en&quot; data-visualize-standalone&gt;
 &lt;head&gt;
 &lt;meta charset=&quot;utf-8&quot;&gt;
 &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
 &lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
 &lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com https://persistent.oaistatic.com/plugins/visualize/; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
-&lt;title&gt;通信原语：3 ranks 交互流程&lt;/title&gt;
+&lt;title&gt;通信原语与 Ring Attention&lt;/title&gt;
 &lt;style&gt;:root {
   color-scheme: light dark;
   background-color: var(
@@ -1815,7 +1815,7 @@ html&gt;body{padding:0}&lt;/style&gt;
 &lt;div id=&quot;communication-primitives&quot;&gt;
   &lt;div class=&quot;cp-heading&quot;&gt;
     &lt;h2&gt;通信原语：数据怎样跨 rank 流动&lt;/h2&gt;
-    &lt;div class=&quot;text-small text-muted&quot;&gt;3 ranks · 等长分块 · 归约采用 SUM&lt;/div&gt;
+    &lt;div id=&quot;cp-subtitle&quot; class=&quot;text-small text-muted&quot;&gt;3 ranks · 等长分块 · 归约采用 SUM&lt;/div&gt;
   &lt;/div&gt;
   &lt;div class=&quot;viz-controls&quot;&gt;
     &lt;label class=&quot;form-label&quot; for=&quot;cp-operation&quot;&gt;通信操作
@@ -1829,12 +1829,20 @@ html&gt;body{padding:0}&lt;/style&gt;
         &lt;option value=&quot;alltoall&quot;&gt;All-to-All · 按目标交换&lt;/option&gt;
         &lt;option value=&quot;scatter&quot;&gt;Scatter · 分发不同分块&lt;/option&gt;
         &lt;option value=&quot;gather&quot;&gt;Gather · 收集到 root&lt;/option&gt;
+        &lt;option value=&quot;ring&quot;&gt;Ring Attention · K/V 环传&lt;/option&gt;
+      &lt;/select&gt;
+    &lt;/label&gt;
+    &lt;label class=&quot;form-label&quot; id=&quot;cp-mask-control&quot; for=&quot;cp-mask&quot; hidden&gt;Attention 掩码
+      &lt;select class=&quot;form-select&quot; id=&quot;cp-mask&quot;&gt;
+        &lt;option value=&quot;causal&quot;&gt;Causal · 只能看当前位置及之前&lt;/option&gt;
+        &lt;option value=&quot;full&quot;&gt;Full · 可看全部位置&lt;/option&gt;
       &lt;/select&gt;
     &lt;/label&gt;
   &lt;/div&gt;
   &lt;div class=&quot;viz-controls&quot;&gt;
     &lt;button class=&quot;btn&quot; type=&quot;button&quot; id=&quot;cp-prev&quot; disabled&gt;上一步&lt;/button&gt;
     &lt;button class=&quot;btn btn-primary&quot; type=&quot;button&quot; id=&quot;cp-next&quot;&gt;下一步&lt;/button&gt;
+    &lt;button class=&quot;btn&quot; type=&quot;button&quot; id=&quot;cp-home&quot;&gt;全局关系&lt;/button&gt;
     &lt;span id=&quot;cp-counter&quot; class=&quot;text-small tabular-nums&quot; aria-live=&quot;polite&quot;&gt;0 / 3 · 全局关系&lt;/span&gt;
   &lt;/div&gt;
   &lt;div class=&quot;cp-legend text-small&quot;&gt;
@@ -1843,7 +1851,19 @@ html&gt;body{padding:0}&lt;/style&gt;
   &lt;/div&gt;
   &lt;svg id=&quot;cp-diagram&quot; role=&quot;img&quot; aria-label=&quot;三个 rank 的输入、通信或归约过程与输出&quot;&gt;&lt;/svg&gt;
   &lt;div id=&quot;cp-detail&quot; class=&quot;text-small&quot; aria-live=&quot;polite&quot;&gt;&lt;/div&gt;
-  &lt;div class=&quot;text-small text-muted&quot;&gt;语义示例，不表示 NCCL 固定的 ring / tree 或实际执行先后；SUM 框不代表中转 rank。&lt;/div&gt;
+  &lt;div id=&quot;cp-boundary&quot; class=&quot;text-small text-muted&quot;&gt;语义示例，不表示 NCCL 固定的 ring / tree 或实际执行先后；SUM 框不代表中转 rank。&lt;/div&gt;
+  &lt;details id=&quot;cp-ring-math&quot; hidden&gt;
+    &lt;summary&gt;矩阵切分、在线 softmax 与计算重叠&lt;/summary&gt;
+    &lt;div class=&quot;cp-ring-notes text-small&quot;&gt;
+      &lt;p&gt;同一序列按 token 行分给 3 个 ranks：每卡 1 个 token，Q/K/V 均为 1×2，单 head，dₖ = 2。Qᵣ 始终留在 rank r；当前 K/V 块沿 0 → 1 → 2 → 0 发送，并从前一个 rank 接收下一块。图中轮次从 0 开始，数字保留 4 位，计算与验算使用完整精度。&lt;/p&gt;
+      &lt;p&gt;每个新 token 的 score 为 s = QᵣKⱼᵀ / √2。本地累计最大值 m、指数和 l、未归一化加权和 u：m′ = max(m,s)，a = exp(m−m′)，b = exp(s−m′)，l′ = a·l+b，u′ = a·u+b·Vⱼ，最后 O = u/l。初始 m=−∞、l=0、u=[0,0]；被 mask 的块跳过更新，避免 −∞−(−∞)。这些统计量是 softmax 累积状态，不是 LayerNorm/RMSNorm 输出。&lt;/p&gt;
+      &lt;p&gt;Causal 按全局位置比较：key_position ≤ query_position。未来块即使在本卡被跳过，仍按本例固定环继续转发给需要它的 rank；真实实现可跳过无效计算或采用其他负载划分。每卡保留自己的 O，本流程不对 O 做 All-Reduce，也不把全部 K/V 拼到每卡。&lt;/p&gt;
+      &lt;p&gt;本例只画 3 轮来源遍历与 2 次必要交换，省略末次无用轮转。作者 JAX 源码的循环体含无条件 ppermute，末次 K/V 结果被丢弃；教学交换次数不等同于源码调用次数，也不推断编译后的网络执行次数。&lt;/p&gt;
+      &lt;p&gt;图中为看清依赖而把计算与通信拆步。实现可在计算当前 K/V 时，用独立接收缓冲预取下一块；使用前要等接收完成，重用发送缓冲前要等发送完成。异步 API 返回不表示传输完成，能否隐藏通信取决于块大小、内核与网络，动画时长不是性能数据。&lt;/p&gt;
+      &lt;p&gt;所属层：已投影 Q/K/V → Attention core → 本地 head 输出 O；未计算输出投影 o_proj、Norm、FFN 或反向传播。这里展示 Ring Attention 的算法机制，不代表前一页所选 vLLM DCP 后端使用该路径。&lt;/p&gt;
+      &lt;p&gt;来源：&lt;a href=&quot;https://arxiv.org/abs/2310.01889&quot; target=&quot;_blank&quot; rel=&quot;noreferrer&quot;&gt;Ring Attention 论文&lt;/a&gt; · &lt;a href=&quot;https://github.com/haoliuhl/ringattention/blob/d2ea1af9a288f85ea2fd74690ece1c16d2eebc83/ringattention/ringattention_jax.py#L25&quot; target=&quot;_blank&quot; rel=&quot;noreferrer&quot;&gt;作者实现（d2ea1af）&lt;/a&gt; · &lt;a href=&quot;https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/p2p.html&quot; target=&quot;_blank&quot; rel=&quot;noreferrer&quot;&gt;NCCL Send/Recv&lt;/a&gt;&lt;/p&gt;
+    &lt;/div&gt;
+  &lt;/details&gt;
   &lt;section id=&quot;cp-overview&quot; aria-labelledby=&quot;cp-flow-title&quot;&gt;
     &lt;h3 id=&quot;cp-flow-title&quot;&gt;完整流程 · 对照图中序号&lt;/h3&gt;
     &lt;ol id=&quot;cp-flow-list&quot; class=&quot;text-small&quot;&gt;&lt;/ol&gt;
@@ -1861,12 +1881,15 @@ html&gt;body{padding:0}&lt;/style&gt;
   #cp-diagram .cp-title { font-weight:500; }
   #cp-diagram .cp-muted { fill:var(--muted-foreground); }
   #cp-detail { min-height:calc(var(--font-size-base) * 2); overflow-wrap:anywhere; }
+  #cp-mask-control[hidden],#cp-ring-math[hidden] { display:none; }
+  #communication-primitives .cp-ring-notes { display:flex; flex-direction:column; gap:calc(var(--font-size-base) * .5); margin-top:calc(var(--font-size-base) * .5); overflow-wrap:anywhere; }
   #cp-overview { display:flex; flex-direction:column; gap:calc(var(--font-size-base) * .5); }
   #cp-overview[hidden] { display:none; }
   #cp-flow-list { margin:0; padding-left:calc(var(--font-size-base) * 1.7); }
   #cp-flow-list li + li { margin-top:calc(var(--font-size-base) * .5); }
   @media(max-width:440px) { #communication-primitives .cp-heading { padding-right:0; } }
 &lt;/style&gt;
+&lt;script type=&quot;application/json&quot; id=&quot;cp-ring-data&quot;&gt;{&quot;schema_version&quot;:1,&quot;title&quot;:&quot;Ring Attention: 3 ranks, one query and one KV token per rank&quot;,&quot;display_precision&quot;:4,&quot;Q&quot;:[[1.4142135623730951,0],[0,1.4142135623730951],[1.4142135623730951,1.4142135623730951]],&quot;K&quot;:[[1,0],[0,1],[1,1]],&quot;V&quot;:[[1,0],[0,2],[3,1]],&quot;positions&quot;:[0,1,2],&quot;d_k&quot;:2,&quot;d_v&quot;:2,&quot;score_scale&quot;:0.7071067811865475,&quot;Q_exact&quot;:[&quot;[sqrt(2), 0]&quot;,&quot;[0, sqrt(2)]&quot;,&quot;[sqrt(2), sqrt(2)]&quot;],&quot;initial_state&quot;:{&quot;m&quot;:null,&quot;l&quot;:0,&quot;u&quot;:[0,0],&quot;O&quot;:null},&quot;ring&quot;:{&quot;ranks&quot;:3,&quot;round_count&quot;:3,&quot;exchange_count&quot;:2,&quot;send_to_by_rank&quot;:[1,2,0],&quot;receive_from_by_rank&quot;:[2,0,1],&quot;origin_formula&quot;:&quot;origin(r,t)=(r-t+3)%3&quot;,&quot;round0&quot;:&quot;compute local KV block before first exchange&quot;,&quot;after_final_round&quot;:&quot;stop after the third block; no third exchange is needed&quot;},&quot;modes&quot;:{&quot;full&quot;:{&quot;ranks&quot;:[{&quot;rank&quot;:0,&quot;query_position&quot;:0,&quot;initial_state&quot;:{&quot;m&quot;:null,&quot;l&quot;:0,&quot;u&quot;:[0,0],&quot;O&quot;:null},&quot;rounds&quot;:[{&quot;round&quot;:0,&quot;origin&quot;:0,&quot;key_position&quot;:0,&quot;score&quot;:1,&quot;masked&quot;:false,&quot;m&quot;:1,&quot;l&quot;:1,&quot;u&quot;:[1,0],&quot;O&quot;:[1,0]},{&quot;round&quot;:1,&quot;origin&quot;:2,&quot;key_position&quot;:2,&quot;score&quot;:1,&quot;masked&quot;:false,&quot;m&quot;:1,&quot;l&quot;:2,&quot;u&quot;:[4,1],&quot;O&quot;:[2,0.5]},{&quot;round&quot;:2,&quot;origin&quot;:1,&quot;key_position&quot;:1,&quot;score&quot;:0,&quot;masked&quot;:false,&quot;m&quot;:1,&quot;l&quot;:2.3678794411714423,&quot;u&quot;:[4,1.7357588823428847],&quot;O&quot;:[1.6892751930060728,0.7330436052454454]}],&quot;output&quot;:[1.6892751930060728,0.7330436052454454]},{&quot;rank&quot;:1,&quot;query_position&quot;:1,&quot;initial_state&quot;:{&quot;m&quot;:null,&quot;l&quot;:0,&quot;u&quot;:[0,0],&quot;O&quot;:null},&quot;rounds&quot;:[{&quot;round&quot;:0,&quot;origin&quot;:1,&quot;key_position&quot;:1,&quot;score&quot;:1,&quot;masked&quot;:false,&quot;m&quot;:1,&quot;l&quot;:1,&quot;u&quot;:[0,2],&quot;O&quot;:[0,2]},{&quot;round&quot;:1,&quot;origin&quot;:0,&quot;key_position&quot;:0,&quot;score&quot;:0,&quot;masked&quot;:false,&quot;m&quot;:1,&quot;l&quot;:1.3678794411714423,&quot;u&quot;:[0.36787944117144233,2],&quot;O&quot;:[0.2689414213699951,1.4621171572600098]},{&quot;round&quot;:2,&quot;origin&quot;:2,&quot;key_position&quot;:2,&quot;score&quot;:1,&quot;masked&quot;:false,&quot;m&quot;:1,&quot;l&quot;:2.3678794411714423,&quot;u&quot;:[3.3678794411714423,3],&quot;O&quot;:[1.4223187982515182,1.2669563947545546]}],&quot;output&quot;:[1.4223187982515182,1.2669563947545546]},{&quot;rank&quot;:2,&quot;query_position&quot;:2,&quot;initial_state&quot;:{&quot;m&quot;:null,&quot;l&quot;:0,&quot;u&quot;:[0,0],&quot;O&quot;:null},&quot;rounds&quot;:[{&quot;round&quot;:0,&quot;origin&quot;:2,&quot;key_position&quot;:2,&quot;score&quot;:2,&quot;masked&quot;:false,&quot;m&quot;:2,&quot;l&quot;:1,&quot;u&quot;:[3,1],&quot;O&quot;:[3,1]},{&quot;round&quot;:1,&quot;origin&quot;:1,&quot;key_position&quot;:1,&quot;score&quot;:1,&quot;masked&quot;:false,&quot;m&quot;:2,&quot;l&quot;:1.3678794411714423,&quot;u&quot;:[3,1.7357588823428847],&quot;O&quot;:[2.193175735890015,1.2689414213699952]},{&quot;round&quot;:2,&quot;origin&quot;:0,&quot;key_position&quot;:0,&quot;score&quot;:1,&quot;masked&quot;:false,&quot;m&quot;:2,&quot;l&quot;:1.7357588823428847,&quot;u&quot;:[3.3678794411714423,1.7357588823428847],&quot;O&quot;:[1.9402922119145727,1]}],&quot;output&quot;:[1.9402922119145727,1]}],&quot;output&quot;:[[1.6892751930060728,0.7330436052454454],[1.4223187982515182,1.2669563947545546],[1.9402922119145727,1]],&quot;reference&quot;:[[1.6892751930060728,0.7330436052454454],[1.4223187982515182,1.2669563947545546],[1.940292211914573,1]],&quot;dense_scores&quot;:[[1,0,1],[0,1,1],[1,1,2]],&quot;dense_probabilities&quot;:[[0.4223187982515182,0.15536240349696362,0.4223187982515182],[0.15536240349696362,0.4223187982515182,0.4223187982515182],[0.21194155761708544,0.21194155761708544,0.5761168847658291]],&quot;dense_masked&quot;:[[false,false,false],[false,false,false],[false,false,false]]},&quot;causal&quot;:{&quot;ranks&quot;:[{&quot;rank&quot;:0,&quot;query_position&quot;:0,&quot;initial_state&quot;:{&quot;m&quot;:null,&quot;l&quot;:0,&quot;u&quot;:[0,0],&quot;O&quot;:null},&quot;rounds&quot;:[{&quot;round&quot;:0,&quot;origin&quot;:0,&quot;key_position&quot;:0,&quot;score&quot;:1,&quot;masked&quot;:false,&quot;m&quot;:1,&quot;l&quot;:1,&quot;u&quot;:[1,0],&quot;O&quot;:[1,0]},{&quot;round&quot;:1,&quot;origin&quot;:2,&quot;key_position&quot;:2,&quot;score&quot;:1,&quot;masked&quot;:true,&quot;m&quot;:1,&quot;l&quot;:1,&quot;u&quot;:[1,0],&quot;O&quot;:[1,0]},{&quot;round&quot;:2,&quot;origin&quot;:1,&quot;key_position&quot;:1,&quot;score&quot;:0,&quot;masked&quot;:true,&quot;m&quot;:1,&quot;l&quot;:1,&quot;u&quot;:[1,0],&quot;O&quot;:[1,0]}],&quot;output&quot;:[1,0]},{&quot;rank&quot;:1,&quot;query_position&quot;:1,&quot;initial_state&quot;:{&quot;m&quot;:null,&quot;l&quot;:0,&quot;u&quot;:[0,0],&quot;O&quot;:null},&quot;rounds&quot;:[{&quot;round&quot;:0,&quot;origin&quot;:1,&quot;key_position&quot;:1,&quot;score&quot;:1,&quot;masked&quot;:false,&quot;m&quot;:1,&quot;l&quot;:1,&quot;u&quot;:[0,2],&quot;O&quot;:[0,2]},{&quot;round&quot;:1,&quot;origin&quot;:0,&quot;key_position&quot;:0,&quot;score&quot;:0,&quot;masked&quot;:false,&quot;m&quot;:1,&quot;l&quot;:1.3678794411714423,&quot;u&quot;:[0.36787944117144233,2],&quot;O&quot;:[0.2689414213699951,1.4621171572600098]},{&quot;round&quot;:2,&quot;origin&quot;:2,&quot;key_position&quot;:2,&quot;score&quot;:1,&quot;masked&quot;:true,&quot;m&quot;:1,&quot;l&quot;:1.3678794411714423,&quot;u&quot;:[0.36787944117144233,2],&quot;O&quot;:[0.2689414213699951,1.4621171572600098]}],&quot;output&quot;:[0.2689414213699951,1.4621171572600098]},{&quot;rank&quot;:2,&quot;query_position&quot;:2,&quot;initial_state&quot;:{&quot;m&quot;:null,&quot;l&quot;:0,&quot;u&quot;:[0,0],&quot;O&quot;:null},&quot;rounds&quot;:[{&quot;round&quot;:0,&quot;origin&quot;:2,&quot;key_position&quot;:2,&quot;score&quot;:2,&quot;masked&quot;:false,&quot;m&quot;:2,&quot;l&quot;:1,&quot;u&quot;:[3,1],&quot;O&quot;:[3,1]},{&quot;round&quot;:1,&quot;origin&quot;:1,&quot;key_position&quot;:1,&quot;score&quot;:1,&quot;masked&quot;:false,&quot;m&quot;:2,&quot;l&quot;:1.3678794411714423,&quot;u&quot;:[3,1.7357588823428847],&quot;O&quot;:[2.193175735890015,1.2689414213699952]},{&quot;round&quot;:2,&quot;origin&quot;:0,&quot;key_position&quot;:0,&quot;score&quot;:1,&quot;masked&quot;:false,&quot;m&quot;:2,&quot;l&quot;:1.7357588823428847,&quot;u&quot;:[3.3678794411714423,1.7357588823428847],&quot;O&quot;:[1.9402922119145727,1]}],&quot;output&quot;:[1.9402922119145727,1]}],&quot;output&quot;:[[1,0],[0.2689414213699951,1.4621171572600098],[1.9402922119145727,1]],&quot;reference&quot;:[[1,0],[0.2689414213699951,1.4621171572600098],[1.940292211914573,1]],&quot;dense_scores&quot;:[[1,0,1],[0,1,1],[1,1,2]],&quot;dense_probabilities&quot;:[[1,0,0],[0.2689414213699951,0.7310585786300049,0],[0.21194155761708544,0.21194155761708544,0.5761168847658291]],&quot;dense_masked&quot;:[[false,true,true],[false,false,true],[false,false,false]]}},&quot;formulas&quot;:{&quot;score&quot;:&quot;s=dot(Q_r,K_origin)/sqrt(2)&quot;,&quot;causal_mask&quot;:&quot;masked iff key_position &gt; query_position&quot;,&quot;maximum&quot;:&quot;m_new=max(m_old,s) for an unmasked block&quot;,&quot;old_scale&quot;:&quot;a=0 if m_old is -infinity; otherwise exp(m_old-m_new)&quot;,&quot;new_scale&quot;:&quot;b=exp(s-m_new)&quot;,&quot;denominator&quot;:&quot;l_new=a*l_old+b&quot;,&quot;numerator&quot;:&quot;u_new=a*u_old+b*V_origin&quot;,&quot;output&quot;:&quot;O=u/l when l&gt;0; otherwise null (undefined)&quot;,&quot;masked_block&quot;:&quot;skip the entire block; keep m,l,u,O unchanged; do not evaluate -infinity - (-infinity)&quot;},&quot;scope&quot;:[&quot;Arithmetic teaching example: three ranks, one local query token and one KV token per rank, one attention head, d_k=d_v=2. It is not a GPU benchmark or a claim about a specific framework implementation.&quot;,&quot;Each rank keeps its own Q and online m/l/u/O state. Only KV blocks move clockwise r -&gt; (r+1)%3. An incoming KV block is identified by its original token position.&quot;,&quot;Round0 uses local KV. After two exchanges, all ranks have computed three origin blocks exactly once. There is no extra exchange after round2.&quot;,&quot;Full attention has no causal mask. Causal attention allows key_position &lt;= query_position using global token positions, not rank arrival order.&quot;,&quot;m is the running maximum over visible scores; l is the max-shifted exponential sum; u is the max-shifted weighted value sum. O is a normalized partial result until every required block has been processed.&quot;,&quot;A masked score is stored as its finite raw value plus masked=true; it contributes neither probability nor numerator. null m represents -infinity only for the empty initial state, and null O represents no visible key yet.&quot;,&quot;Numerical states are saved at full Python float precision; the renderer may round to four decimal places. Sources for the surrounding explanation are maintained by the parent page.&quot;],&quot;sources&quot;:[{&quot;title&quot;:&quot;Ring Attention paper&quot;,&quot;url&quot;:&quot;https://arxiv.org/abs/2310.01889&quot;},{&quot;title&quot;:&quot;Author implementation: circulation and fixed Q&quot;,&quot;url&quot;:&quot;https://github.com/haoliuhl/ringattention/blob/d2ea1af9a288f85ea2fd74690ece1c16d2eebc83/ringattention/ringattention_jax.py#L25&quot;},{&quot;title&quot;:&quot;Author implementation: online softmax and causal skip&quot;,&quot;url&quot;:&quot;https://github.com/haoliuhl/ringattention/blob/d2ea1af9a288f85ea2fd74690ece1c16d2eebc83/ringattention/ringattention_jax.py#L125&quot;}]}&lt;/script&gt;
 &lt;script&gt;
 (() =&gt; {
   const root=document.getElementById(&#x27;communication-primitives&#x27;);
@@ -1878,7 +1901,184 @@ html&gt;body{padding:0}&lt;/style&gt;
   const detail=root.querySelector(&#x27;#cp-detail&#x27;);
   const overview=root.querySelector(&#x27;#cp-overview&#x27;);
   const flowList=root.querySelector(&#x27;#cp-flow-list&#x27;);
+  const maskSelect=root.querySelector(&#x27;#cp-mask&#x27;);
+  const ringData=JSON.parse(document.getElementById(&#x27;cp-ring-data&#x27;).textContent);
   const ns=&#x27;http://www.w3.org/2000/svg&#x27;;
+  /* RING_RENDERER_START */
+/* Three-rank teaching Ring Attention. Only K/V travel; Q and online state stay local. */
+function renderRingAttention({svg,width,step=0,mask=&#x27;causal&#x27;,data,animate=false,reducedMotion=false}) {
+  if(!svg||!data||!data.modes)throw new Error(&#x27;renderRingAttention requires svg and ring data&#x27;);
+  const NS=&#x27;http://www.w3.org/2000/svg&#x27;,W=Math.min(960,Math.max(240,Math.floor(Number(width)||736)));
+  const s=Math.max(0,Math.min(7,Number(step)||0)),mode=mask===&#x27;full&#x27;?&#x27;full&#x27;:&#x27;causal&#x27;,mobile=W&lt;700;
+  const C={remote:&#x27;var(--viz-series-1)&#x27;,local:&#x27;var(--muted-foreground)&#x27;,text:&#x27;var(--foreground)&#x27;,bg:&#x27;var(--background)&#x27;,border:&#x27;var(--border)&#x27;};
+  const keys=[&#x27;q&#x27;,&#x27;kv&#x27;,&#x27;core&#x27;,&#x27;state&#x27;,&#x27;out&#x27;],activeSteps={q:[1],kv:[1,3,5],core:[2,4,6],state:[2,4,6],out:[7]};
+  const fmt=v=&gt;v===null||v===-Infinity?&#x27;−∞&#x27;:Number.isInteger(v)?String(v):String(Number(Number(v).toFixed(4)));
+  const vector=v=&gt;&#x27;[&#x27;+(Array.isArray(v[0])?v[0]:v).map(fmt).join(&#x27;, &#x27;)+&#x27;]&#x27;;
+  const source=(r,t)=&gt;(r-t+3)%3;
+  const currentRound=x=&gt;x===0?0:Math.max(0,Math.min(2,Math.floor((x-1)/2)));
+  const accumulatedRound=x=&gt;x===0?2:x&lt;2?-1:x&lt;4?0:x&lt;6?1:2;
+  const textWidth=v=&gt;Array.from(String(v)).reduce((a,c)=&gt;a+(/[\x00-\xff]/.test(c)?7.2:12),0);
+  const wrap=(value,limit)=&gt;{
+    const result=[];
+    String(value).split(&#x27;\n&#x27;).forEach(line=&gt;{let part=&#x27;&#x27;,size=0;for(const ch of line){const n=/[\x00-\xff]/.test(ch)?7.2:12;if(part&amp;&amp;size+n&gt;limit){result.push(part);part=&#x27;&#x27;;size=0;}part+=ch;size+=n;}result.push(part);});
+    return result;
+  };
+  function contents(r,view,which){
+    const rank=data.modes[which].ranks[r],round=currentRound(view),origin=source(r,round),done=accumulatedRound(view);
+    const record=rank.rounds[round],state=done&lt;0?(rank.initial_state||data.initial_state):rank.rounds[done];
+    const waiting=view!==0&amp;&amp;done&lt;round,exchange=view===3||view===5;
+    const visited=rank.rounds.map(a=&gt;&#x27;KV&#x27;+a.origin+(a.masked?&#x27;(mask)&#x27;:&#x27;&#x27;));
+    const scoreRows=view===0?rank.rounds.map(a=&gt;&#x27;R&#x27;+a.round+&#x27; KV&#x27;+a.origin+&#x27; · s=&#x27;+fmt(a.score)+(a.masked?&#x27; → mask&#x27;:&#x27;&#x27;)):
+      waiting?[&#x27;当前 KV&#x27;+origin+&#x27;：score = ·&#x27;]:
+      [&#x27;R&#x27;+round+&#x27; · KV&#x27;+origin,&#x27;s = &#x27;+fmt(record.score)+(record.masked?&#x27; → −∞ (mask)&#x27;:&#x27;&#x27;)];
+    const kvNote=view===0?&#x27;遍历：&#x27;+rank.rounds.map(a=&gt;&#x27;KV&#x27;+a.origin).join(&#x27; → &#x27;):exchange?
+      &#x27;已发 KV&#x27;+source(r,round-1)+&#x27;；新 KV&#x27;+origin+&#x27; 已收齐，尚未计算&#x27;:
+      round===0?&#x27;本地初始块；K/V 各 1×2&#x27;:&#x27;当前块已接收；K/V 各 1×2&#x27;;
+    const stateNote=view===0?&#x27;三轮依次合并后的状态&#x27;:done&lt;0?&#x27;初始状态；尚未处理 KV&#x27;:
+      exchange?&#x27;仍为 R&#x27;+done+&#x27; 后状态；新 KV&#x27;+origin+&#x27; 尚未累计&#x27;:
+      record.masked?&#x27;本轮 masked：m / l / u 保持不变&#x27;:&#x27;已处理：&#x27;+visited.slice(0,done+1).join(&#x27; → &#x27;);
+    return [
+      {key:&#x27;q&#x27;,title:&#x27;固定 Query · Q&#x27;+r,layer:&#x27;Attention core · 本地 Q&#x27;,rows:[&#x27;Q = &#x27;+vector(data.Q[r])],note:&#x27;query position = &#x27;+rank.query_position},
+      {key:&#x27;kv&#x27;,title:(view===0?&#x27;初始&#x27;:&#x27;当前&#x27;)+&#x27; KV 块 · 来源 &#x27;+origin,layer:&#x27;Attention core · 接收/转发 K/V&#x27;,rows:[&#x27;K&#x27;+origin+&#x27; = &#x27;+vector(data.K[origin]),&#x27;V&#x27;+origin+&#x27; = &#x27;+vector(data.V[origin])],note:kvNote},
+      {key:&#x27;core&#x27;,title:&#x27;Attention core · 本地计算&#x27;,layer:&#x27;单 head · score 与 mask&#x27;,rows:scoreRows,note:view===0?&#x27;逐块处理，不对单块直接输出最终 O&#x27;:waiting?&#x27;等待下一计算步；当前块尚未累计&#x27;:record.masked?&#x27;future block：跳过数值更新&#x27;:&#x27;本轮 score 用于更新累计状态&#x27;},
+      {key:&#x27;state&#x27;,title:&#x27;本地 online softmax&#x27;,layer:&#x27;Attention core · 累计 m / l / u&#x27;,rows:[&#x27;m = &#x27;+fmt(state.m)+&#x27;    l = &#x27;+fmt(state.l),&#x27;u = &#x27;+vector(state.u)],note:stateNote},
+      {key:&#x27;out&#x27;,title:&#x27;O = u / l&#x27;,layer:&#x27;单 head 输出 · o_proj 之前&#x27;,rows:[view===0||view===7?&#x27;O&#x27;+r+&#x27; = &#x27;+vector(rank.output):&#x27;O&#x27;+r+&#x27; = ·&#x27;],note:view===0||view===7?&#x27;三轮累计结果；Q / O 均不跨卡&#x27;:&#x27;第 7 步才输出三轮归一化结果&#x27;}
+    ];
+  }
+  const margin=mobile?40:18,gap=24,frameW=mobile?W-2*margin:(W-2*margin-2*gap)/3,pad=12,cardW=frameW-2*pad,rowGap=28;
+  const direction=&#x27;K/V 环方向：GPU 0 → 1 → 2 → 0；Q 与 O 始终留在本地&#x27;;
+  const directionLines=wrap(direction,W-24),top=directionLines.length*16+(mobile?30:66);
+  function cardHeight(c){
+    return 14+wrap(c.title,cardW-18).length*16+4+wrap(c.layer,cardW-18).length*16+8+
+      c.rows.reduce((n,row)=&gt;n+wrap(row,cardW-18).length*18,0)+8+wrap(c.note,cardW-18).length*16+10;
+  }
+  // Reserve the maximum content height across both masks and all steps: no layout jumps.
+  const rowHeights=keys.map(()=&gt;0);
+  for(const which of [&#x27;full&#x27;,&#x27;causal&#x27;])for(let view=0;view&lt;=7;view++)for(let r=0;r&lt;3;r++)
+    contents(r,view,which).forEach((c,i)=&gt;{rowHeights[i]=Math.max(rowHeights[i],cardHeight(c));});
+  const frameH=64+rowHeights.reduce((a,b)=&gt;a+b,0)+rowGap*4+14,mobileGap=88;
+  const ranks=Array.from({length:3},(_,r)=&gt;{
+    const x=mobile?margin:margin+r*(frameW+gap),y=mobile?top+r*(frameH+mobileGap):top;
+    let cy=y+64;
+    const cards=contents(r,s,mode).map((c,i)=&gt;{const out=Object.assign(c,{id:&#x27;ring-r&#x27;+r+&#x27;-&#x27;+c.key,x:x+pad,y:cy,w:cardW,h:rowHeights[i],rank:r});cy+=rowHeights[i]+rowGap;return out;});
+    return {r,x,y,w:frameW,h:frameH,cards};
+  });
+  const bottom=Math.max(...ranks.map(a=&gt;a.y+a.h)),height=Math.ceil(bottom+(mobile?24:92));
+  svg.replaceChildren();svg.setAttribute(&#x27;viewBox&#x27;,&#x27;0 0 &#x27;+W+&#x27; &#x27;+height);svg.setAttribute(&#x27;width&#x27;,W);svg.setAttribute(&#x27;height&#x27;,height);
+  svg.classList.add(&#x27;cp-diagram&#x27;);
+  svg.setAttribute(&#x27;role&#x27;,&#x27;img&#x27;);svg.setAttribute(&#x27;aria-label&#x27;,&#x27;三 GPU Ring Attention：仅 K/V 沿 0→1→2→0 传输，Q 与 online softmax 状态留在本地。&#x27;);
+  svg.setAttribute(&#x27;data-ring-step&#x27;,s);svg.setAttribute(&#x27;data-ring-mask&#x27;,mode);
+  svg.style.width=&#x27;100%&#x27;;svg.style.removeProperty(&#x27;max-width&#x27;);svg.style.height=height+&#x27;px&#x27;;svg.style.display=&#x27;block&#x27;;svg.style.marginInline=&#x27;auto&#x27;;
+  const create=(tag,attrs,value,parent)=&gt;{const e=svg.ownerDocument.createElementNS(NS,tag);Object.entries(attrs||{}).forEach(([k,v])=&gt;e.setAttribute(k,v));if(value!==undefined)e.textContent=value;(parent||svg).appendChild(e);return e;};
+  function text(x,y,value,maxWidth,parent,options={}){
+    const e=create(&#x27;text&#x27;,{x,y,&#x27;font-size&#x27;:12,&#x27;font-family&#x27;:options.mono?&#x27;ui-monospace, Consolas, monospace&#x27;:&#x27;system-ui, sans-serif&#x27;,fill:options.fill||C.text,&#x27;text-anchor&#x27;:&#x27;middle&#x27;,&#x27;font-weight&#x27;:options.bold?500:400},undefined,parent);
+    if(options.layer)e.setAttribute(&#x27;data-layer-tag&#x27;,value);
+    if(options.value)e.setAttribute(&#x27;data-ring-value&#x27;,true);
+    const lines=wrap(value,maxWidth);lines.forEach((line,i)=&gt;create(&#x27;tspan&#x27;,{x,dy:i?options.lineHeight||16:0},line,e));return lines.length*(options.lineHeight||16);
+  }
+  const defs=create(&#x27;defs&#x27;),markerPrefix=&#x27;ring-attention-&#x27;;
+  for(const kind of [&#x27;remote&#x27;,&#x27;local&#x27;]){
+    const marker=create(&#x27;marker&#x27;,{id:markerPrefix+kind,viewBox:&#x27;0 0 8 8&#x27;,refX:7,refY:4,markerWidth:7,markerHeight:7,orient:&#x27;auto&#x27;},undefined,defs);
+    create(&#x27;path&#x27;,{d:&#x27;M1 1 L7 4 L1 7&#x27;,fill:&#x27;none&#x27;,stroke:C[kind],&#x27;stroke-width&#x27;:1.4},undefined,marker);
+  }
+  const remoteEdges=create(&#x27;g&#x27;,{&#x27;data-ring-remotes&#x27;:true}),rankLayer=create(&#x27;g&#x27;,{&#x27;data-ring-devices&#x27;:true}),labelLayer=create(&#x27;g&#x27;,{&#x27;data-ring-labels&#x27;:true}),packetLayer=create(&#x27;g&#x27;,{&#x27;data-ring-packets&#x27;:true});
+  text(W/2,16,direction,W-24,labelLayer,{fill:C.local});
+  function badge(x,y,value,parent,widthHint){
+    const bw=widthHint||Math.max(24,textWidth(value)+12);
+    create(&#x27;rect&#x27;,{x:x-bw/2,y:y-10,width:bw,height:20,rx:10,fill:C.bg,stroke:C.border},undefined,parent);
+    text(x,y+4,value,bw-6,parent,{fill:C.local});
+  }
+  function edge(d,from,to,kind,steps,owner,parent,attrs={}){
+    const active=s===0||steps.includes(s);
+    const e=create(&#x27;path&#x27;,Object.assign({d,fill:&#x27;none&#x27;,stroke:C[kind],&#x27;stroke-width&#x27;:active?1.8:1.1,&#x27;stroke-opacity&#x27;:active?1:.55,&#x27;stroke-dasharray&#x27;:kind===&#x27;local&#x27;?&#x27;4 4&#x27;:&#x27;none&#x27;,&#x27;marker-end&#x27;:&#x27;url(#&#x27;+markerPrefix+kind+&#x27;)&#x27;,&#x27;data-ring-edge&#x27;:from+&#x27;--&#x27;+to,&#x27;data-edge-kind&#x27;:kind,&#x27;data-edge-steps&#x27;:steps.join(&#x27;,&#x27;),&#x27;data-edge-from&#x27;:from,&#x27;data-edge-to&#x27;:to,&#x27;data-owner-rank&#x27;:owner},attrs),undefined,parent);
+    return e;
+  }
+  for(const rank of ranks){
+    const g=create(&#x27;g&#x27;,{&#x27;data-ring-rank&#x27;:rank.r,&#x27;data-rank-x&#x27;:rank.x,&#x27;data-rank-y&#x27;:rank.y,&#x27;data-rank-width&#x27;:rank.w,&#x27;data-rank-height&#x27;:rank.h},undefined,rankLayer);
+    create(&#x27;rect&#x27;,{x:rank.x,y:rank.y,width:rank.w,height:rank.h,rx:12,fill:&#x27;none&#x27;,stroke:C.local,&#x27;stroke-width&#x27;:1.3,&#x27;stroke-dasharray&#x27;:&#x27;7 5&#x27;},undefined,g);
+    text(rank.x+rank.w/2,rank.y+18,&#x27;GPU &#x27;+rank.r+&#x27; · rank &#x27;+rank.r,rank.w-12,g,{bold:true});
+    text(rank.x+rank.w/2,rank.y+36,&#x27;固定 Q&#x27;+rank.r+&#x27; · token &#x27;+data.modes[mode].ranks[rank.r].query_position,rank.w-12,g,{fill:C.local});
+    const local=create(&#x27;g&#x27;,{&#x27;data-ring-local&#x27;:rank.r},undefined,g),cardsGroup=create(&#x27;g&#x27;,{},undefined,g);
+    const [q,kv,core,state,out]=rank.cards;
+    edge(&#x27;M&#x27;+q.x+&#x27; &#x27;+(q.y+q.h/2)+&#x27; H&#x27;+(rank.x+5)+&#x27; V&#x27;+(core.y-12)+&#x27; H&#x27;+(core.x+core.w*.24)+&#x27; V&#x27;+core.y,q.id,core.id,&#x27;local&#x27;,[2,4,6],rank.r,local);
+    for(const [a,b,steps] of [[kv,core,[2,4,6]],[core,state,[2,4,6]],[state,out,[7]]])
+      edge(&#x27;M&#x27;+(a.x+a.w/2)+&#x27; &#x27;+(a.y+a.h)+&#x27; V&#x27;+b.y,a.id,b.id,&#x27;local&#x27;,steps,rank.r,local);
+    rank.cards.forEach(c=&gt;{
+      const hot=s===0||activeSteps[c.key].includes(s);
+      const node=create(&#x27;g&#x27;,{&#x27;data-node&#x27;:c.id,&#x27;data-node-layer&#x27;:c.layer,&#x27;data-node-x&#x27;:c.x,&#x27;data-node-y&#x27;:c.y,&#x27;data-node-width&#x27;:c.w,&#x27;data-node-height&#x27;:c.h,&#x27;data-node-owner&#x27;:&#x27;rank&#x27;+rank.r},undefined,cardsGroup);
+      create(&#x27;rect&#x27;,{x:c.x,y:c.y,width:c.w,height:c.h,rx:7,fill:C.bg,stroke:hot?C.local:C.border,&#x27;stroke-width&#x27;:hot?1.5:1},undefined,node);
+      let y=c.y+18;
+      y+=text(c.x+c.w/2,y,c.title,c.w-18,node,{bold:true})+4;
+      y+=text(c.x+c.w/2,y,c.layer,c.w-18,node,{fill:C.local,layer:true})+8;
+      c.rows.forEach(row=&gt;{y+=text(c.x+c.w/2,y,row,c.w-18,node,{mono:true,value:true,lineHeight:18});});
+      y+=8;text(c.x+c.w/2,y,c.note,c.w-18,node,{fill:C.local});
+      const numbers=c.key===&#x27;q&#x27;?&#x27;1&#x27;:c.key===&#x27;kv&#x27;?&#x27;1·3·5&#x27;:c.key===&#x27;out&#x27;?&#x27;7&#x27;:&#x27;2·4·6&#x27;;
+      badge(c.x+c.w-28,c.y-10,s&gt;0&amp;&amp;activeSteps[c.key].includes(s)?String(s):numbers,node,56);
+    });
+  }
+  const remotePaths=[];
+  function remoteLabel(x,y,r,target,vertical){
+    const origins=[source(r,0),source(r,1)],current=s===3?0:s===5?1:null;
+    const value=current===null?&#x27;3·5 · GPU&#x27;+r+&#x27;→&#x27;+target:String(s)+&#x27; · GPU&#x27;+r+&#x27;→&#x27;+target;
+    const payload=current===null?&#x27;③ KV&#x27;+origins[0]+&#x27; / ⑤ KV&#x27;+origins[1]:&#x27;已发出 KV&#x27;+origins[current];
+    if(vertical){
+      const lines=current===null?[&#x27;3&#x27;,&#x27;KV&#x27;+origins[0],&#x27;5&#x27;,&#x27;KV&#x27;+origins[1]]:[String(s),&#x27;KV&#x27;+origins[current]];
+      const h=lines.length*16+12;
+      const box=create(&#x27;g&#x27;,{&#x27;data-ring-edge-label&#x27;:r+&#x27;-&#x27;+target},undefined,labelLayer);
+      create(&#x27;rect&#x27;,{x:x-17,y:y-h/2,width:34,height:h,rx:9,fill:C.bg,stroke:C.remote},undefined,box);
+      lines.forEach((line,i)=&gt;text(x,y-h/2+17+i*16,line,30,box,{fill:C.remote}));
+    }else{
+      const box=create(&#x27;g&#x27;,{&#x27;data-ring-edge-label&#x27;:r+&#x27;-&#x27;+target},undefined,labelLayer),bw=Math.min(mobile?W-90:208,W-24);
+      create(&#x27;rect&#x27;,{x:x-bw/2,y:y-22,width:bw,height:44,rx:7,fill:C.bg,stroke:C.border},undefined,box);
+      text(x,y-5,value,bw-12,box,{fill:C.remote});text(x,y+12,payload,bw-12,box,{fill:C.remote});
+    }
+  }
+  for(let r=0;r&lt;3;r++){
+    const target=(r+1)%3,a=ranks[r].cards[1],b=ranks[target].cards[1],ay=a.y+a.h/2,by=b.y+b.h/2;
+    let d,label;
+    if(!mobile&amp;&amp;r&lt;2){
+      const fromRail=ranks[r].x+frameW+6,toRail=ranks[target].x-6,lane=top-30;
+      d=&#x27;M&#x27;+(a.x+a.w)+&#x27; &#x27;+ay+&#x27; H&#x27;+fromRail+&#x27; V&#x27;+lane+&#x27; H&#x27;+toRail+&#x27; V&#x27;+by+&#x27; H&#x27;+b.x;
+      label=[(fromRail+toRail)/2,lane,false];
+    }else if(!mobile){
+      const lane=bottom+48;
+      d=&#x27;M&#x27;+(a.x+a.w)+&#x27; &#x27;+ay+&#x27; H&#x27;+(W-9)+&#x27; V&#x27;+lane+&#x27; H9 V&#x27;+by+&#x27; H&#x27;+b.x;
+      label=[W/2,lane,false];
+    }else if(r&lt;2){
+      const rail=W-18;
+      d=&#x27;M&#x27;+(a.x+a.w)+&#x27; &#x27;+ay+&#x27; H&#x27;+rail+&#x27; V&#x27;+by+&#x27; H&#x27;+(b.x+b.w);
+      label=[W/2,ranks[r].y+frameH+44,false];
+      badge(rail,label[1],s===3||s===5?String(s):&#x27;3·5&#x27;,labelLayer,32);
+    }else{
+      const rail=18;
+      d=&#x27;M&#x27;+a.x+&#x27; &#x27;+ay+&#x27; H&#x27;+rail+&#x27; V&#x27;+by+&#x27; H&#x27;+b.x;
+      label=[rail,(ay+by)/2,true];
+    }
+    const sentRound=s===5?1:0,sentOrigin=source(r,sentRound);
+    const path=edge(d,a.id,b.id,&#x27;remote&#x27;,[3,5],r,remoteEdges,{&#x27;data-ring-from&#x27;:r,&#x27;data-ring-to&#x27;:target,&#x27;data-ring-payload&#x27;:&#x27;K/V&#x27;,&#x27;data-ring-origin&#x27;:sentOrigin});
+    create(&#x27;title&#x27;,{},&#x27;GPU&#x27;+r+&#x27; → GPU&#x27;+target+&#x27;：第3步转发KV&#x27;+source(r,0)+&#x27;；第5步转发KV&#x27;+source(r,1)+&#x27;。只传 K/V。&#x27;,path);
+    remoteLabel(label[0],label[1],r,target,label[2]);remotePaths.push({path,r,target,origin:sentOrigin});
+  }
+  if(animate&amp;&amp;!reducedMotion&amp;&amp;(s===3||s===5)&amp;&amp;typeof requestAnimationFrame===&#x27;function&#x27;){
+    remotePaths.forEach(({path,r,target,origin},index)=&gt;{
+      if(typeof path.getTotalLength!==&#x27;function&#x27;)return;
+      const pw=Math.min(166,W-24),ph=68,packet=create(&#x27;g&#x27;,{&#x27;data-ring-packet&#x27;:true,&#x27;data-ring-packet-from&#x27;:r,&#x27;data-ring-packet-to&#x27;:target,&#x27;data-ring-packet-origin&#x27;:origin,&#x27;aria-hidden&#x27;:&#x27;true&#x27;},undefined,packetLayer);
+      create(&#x27;rect&#x27;,{x:-pw/2,y:-ph/2,width:pw,height:ph,rx:7,fill:C.bg,stroke:C.remote,&#x27;stroke-width&#x27;:1.5},undefined,packet);
+      text(0,-17,&#x27;KV&#x27;+origin+&#x27; → GPU&#x27;+target,pw-12,packet,{fill:C.remote,bold:true});
+      text(0,2,&#x27;K = &#x27;+vector(data.K[origin]),pw-12,packet,{mono:true});text(0,21,&#x27;V = &#x27;+vector(data.V[origin]),pw-12,packet,{mono:true});
+      const dot=create(&#x27;circle&#x27;,{r:4,fill:C.remote,&#x27;data-ring-motion-point&#x27;:true},undefined,packet);
+      const total=path.getTotalLength(),start=performance.now()+index*35;
+      const place=t=&gt;{const p=path.getPointAtLength(total*t),x=Math.max(pw/2+4,Math.min(W-pw/2-4,p.x)),y=Math.max(ph/2+4,Math.min(height-ph/2-4,p.y));packet.setAttribute(&#x27;transform&#x27;,&#x27;translate(&#x27;+x+&#x27; &#x27;+y+&#x27;)&#x27;);dot.setAttribute(&#x27;cx&#x27;,p.x-x);dot.setAttribute(&#x27;cy&#x27;,p.y-y);};
+      place(0);
+      function tick(now){if(!packet.isConnected)return;const t=Math.max(0,Math.min(1,(now-start)/900));place(t);if(t&lt;1)requestAnimationFrame(tick);else packet.remove();}
+      requestAnimationFrame(tick);
+    });
+  }
+  return {width:W,height,columns:mobile?1:3,step:s,mask:mode,currentRound:currentRound(s),accumulatedRound:accumulatedRound(s),ranks:3,nodes:15,remoteEdges:3,localEdges:12,rankBounds:ranks.map(a=&gt;({rank:a.r,x:a.x,y:a.y,width:a.w,height:a.h}))};
+}
+if(typeof module!==&#x27;undefined&#x27;&amp;&amp;module.exports)module.exports={renderRingAttention};
+
+/* RING_RENDERER_END */
   const operations={
     send:{name:&#x27;Send / Recv&#x27;,root:null,kind:&#x27;direct&#x27;,inputs:[[7,8],null,null],outputs:[null,[7,8],null],
       note:&#x27;rank 0 → rank 1；rank 2 不参与。仅接收端获得新的接收结果。&#x27;,
@@ -1914,13 +2114,25 @@ html&gt;body{padding:0}&lt;/style&gt;
       flows:[[&#x27;各 rank 准备局部输入&#x27;,&#x27;rank 0、1、2 分别持有 [1]、[2]、[3]，root = rank 1。&#x27;],[&#x27;收集到 root&#x27;,&#x27;rank 0、2 的片段传给 root；rank 1 的本地 [2] 放在第 1 段。&#x27;],[&#x27;root 得到拼接结果&#x27;,&#x27;rank 1 输出 [1,2,3]；仅 root 持有拼接后的结果，不做加法。&#x27;]],
       links:[{from:0,to:1,step:2},{from:1,to:1,step:2},{from:2,to:1,step:2}],ready:3}
   };
+  operations.ring={name:&#x27;Ring Attention&#x27;,kind:&#x27;ring&#x27;,
+    note:&#x27;Q 固定在本卡，K/V 沿 0 → 1 → 2 → 0 环传。3 轮 K/V 遍历 + 2 次交换，本地在线 softmax 得到各自 query 的 O。&#x27;,
+    flows:[
+      [&#x27;按 token 切 Q/K/V&#x27;,&#x27;rank r 固定持有 query 位置 r 的 Qᵣ，当前缓冲从 Kᵣ/Vᵣ 开始；初始化本地 m=−∞、l=0、u=[0,0]。&#x27;],
+      [&#x27;第 0 轮：本地块计算&#x27;,&#x27;每个 rank 用固定 Q 与本地 K/V 算 score，按当前掩码更新 m/l/u；Q、累计状态均不离开本卡。&#x27;],
+      [&#x27;第一次 K/V 环传完成&#x27;,&#x27;三个 ranks 同时向后继 Send、从前驱 Recv：KV₀→rank 1，KV₁→rank 2，KV₂→rank 0。图示接收完成后缓冲；累计状态还停留在第 0 轮。&#x27;],
+      [&#x27;第 1 轮：计算新到块&#x27;,&#x27;rank 0/1/2 分别读取 KV₂/KV₀/KV₁，计算与本地 Q 的 score 并在线合并。Causal 遇未来位置时跳过累计；下一跳仍可继续转发该 K/V。&#x27;],
+      [&#x27;第二次 K/V 环传完成&#x27;,&#x27;转发当前块：KV₂→rank 1，KV₀→rank 2，KV₁→rank 0。每个 rank 等接收完成后才能消费新块；当前 m/l/u 仍来自前两轮。&#x27;],
+      [&#x27;第 2 轮：最后一块计算&#x27;,&#x27;rank 0/1/2 分别读取 KV₁/KV₂/KV₀；三个 K/V 来源都已遍历，按 mask 完成最后一次在线更新。本例不再执行第三次交换。&#x27;],
+      [&#x27;本地归一化输出&#x27;,&#x27;各 rank 得到自己的 O=u/l，与同一掩码下完整 softmax(QKᵀ/√2)V 一致（浮点误差范围内）。O 不沿环通信，仍是 o_proj 之前的 head 输出。&#x27;]
+    ]};
   let operation=&#x27;send&#x27;;
+  let mask=&#x27;causal&#x27;;
   let step=0;
   function applyState(state) {
     const saved=state?.privateContent;
     if(!saved||!Object.hasOwn(operations,saved.operation))return false;
     if(!Number.isInteger(saved.step)||saved.step&lt;0||saved.step&gt;operations[saved.operation].flows.length)return false;
-    operation=saved.operation;step=saved.step;return true;
+    operation=saved.operation;step=saved.step;mask=saved.mask===&#x27;full&#x27;?&#x27;full&#x27;:&#x27;causal&#x27;;return true;
   }
   applyState(window.openai?.widgetState);
   function element(tag,attrs={},parent=svg,value) {
@@ -1959,8 +2171,20 @@ html&gt;body{padding:0}&lt;/style&gt;
   }
   function draw(animate=false) {
     const config=operations[operation];
-    const width=Math.round(svg.getBoundingClientRect().width);
+    const width=Math.round(root.getBoundingClientRect().width);
     if(width&lt;1)return;
+    root.querySelector(&#x27;#cp-mask-control&#x27;).hidden=operation!==&#x27;ring&#x27;;
+    root.querySelector(&#x27;#cp-ring-math&#x27;).hidden=operation!==&#x27;ring&#x27;;
+    root.querySelector(&#x27;#cp-subtitle&#x27;).textContent=operation===&#x27;ring&#x27;?&#x27;Attention core · 3 ranks · Q 固定 / K/V 环传&#x27;:&#x27;3 ranks · 等长分块 · 归约采用 SUM&#x27;;
+    root.querySelector(&#x27;#cp-boundary&#x27;).textContent=operation===&#x27;ring&#x27;?&#x27;Ring Attention 是由点对点通信与本地 Attention 组成的算法，不是一个同名 NCCL 集合原语；此处展示前向教学算例。&#x27;:&#x27;语义示例，不表示 NCCL 固定的 ring / tree 或实际执行先后；SUM 框不代表中转 rank。&#x27;;
+    maskSelect.value=mask;
+    if(operation===&#x27;ring&#x27;){
+      renderRingAttention({svg,width,step,mask,data:ringData,animate,reducedMotion:window.matchMedia(&#x27;(prefers-reduced-motion: reduce)&#x27;).matches});
+      updateControls(config);return;
+    }
+    svg.style.removeProperty(&#x27;max-width&#x27;);svg.removeAttribute(&#x27;width&#x27;);svg.removeAttribute(&#x27;height&#x27;);
+    svg.removeAttribute(&#x27;data-ring-step&#x27;);svg.removeAttribute(&#x27;data-ring-mask&#x27;);
+    svg.setAttribute(&#x27;aria-label&#x27;,&#x27;三个 rank 的输入、通信或归约过程与输出&#x27;);
     const boxWidth=Math.min(140,(width-96)/2);
     const left=2,right=width-boxWidth-2;
     const centers=[107,247,387];
@@ -2038,9 +2262,12 @@ html&gt;body{padding:0}&lt;/style&gt;
     arrowBadges.forEach(args=&gt;badge(...args));
     const shape=operation===&#x27;send&#x27;?&#x27;点对点：2 个元素&#x27;:operation===&#x27;allgather&#x27;?&#x27;每 rank：1 → 3&#x27;:operation===&#x27;reducescatter&#x27;?&#x27;每 rank：3 → 1&#x27;:operation===&#x27;alltoall&#x27;?&#x27;每 rank：3 → 3&#x27;:operation===&#x27;gather&#x27;?&#x27;每个输入 1；root 输出 3&#x27;:operation===&#x27;scatter&#x27;?&#x27;root 输入 3；每个输出 1&#x27;:&#x27;每个有效输入 / 输出：2 个元素&#x27;;
     label(width/2,467,shape,&#x27;cp-muted&#x27;);
+    updateControls(config);
+  }
+  function updateControls(config) {
     select.value=operation;
     counter.textContent=step+&#x27; / &#x27;+config.flows.length+&#x27; · &#x27;+(step===0?&#x27;全局关系&#x27;:config.flows[step-1][0]);
-    detail.textContent=step===0?config.note:config.flows[step-1][1];
+    detail.textContent=(operation===&#x27;ring&#x27;?(mask===&#x27;causal&#x27;?&#x27;Causal：只看 key ≤ query。&#x27;:&#x27;Full：可看全部 key。&#x27;):&#x27;&#x27;)+(step===0?config.note:config.flows[step-1][1]);
     previous.disabled=step===0;next.disabled=step===config.flows.length;
     overview.hidden=step!==0;
     if(step===0){
@@ -2053,14 +2280,16 @@ html&gt;body{padding:0}&lt;/style&gt;
     }
   }
   function save() {
-    window.openai?.setWidgetState?.({modelContent:{visual:&#x27;通信原语&#x27;,operation,step},privateContent:{operation,step}}).catch(()=&gt;{});
+    window.openai?.setWidgetState?.({modelContent:{visual:&#x27;通信原语&#x27;,operation,step,mask},privateContent:{operation,step,mask}}).catch(()=&gt;{});
   }
   select.addEventListener(&#x27;change&#x27;,()=&gt;{operation=select.value;step=0;draw();save();});
+  maskSelect.addEventListener(&#x27;change&#x27;,()=&gt;{mask=maskSelect.value;step=0;draw();save();});
+  root.querySelector(&#x27;#cp-home&#x27;).addEventListener(&#x27;click&#x27;,()=&gt;{step=0;draw();save();});
   previous.addEventListener(&#x27;click&#x27;,()=&gt;{if(step&gt;0){step--;draw(true);save();}});
   next.addEventListener(&#x27;click&#x27;,()=&gt;{if(step&lt;operations[operation].flows.length){step++;draw(true);save();}});
   window.addEventListener(&#x27;openai:set_globals&#x27;,event=&gt;{
-    const old=operation+&#x27;:&#x27;+step;
-    if(applyState(event.detail?.globals?.widgetState)&amp;&amp;old!==operation+&#x27;:&#x27;+step)draw();
+    const old=operation+&#x27;:&#x27;+step+&#x27;:&#x27;+mask;
+    if(applyState(event.detail?.globals?.widgetState)&amp;&amp;old!==operation+&#x27;:&#x27;+step+&#x27;:&#x27;+mask)draw();
   });
   new ResizeObserver(()=&gt;draw()).observe(svg);
   draw();

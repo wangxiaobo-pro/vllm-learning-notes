@@ -1,0 +1,709 @@
+{
+  "schema_version": 1,
+  "title": "Ring Attention: 3 ranks, one query and one KV token per rank",
+  "display_precision": 4,
+  "Q": [
+    [
+      1.4142135623730951,
+      0
+    ],
+    [
+      0,
+      1.4142135623730951
+    ],
+    [
+      1.4142135623730951,
+      1.4142135623730951
+    ]
+  ],
+  "K": [
+    [
+      1,
+      0
+    ],
+    [
+      0,
+      1
+    ],
+    [
+      1,
+      1
+    ]
+  ],
+  "V": [
+    [
+      1,
+      0
+    ],
+    [
+      0,
+      2
+    ],
+    [
+      3,
+      1
+    ]
+  ],
+  "positions": [
+    0,
+    1,
+    2
+  ],
+  "d_k": 2,
+  "d_v": 2,
+  "score_scale": 0.7071067811865475,
+  "Q_exact": [
+    "[sqrt(2), 0]",
+    "[0, sqrt(2)]",
+    "[sqrt(2), sqrt(2)]"
+  ],
+  "initial_state": {
+    "m": null,
+    "l": 0,
+    "u": [
+      0,
+      0
+    ],
+    "O": null
+  },
+  "ring": {
+    "ranks": 3,
+    "round_count": 3,
+    "exchange_count": 2,
+    "send_to_by_rank": [
+      1,
+      2,
+      0
+    ],
+    "receive_from_by_rank": [
+      2,
+      0,
+      1
+    ],
+    "origin_formula": "origin(r,t)=(r-t+3)%3",
+    "round0": "compute local KV block before first exchange",
+    "after_final_round": "stop after the third block; no third exchange is needed"
+  },
+  "modes": {
+    "full": {
+      "ranks": [
+        {
+          "rank": 0,
+          "query_position": 0,
+          "initial_state": {
+            "m": null,
+            "l": 0,
+            "u": [
+              0,
+              0
+            ],
+            "O": null
+          },
+          "rounds": [
+            {
+              "round": 0,
+              "origin": 0,
+              "key_position": 0,
+              "score": 1,
+              "masked": false,
+              "m": 1,
+              "l": 1,
+              "u": [
+                1,
+                0
+              ],
+              "O": [
+                1,
+                0
+              ]
+            },
+            {
+              "round": 1,
+              "origin": 2,
+              "key_position": 2,
+              "score": 1,
+              "masked": false,
+              "m": 1,
+              "l": 2,
+              "u": [
+                4,
+                1
+              ],
+              "O": [
+                2,
+                0.5
+              ]
+            },
+            {
+              "round": 2,
+              "origin": 1,
+              "key_position": 1,
+              "score": 0,
+              "masked": false,
+              "m": 1,
+              "l": 2.3678794411714423,
+              "u": [
+                4,
+                1.7357588823428847
+              ],
+              "O": [
+                1.6892751930060728,
+                0.7330436052454454
+              ]
+            }
+          ],
+          "output": [
+            1.6892751930060728,
+            0.7330436052454454
+          ]
+        },
+        {
+          "rank": 1,
+          "query_position": 1,
+          "initial_state": {
+            "m": null,
+            "l": 0,
+            "u": [
+              0,
+              0
+            ],
+            "O": null
+          },
+          "rounds": [
+            {
+              "round": 0,
+              "origin": 1,
+              "key_position": 1,
+              "score": 1,
+              "masked": false,
+              "m": 1,
+              "l": 1,
+              "u": [
+                0,
+                2
+              ],
+              "O": [
+                0,
+                2
+              ]
+            },
+            {
+              "round": 1,
+              "origin": 0,
+              "key_position": 0,
+              "score": 0,
+              "masked": false,
+              "m": 1,
+              "l": 1.3678794411714423,
+              "u": [
+                0.36787944117144233,
+                2
+              ],
+              "O": [
+                0.2689414213699951,
+                1.4621171572600098
+              ]
+            },
+            {
+              "round": 2,
+              "origin": 2,
+              "key_position": 2,
+              "score": 1,
+              "masked": false,
+              "m": 1,
+              "l": 2.3678794411714423,
+              "u": [
+                3.3678794411714423,
+                3
+              ],
+              "O": [
+                1.4223187982515182,
+                1.2669563947545546
+              ]
+            }
+          ],
+          "output": [
+            1.4223187982515182,
+            1.2669563947545546
+          ]
+        },
+        {
+          "rank": 2,
+          "query_position": 2,
+          "initial_state": {
+            "m": null,
+            "l": 0,
+            "u": [
+              0,
+              0
+            ],
+            "O": null
+          },
+          "rounds": [
+            {
+              "round": 0,
+              "origin": 2,
+              "key_position": 2,
+              "score": 2,
+              "masked": false,
+              "m": 2,
+              "l": 1,
+              "u": [
+                3,
+                1
+              ],
+              "O": [
+                3,
+                1
+              ]
+            },
+            {
+              "round": 1,
+              "origin": 1,
+              "key_position": 1,
+              "score": 1,
+              "masked": false,
+              "m": 2,
+              "l": 1.3678794411714423,
+              "u": [
+                3,
+                1.7357588823428847
+              ],
+              "O": [
+                2.193175735890015,
+                1.2689414213699952
+              ]
+            },
+            {
+              "round": 2,
+              "origin": 0,
+              "key_position": 0,
+              "score": 1,
+              "masked": false,
+              "m": 2,
+              "l": 1.7357588823428847,
+              "u": [
+                3.3678794411714423,
+                1.7357588823428847
+              ],
+              "O": [
+                1.9402922119145727,
+                1
+              ]
+            }
+          ],
+          "output": [
+            1.9402922119145727,
+            1
+          ]
+        }
+      ],
+      "output": [
+        [
+          1.6892751930060728,
+          0.7330436052454454
+        ],
+        [
+          1.4223187982515182,
+          1.2669563947545546
+        ],
+        [
+          1.9402922119145727,
+          1
+        ]
+      ],
+      "reference": [
+        [
+          1.6892751930060728,
+          0.7330436052454454
+        ],
+        [
+          1.4223187982515182,
+          1.2669563947545546
+        ],
+        [
+          1.940292211914573,
+          1
+        ]
+      ],
+      "dense_scores": [
+        [
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          2
+        ]
+      ],
+      "dense_probabilities": [
+        [
+          0.4223187982515182,
+          0.15536240349696362,
+          0.4223187982515182
+        ],
+        [
+          0.15536240349696362,
+          0.4223187982515182,
+          0.4223187982515182
+        ],
+        [
+          0.21194155761708544,
+          0.21194155761708544,
+          0.5761168847658291
+        ]
+      ],
+      "dense_masked": [
+        [
+          false,
+          false,
+          false
+        ],
+        [
+          false,
+          false,
+          false
+        ],
+        [
+          false,
+          false,
+          false
+        ]
+      ]
+    },
+    "causal": {
+      "ranks": [
+        {
+          "rank": 0,
+          "query_position": 0,
+          "initial_state": {
+            "m": null,
+            "l": 0,
+            "u": [
+              0,
+              0
+            ],
+            "O": null
+          },
+          "rounds": [
+            {
+              "round": 0,
+              "origin": 0,
+              "key_position": 0,
+              "score": 1,
+              "masked": false,
+              "m": 1,
+              "l": 1,
+              "u": [
+                1,
+                0
+              ],
+              "O": [
+                1,
+                0
+              ]
+            },
+            {
+              "round": 1,
+              "origin": 2,
+              "key_position": 2,
+              "score": 1,
+              "masked": true,
+              "m": 1,
+              "l": 1,
+              "u": [
+                1,
+                0
+              ],
+              "O": [
+                1,
+                0
+              ]
+            },
+            {
+              "round": 2,
+              "origin": 1,
+              "key_position": 1,
+              "score": 0,
+              "masked": true,
+              "m": 1,
+              "l": 1,
+              "u": [
+                1,
+                0
+              ],
+              "O": [
+                1,
+                0
+              ]
+            }
+          ],
+          "output": [
+            1,
+            0
+          ]
+        },
+        {
+          "rank": 1,
+          "query_position": 1,
+          "initial_state": {
+            "m": null,
+            "l": 0,
+            "u": [
+              0,
+              0
+            ],
+            "O": null
+          },
+          "rounds": [
+            {
+              "round": 0,
+              "origin": 1,
+              "key_position": 1,
+              "score": 1,
+              "masked": false,
+              "m": 1,
+              "l": 1,
+              "u": [
+                0,
+                2
+              ],
+              "O": [
+                0,
+                2
+              ]
+            },
+            {
+              "round": 1,
+              "origin": 0,
+              "key_position": 0,
+              "score": 0,
+              "masked": false,
+              "m": 1,
+              "l": 1.3678794411714423,
+              "u": [
+                0.36787944117144233,
+                2
+              ],
+              "O": [
+                0.2689414213699951,
+                1.4621171572600098
+              ]
+            },
+            {
+              "round": 2,
+              "origin": 2,
+              "key_position": 2,
+              "score": 1,
+              "masked": true,
+              "m": 1,
+              "l": 1.3678794411714423,
+              "u": [
+                0.36787944117144233,
+                2
+              ],
+              "O": [
+                0.2689414213699951,
+                1.4621171572600098
+              ]
+            }
+          ],
+          "output": [
+            0.2689414213699951,
+            1.4621171572600098
+          ]
+        },
+        {
+          "rank": 2,
+          "query_position": 2,
+          "initial_state": {
+            "m": null,
+            "l": 0,
+            "u": [
+              0,
+              0
+            ],
+            "O": null
+          },
+          "rounds": [
+            {
+              "round": 0,
+              "origin": 2,
+              "key_position": 2,
+              "score": 2,
+              "masked": false,
+              "m": 2,
+              "l": 1,
+              "u": [
+                3,
+                1
+              ],
+              "O": [
+                3,
+                1
+              ]
+            },
+            {
+              "round": 1,
+              "origin": 1,
+              "key_position": 1,
+              "score": 1,
+              "masked": false,
+              "m": 2,
+              "l": 1.3678794411714423,
+              "u": [
+                3,
+                1.7357588823428847
+              ],
+              "O": [
+                2.193175735890015,
+                1.2689414213699952
+              ]
+            },
+            {
+              "round": 2,
+              "origin": 0,
+              "key_position": 0,
+              "score": 1,
+              "masked": false,
+              "m": 2,
+              "l": 1.7357588823428847,
+              "u": [
+                3.3678794411714423,
+                1.7357588823428847
+              ],
+              "O": [
+                1.9402922119145727,
+                1
+              ]
+            }
+          ],
+          "output": [
+            1.9402922119145727,
+            1
+          ]
+        }
+      ],
+      "output": [
+        [
+          1,
+          0
+        ],
+        [
+          0.2689414213699951,
+          1.4621171572600098
+        ],
+        [
+          1.9402922119145727,
+          1
+        ]
+      ],
+      "reference": [
+        [
+          1,
+          0
+        ],
+        [
+          0.2689414213699951,
+          1.4621171572600098
+        ],
+        [
+          1.940292211914573,
+          1
+        ]
+      ],
+      "dense_scores": [
+        [
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          2
+        ]
+      ],
+      "dense_probabilities": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0.2689414213699951,
+          0.7310585786300049,
+          0
+        ],
+        [
+          0.21194155761708544,
+          0.21194155761708544,
+          0.5761168847658291
+        ]
+      ],
+      "dense_masked": [
+        [
+          false,
+          true,
+          true
+        ],
+        [
+          false,
+          false,
+          true
+        ],
+        [
+          false,
+          false,
+          false
+        ]
+      ]
+    }
+  },
+  "formulas": {
+    "score": "s=dot(Q_r,K_origin)/sqrt(2)",
+    "causal_mask": "masked iff key_position > query_position",
+    "maximum": "m_new=max(m_old,s) for an unmasked block",
+    "old_scale": "a=0 if m_old is -infinity; otherwise exp(m_old-m_new)",
+    "new_scale": "b=exp(s-m_new)",
+    "denominator": "l_new=a*l_old+b",
+    "numerator": "u_new=a*u_old+b*V_origin",
+    "output": "O=u/l when l>0; otherwise null (undefined)",
+    "masked_block": "skip the entire block; keep m,l,u,O unchanged; do not evaluate -infinity - (-infinity)"
+  },
+  "scope": [
+    "Arithmetic teaching example: three ranks, one local query token and one KV token per rank, one attention head, d_k=d_v=2. It is not a GPU benchmark or a claim about a specific framework implementation.",
+    "Each rank keeps its own Q and online m/l/u/O state. Only KV blocks move clockwise r -> (r+1)%3. An incoming KV block is identified by its original token position.",
+    "Round0 uses local KV. After two exchanges, all ranks have computed three origin blocks exactly once. There is no extra exchange after round2.",
+    "Full attention has no causal mask. Causal attention allows key_position <= query_position using global token positions, not rank arrival order.",
+    "m is the running maximum over visible scores; l is the max-shifted exponential sum; u is the max-shifted weighted value sum. O is a normalized partial result until every required block has been processed.",
+    "A masked score is stored as its finite raw value plus masked=true; it contributes neither probability nor numerator. null m represents -infinity only for the empty initial state, and null O represents no visible key yet.",
+    "Numerical states are saved at full Python float precision; the renderer may round to four decimal places. Sources for the surrounding explanation are maintained by the parent page."
+  ],
+  "sources": [
+    {
+      "title": "Ring Attention paper",
+      "url": "https://arxiv.org/abs/2310.01889"
+    },
+    {
+      "title": "Author implementation: circulation and fixed Q",
+      "url": "https://github.com/haoliuhl/ringattention/blob/d2ea1af9a288f85ea2fd74690ece1c16d2eebc83/ringattention/ringattention_jax.py#L25"
+    },
+    {
+      "title": "Author implementation: online softmax and causal skip",
+      "url": "https://github.com/haoliuhl/ringattention/blob/d2ea1af9a288f85ea2fd74690ece1c16d2eebc83/ringattention/ringattention_jax.py#L125"
+    }
+  ]
+}
