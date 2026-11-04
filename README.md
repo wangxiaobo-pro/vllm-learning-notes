@@ -9,7 +9,7 @@
 | Transformer 结构与矩阵 | 模型结构、注意力、MLP、逐步矩阵计算 | [transform](transform/README.md) | [transform/index.html](transform/index.html) |
 | vLLM-Ascend 启动流程 | 组件初始化清单、26 步启动流程、TP 分片、物理 KV 与调度器 | [vllm-ascend-startup](vllm-ascend-startup/README.md) | [vllm-ascend-startup/index.html](vllm-ascend-startup/index.html) |
 | vLLM-Ascend 图优化 | 首次捕获与后续回放、逐算子底层调用、FIA 动态参数更新与条件性融合 | [vllm-ascend-graph](vllm-ascend-graph/README.md) | [vllm-ascend-graph/index.html](vllm-ascend-graph/index.html) |
-| 投机解码 | MTP 草稿生成、目标模型验证、已接受的 token 与下一轮调度 | [speculative-decoding](speculative-decoding/README.md) | [speculative-decoding/index.html](speculative-decoding/index.html) |
+| 投机解码 | 对照 MTP 串行与 DFlash 并行起草，看目标模型如何验证同一组候选并决定输出 | [speculative-decoding](speculative-decoding/README.md) | [speculative-decoding/index.html](speculative-decoding/index.html) |
 | 静态批处理与连续批处理 | 同一组请求的组批、排队、Prefill / Decode、退出与 KV 释放，附逐轮对比 | [batching](batching/README.md) | [batching/index.html](batching/index.html) |
 | vLLM 请求完整生命周期 | V1 单卡流式请求的 20 步流程、Prefill / Decode、KV 块与结束清理 | [request-lifecycle](request-lifecycle/README.md) | [request-lifecycle/index.html](request-lifecycle/index.html) |
 | vLLM PD 分离 | V0 / V1、P / D、Scheduler / Worker、Mooncake 缓存匹配与传输 | [pd-disaggregation](pd-disaggregation/README.md) | [pd-disaggregation/index.html](pd-disaggregation/index.html) |
@@ -28,7 +28,7 @@ vllm-learning-notes/
 ├── request-lifecycle/                 # 请求接入、推理输出与结束清理
 ├── batching/                          # 静态批处理与连续批处理对照
 ├── chunked-prefill/                   # 分块 prefill 与历史整段调度对照
-├── speculative-decoding/              # MTP 草稿生成、验证与调度回写
+├── speculative-decoding/              # 串行与并行起草、目标模型验证
 ├── parallelism/                       # 单项与组合并行的计算、分片和通信
 ├── communication-primitives/          # 通信原语与 Ring Attention 数值演示
 ├── eplb-dplb/                         # 请求负载均衡与专家放置、权重迁移

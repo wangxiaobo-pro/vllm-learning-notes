@@ -103,9 +103,9 @@
           <details class="module" id="optimization" data-label="性能优化" open>
             <summary><span class="module-number" aria-hidden="true">05</span><h2>性能优化</h2><span class="module-description">理解执行开销与加速路径</span><span class="module-count"></span></summary>
             <ul class="flow-list">
-              <li><a class="flow" href="speculative-decoding/index.html" data-keywords="vLLM Ascend 投机解码 推测解码 Speculative Decoding MTP 草稿 draft 目标模型 验证 拒绝采样 bonus token 调度">
-                <span class="flow-copy"><span class="flow-title">投机解码</span><span class="flow-description">跟随一个请求，看 MTP 提出草稿、目标模型并行验证，以及哪些 token 进入输出。</span></span>
-                <span class="flow-tag">源码流程</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              <li><a class="flow" href="speculative-decoding/index.html" data-keywords="vLLM Ascend 投机解码 推测解码 Speculative Decoding MTP DFlash 草稿 draft 串行 并行 目标模型 贪心 验证 bonus token">
+                <span class="flow-copy"><span class="flow-title">投机解码</span><span class="flow-description">比较 MTP 串行起草与 DFlash 并行起草，看目标模型如何验证「吃 火 锅」。</span></span>
+                <span class="flow-tag">交互概念图</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
               <li><a class="flow" href="vllm-ascend-graph/index.html" data-keywords="vLLM Ascend ACL Graph 图优化 图捕获 图回放 Python C++ ACLNN Runtime Host NPU FIA 动态 参数 融合">
                 <span class="flow-copy"><span class="flow-title">vLLM-Ascend 图优化</span><span class="flow-description">对照首次捕获与整图回放，展开底层调用和 FIA 参数更新。</span></span>
