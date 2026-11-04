@@ -1,0 +1,315 @@
+<style>
+  #weights-flow { display:grid; gap:calc(var(--font-size-base)*.65); min-width:0 }
+  #weights-flow .wf-heading { display:grid; gap:calc(var(--font-size-base)*.25) }
+  #weights-flow .wf-heading h2 { padding-inline-end:65px }
+  #weights-flow .wf-diagram { display:block; width:100% }
+  #weights-flow .wf-focus { margin-block-start:calc(var(--font-size-base)*.5) }
+  #weights-flow .wf-diagram text { font-family:inherit; fill:var(--foreground); font-weight:400 }
+  #weights-flow .wf-diagram .label { font-weight:500 }
+  #weights-flow .wf-diagram .quiet { fill:var(--muted-foreground) }
+  #weights-flow .wf-diagram .mono { font-family:ui-monospace,Consolas,monospace }
+  #weights-flow .wf-legend { display:flex; flex-wrap:wrap; gap:.25em 1em }
+  #weights-flow .wf-legend span { display:inline-flex; gap:.35em; align-items:center }
+  #weights-flow .wf-legend i { width:1.1em; height:3px; background:var(--swatch) }
+  #weights-flow .wf-extras { display:grid; gap:calc(var(--font-size-base)*.5) }
+  #weights-flow .wf-extras ol { margin:.4em 0; padding-inline-start:2.1em }
+  #weights-flow .wf-extras li { margin-block:.2em }
+  #weights-flow .wf-links { display:flex; gap:.35em 1em; flex-wrap:wrap }
+  #weights-flow code { overflow-wrap:anywhere }
+</style>
+<section id="weights-flow" aria-label="模型权重与激活的输入输出关系">
+  <header class="wf-heading">
+    <h2>权重从哪里来，层输出到哪里去？</h2>
+    <div class="text-small text-muted">权重 CPU Offload / Prefetch · Ascend MRV1 · 单个 worker · eager</div>
+  </header>
+  <div class="viz-controls" aria-label="流程导航">
+    <button class="btn" type="button" data-action="overview">全局关系</button>
+    <button class="btn" type="button" data-action="prev">上一步</button>
+    <button class="btn btn-primary" type="button" data-action="next">下一步</button>
+    <button class="btn" type="button" data-action="play">播放流程</button>
+    <span class="text-small tabular-nums" data-count></span>
+  </div>
+  <div aria-live="polite" aria-atomic="true" data-description></div>
+  <div class="wf-legend text-small">
+    <span><i style="--swatch:var(--viz-series-2)"></i>跨设备拷贝</span>
+    <span><i style="--swatch:var(--viz-series-3)"></i>层读取权重</span>
+    <span><i style="--swatch:var(--viz-series-1)"></i>激活传给下游</span>
+  </div>
+  <svg class="wf-diagram" role="img" aria-labelledby="wf-title wf-desc"></svg>
+  <div class="text-small text-muted">教学算例 · 一个 token 的 hidden 有两个分量。奇数层计算 h × W，偶数层用单位矩阵保持输入值。</div>
+  <details data-focus>
+    <summary class="cursor-interaction">放大 L1 的输出怎样触发 W5 预取</summary>
+    <svg class="wf-diagram wf-focus" role="img" aria-label="L1 的输出同时交给 L2 并为 W5 预取建立顺序依赖"></svg>
+  </details>
+  <details class="wf-extras">
+    <summary class="cursor-interaction">完整流程与源码</summary>
+    <ol data-list></ol>
+    <p>本例设置 <code>offload_backend="prefetch"</code>、每 2 层选末 1 层、预取步长 2，跟踪一个同名、同规格的 ND 参数。卸载层序列为 L1、L3、L5、L7。L1 用完 A 后，按这个序列向后两项，目标是 L5。</p>
+    <p><code>wait_prefetch</code> 使计算流等本层拷贝完成。<code>start_prefetch</code> 让拷贝流等待旧层读完才覆盖槽。图中“填入”表示对应拷贝完成后的值，两种流可以并行执行。CPU 保留全部四份权重。</p>
+    <p>加载完成后，基类绑定静态槽并提交首批预取。Ascend 检查格式、按需重绑 NZ 槽，再提交首批预取。图中将两次初始化预取合并为第 ③ 步。</p>
+    <div class="wf-links text-small">
+      <a target="_blank" rel="noreferrer" href="https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/model_executor/offloader/base.py#L11-L28">Ascend 后端</a>
+      <a target="_blank" rel="noreferrer" href="https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/offloader/prefetch.py#L647-L677">CPU 参数存储</a>
+      <a target="_blank" rel="noreferrer" href="https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/model_executor/offloader/prefetch.py#L173-L190">首批预取</a>
+      <a target="_blank" rel="noreferrer" href="https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/offloader/prefetch.py#L231-L265">层的输入与输出</a>
+      <a target="_blank" rel="noreferrer" href="https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/offloader/prefetch.py#L529-L569">H2D 与事件</a>
+    </div>
+  </details>
+</section>
+<script>
+(() => {
+  const root = document.getElementById("weights-flow");
+  const get = selector => root.querySelector(selector);
+  const svg = get(".wf-diagram");
+  const colors = {copy:"var(--viz-series-2)",weight:"var(--viz-series-3)",hidden:"var(--viz-series-1)",muted:"var(--muted-foreground)"};
+  const base = [1,2];
+  const layers = [
+    {id:1, w:[[2,0],[0,1]], slot:"A", fill:[3,9], read:4},
+    {id:3, w:[[1,0],[0,2]], slot:"B", fill:[3,11], read:6},
+    {id:5, w:[[3,0],[0,1]], slot:"A", fill:[5], read:8},
+    {id:7, w:[[1,0],[0,3]], slot:"B", fill:[7], read:10}
+  ];
+  const layer = id => layers.find(item=>item.id===id);
+  let h = base;
+  for (const item of layers) {
+    item.input = h;
+    h = item.w[0].map((_,j)=>h.reduce((v,a,i)=>v+a*item.w[i][j],0));
+    item.output = h;
+  }
+  const vec = v => "["+v.join(", ")+"]";
+  const numbers = ["","①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩","⑪"];
+  const stages = [
+    "沿橙线找权重来源，沿绿线找读槽的层，沿蓝线追踪同一个 token 的 hidden。",
+    "建模时将选中的参数转存 CPU。权重加载、后处理完成后，CPU 保留四份权重。",
+    "NPU 分配两个静态槽。L1 和 L5 的参数绑定 A，L3 和 L7 的参数绑定 B。",
+    "拷贝流将 W1 填入 A、W3 填入 B。上游 L0 给 L1 的激活是 [1, 2]。",
+    "L1 从 A 读 W1，将上游的 [1, 2] 变成 [2, 2]，交给 L2。",
+    "L1 用完 A 后，CPU 的 W5 可以覆盖 A。L2 将 [2, 2] 传给 L3。",
+    "L3 从 B 读 W3，将 [2, 2] 变成 [2, 4]，交给 L4。",
+    "L3 用完 B 后，CPU 的 W7 可以覆盖 B。L4 将 [2, 4] 传给 L5。",
+    "L5 等 W5 到位后从 A 读取，将 [2, 4] 变成 [6, 4]，交给 L6。",
+    "L5 用完 A 后，拷贝流为下轮填入 W1。L6 将 [6, 4] 传给 L7。",
+    "L7 从 B 读 W7，将 [6, 4] 变成 [6, 12]，这个 hidden 成为后续模型算子的输入。",
+    "L7 用完 B 后，拷贝流为下轮填入 W3。A、B 又分别装有 W1、W3。"
+  ];
+  let step = 0, timer = null, widthUsed = 0;
+  const isActive = ids => step===0 || ids.includes(step);
+  const exists = first => step===0 || step>=first;
+  const ns = "http://www.w3.org/2000/svg";
+  function add(tag, attrs, parent=svg, content) {
+    const node = document.createElementNS(ns,tag);
+    for(const [k,v] of Object.entries(attrs)) node.setAttribute(k,String(v));
+    if(content!==undefined) node.textContent=content;
+    parent.append(node);
+    return node;
+  }
+  function txt(x,y,value,cls="",anchor="middle") {
+    return add("text",{x,y,class:cls,"text-anchor":anchor,"dominant-baseline":"middle"},svg,value);
+  }
+  function box(x,y,w,height,type,ids) {
+    const on = isActive(ids);
+    add("rect",{x,y,width:w,height,rx:6,fill:"var(--background)",stroke:on?colors[type]:"var(--border)","stroke-width":on?1.6:1});
+    if(step && on) add("rect",{x,y,width:w,height,rx:6,fill:colors[type],"fill-opacity":.08});
+  }
+  function owner(x,y,w,height,title) {
+    add("rect",{x,y,width:w,height,rx:9,fill:"none",stroke:"var(--muted-foreground)","stroke-opacity":.7,"stroke-width":1.2,"stroke-dasharray":"6 5"});
+    txt(x+w/2,y+16,title,"label");
+  }
+  function badge(x,y,ids,type) {
+    const label = step && ids.includes(step) ? String(step) : ids.join("·");
+    const w = Math.max(18,label.length*7+7);
+    add("rect",{x:x-w/2,y:y-9,width:w,height:18,rx:9,fill:"var(--background)",stroke:isActive(ids)?colors[type]:"var(--border)"});
+    txt(x,y+.7,label,"text-small");
+  }
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  function edge(points,type,ids,animate) {
+    const on = isActive(ids), col = on?type:"idle";
+    const d = points.map(([x,y],i)=>(i?"L":"M")+x+" "+y).join(" ");
+    add("path",{d,fill:"none",stroke:on?colors[type]:"var(--border)","stroke-width":on?1.7:1.1,
+      "stroke-linejoin":"round","marker-end":"url(#wf-arrow-"+col+")"});
+    if(step && on && animate && !reduceMotion.matches) {
+      const p = add("circle",{r:3.2,fill:colors[type],"pointer-events":"none"});
+      const motion=add("animateMotion",{path:d,dur:".72s",begin:"indefinite",repeatCount:1},p);
+      motion.addEventListener("endEvent",()=>p.remove(),{once:true});
+      motion.beginElement();
+    }
+  }
+  function matrix(x,y,rows,quiet) {
+    const ink=quiet?"var(--border)":"var(--muted-foreground)";
+    add("path",{d:"M"+(x-14)+" "+(y-8)+"h-4v35h4 M"+(x+14)+" "+(y-8)+"h4v35h-4",fill:"none",stroke:ink});
+    rows.forEach((row,i)=>row.forEach((v,j)=>txt(x-7+14*j,y+18*i,v,"mono text-small")));
+  }
+  function slotContent(s) {
+    if(!step) return s==="A" ? "轮用 W1、W5" : "轮用 W3、W7";
+    if(step<2) return "·";
+    if(step===2) return "待填充";
+    const latest=layers.filter(l=>l.slot===s).flatMap(l=>l.fill.map(i=>[i,l.id])).filter(([i])=>i<=step).sort((a,b)=>b[0]-a[0])[0];
+    return "当前装有 W"+latest[1];
+  }
+  function renderGraph(width,animate=false) {
+    widthUsed=width;
+    svg.replaceChildren();
+    const compact=width<540, mid=width/2;
+    const center=[width*.25,width*.75];
+    const nodeWidth=Math.min(214, width*.5-(compact?52:74));
+    const slotWidth=Math.min(212,width*.5-(compact?32:64));
+    const side=(i)=>center[i]-nodeWidth/2;
+    const sx=(i)=>center[i]-slotWidth/2;
+    const rail=[12,width-12];
+    const cardPad=10, cardGap=6, cpuW=(width-2*cardPad-3*cardGap)/4;
+    const cpuOrder=[1,5,3,7];
+    const yslot=255, top=398, bottom=536, ch=83;
+    svg.setAttribute("viewBox","0 0 "+width+" 721"); svg.setAttribute("height",721);
+    add("title",{id:"wf-title"},svg,"CPU 权重、NPU 静态槽及模型层的输入输出");
+    add("desc",{id:"wf-desc"},svg,"CPU 保存四个二乘二权重。W1、W5 进入槽 A，W3、W7 进入槽 B。四个层按 L1、L3、L5、L7 顺序从所属槽读权重，依次把 hidden 从 [1,2] 变成 [2,2]、[2,4]、[6,4]、[6,12]。");
+    const defs=add("defs",{});
+    for(const [key,col] of Object.entries({...colors,idle:"var(--border)"})) {
+      const m=add("marker",{id:"wf-arrow-"+key,markerWidth:8,markerHeight:8,refX:7.3,refY:4,orient:"auto",markerUnits:"userSpaceOnUse"},defs);
+      add("path",{d:"M0 0 L8 4 L0 8 L2.5 4 Z",fill:col},m);
+    }
+    owner(2,66,width-4,108,"CPU 内存 · 加载后的权重");
+    owner(2,222,width-4,495,compact?"NPU 设备":"NPU · 单个 worker");
+    box(mid-97,1,194,32,"copy",[1]);
+    txt(mid,18,"建模时选中的 NPU 参数","label");
+    edge([[mid,33],[mid,65]],"copy",[1],animate);
+    badge(mid,49,[1],"copy");
+    txt(mid+16,50,"转存 CPU","text-small","start");
+    cpuOrder.forEach((id,i)=>{
+      const l=layer(id), x=cardPad+i*(cpuW+cardGap), cx=x+cpuW/2;
+      const col=i<2?0:1, port=center[col]+(i%2?13:-13);
+      edge([[cx,164],[cx,197],[port,197],[port,yslot-1]],"copy",l.fill,animate);
+      badge(cx,181,l.fill,"copy");
+      box(x,95,cpuW,69,"weight",[1,...l.fill]);
+      txt(cx,110,"W"+id,"label"); matrix(cx,133,l.w,false);
+    });
+    txt(mid,207,"H2D 预取","text-small");
+    for(let i=0;i<2;i++) {
+      const s=i?"B":"A", targets=layers.filter(l=>l.slot===s);
+      const activeSlots=[2,...targets.flatMap(l=>[l.read,...l.fill])];
+      const origin=sx(i)+(i?slotWidth:0), nodeEdge=side(i)+(i?nodeWidth:0);
+      const y0=yslot+25;
+      const junctionX=rail[i];
+      // One physical slot fans out to its two readers. Each branch is active at its own read.
+      edge([[origin,y0],[junctionX,y0],[junctionX,top+ch/2],[nodeEdge,top+ch/2]],"weight",[targets[0].read],animate);
+      edge([[origin,y0],[junctionX,y0],[junctionX,bottom+ch/2],[nodeEdge,bottom+ch/2]],"weight",[targets[1].read],animate);
+      if(step===targets[0].read) edge([[origin,y0],[junctionX,y0],[junctionX,top+ch/2],[nodeEdge,top+ch/2]],"weight",[targets[0].read],false);
+      box(sx(i),yslot,slotWidth,54,"weight",activeSlots);
+      txt(center[i],yslot+15,"静态槽 "+s,"label");
+      txt(center[i],yslot+37,slotContent(s),"text-small");
+      badge(sx(i)+8,yslot,[2],"weight");
+    }
+    const gateW=Math.min(nodeWidth,160);
+    box(center[0]-gateW/2,330,gateW,46,"hidden",[3,4]);
+    txt(center[0],344,"上游 L0 输出","label");
+    txt(center[0],364,exists(3)?vec(base):"·","mono");
+    edge([[center[0],376],[center[0],top-1]],"hidden",[4],animate);
+    const sendToNext=(y,ids,label)=>{
+      edge([[side(0)+nodeWidth,y],[side(1)-1,y]],"hidden",ids,animate);
+      txt(mid,y-20,label,"text-small");
+      badge(mid,y,ids,"hidden");
+    };
+    sendToNext(top+ch/2,[5],"经 L2");
+    sendToNext(bottom+ch/2,[9],"经 L6");
+    const yturn=504;
+    edge([[center[1],top+ch],[center[1],yturn],[center[0],yturn],[center[0],bottom-1]],"hidden",[7],animate);
+    badge(mid,yturn,[7],"hidden");
+    txt(mid,yturn-18,compact?"经 L4":"经 L4 传给 L5","text-small");
+    for(const l of layers) {
+      const i=l.slot==="A"?0:1, x=side(i), y=l.id<=3?top:bottom;
+      const inputStep=l.read-1;
+      box(x,y,nodeWidth,ch,"hidden",[l.read]);
+      const readLabel=width<310?" 读 ":" · 读槽 ";
+      txt(center[i],y+15,"L"+l.id+readLabel+l.slot,"label");
+      txt(center[i],y+35,"输入 "+(exists(inputStep)?vec(l.input):"·"),"text-small");
+      txt(center[i],y+51,"h × W"+l.id,"mono text-small");
+      txt(center[i],y+68,"输出 "+(exists(l.read)?vec(l.output):"·"),"text-small");
+      badge(x+8,y,[l.read],"hidden");
+    }
+    const outY=656;
+    edge([[center[1],bottom+ch],[center[1],outY-1]],"hidden",[10],animate);
+    const finalWidth=Math.min(width*.46,215);
+    box(center[1]-finalWidth/2,outY,finalWidth,48,"hidden",[10]);
+    txt(center[1],outY+15,"下游算子的输入","label");
+    txt(center[1],outY+35,exists(10)?vec(layer(7).output):"·","mono");
+  }
+  function drawFocus(){
+    const panel=get("[data-focus]"), canvas=get(".wf-focus");
+    if(!panel.open) return;
+    const w=canvas.getBoundingClientRect().width;
+    if(w<1) return;
+    const mid=w/2, left=w*.25, right=w*.75, card=Math.min(w*.5-12,245);
+    canvas.replaceChildren();
+    canvas.setAttribute("viewBox","0 0 "+w+" 319"); canvas.setAttribute("height",319);
+    add("desc",{},canvas,"实线是张量数据，虚线是控制依赖。h1 传给 L2，并作为 start_prefetch 的依赖。拷贝流从 CPU 取 W5 填入 A。L5 同时消费 h4 和 W5。");
+    const group=(x,y,width,kind,lines)=>{
+      const height=lines.length*18+12;
+      add("rect",{x:x-width/2,y,width,height,rx:6,fill:"var(--background)",stroke:colors[kind],"stroke-width":1.5},canvas);
+      lines.forEach((line,i)=>add("text",{x,y:y+15+i*18,"dominant-baseline":"middle","text-anchor":"middle",class:i?"text-small":"label"},canvas,line));
+    };
+    const link=(d,kind,control=false)=>{
+      add("path",{d,fill:"none",stroke:colors[kind],"stroke-width":1.5,"stroke-dasharray":control?"4 3":"none","marker-end":"url(#wf-arrow-"+kind+")"},canvas);
+    };
+    const nodeWidth=Math.min(w-24,243);
+    group(mid,2,nodeWidth,"hidden",["L1.forward 输出","h1 = "+vec(layer(1).output)]);
+    link("M"+(mid-12)+" 50 V60 H"+left+" V78","hidden");
+    link("M"+(mid+12)+" 50 V60 H"+right+" V78","muted",true);
+    group(left,79,card,"hidden",["L2.forward","激活输入 h1"]);
+    group(right,79,card,"muted",["start_prefetch","以 h1 建立顺序依赖","目标层 L5"]);
+    link("M"+left+" 127 V162","hidden");
+    link("M"+right+" 145 V162","muted",true);
+    group(left,163,card,"hidden",["L3、L4 计算","传出 h4 = "+vec(layer(3).output)]);
+    group(right,163,card,"copy",["CPU W5 → 槽 A","等 L1 读完 A 再拷贝","拷贝完成后 W5 可读"]);
+    link("M"+left+" 211 V241 H"+(mid-31)+" V259","hidden");
+    link("M"+right+" 229 V241 H"+(mid+31)+" V259","weight");
+    group(mid,260,nodeWidth,"hidden",["L5.forward 同时读取 h4 和 W5","输出 "+vec(layer(5).output)+" → L6"]);
+  }
+  get("[data-focus]").addEventListener("toggle",drawFocus);
+  const prev=get("[data-action=prev]"),next=get("[data-action=next]"),overview=get("[data-action=overview]"),play=get("[data-action=play]");
+  function render(animate=false) {
+    renderGraph(Math.max(1,svg.getBoundingClientRect().width),animate);
+    prev.disabled=step<=1; next.disabled=step===stages.length-1;
+    overview.setAttribute("aria-pressed",String(!step));
+    play.textContent=timer===null?"播放流程":"暂停播放";
+    get("[data-count]").textContent=step?step+" / 11":"全图 · 11 步";
+    get("[data-description]").textContent=(step?numbers[step]+" ":"")+stages[step];
+  }
+  const topic="weight-io-v2";
+  function stop(){ if(timer!==null) clearInterval(timer); timer=null; }
+  function select(n) {
+    step=n;
+    if(n===stages.length-1) stop();
+    render(true);
+    window.openai?.setWidgetState?.({modelContent:{topic,step:n},privateContent:null})?.catch(()=>{});
+  }
+  function manual(n){stop();select(n);}
+  function restore(state){
+    stop();
+    const v=state?.modelContent;
+    step=v?.topic===topic && Number.isInteger(v.step) && v.step>=0 && v.step<stages.length?v.step:0;
+    render();
+  }
+  overview.addEventListener("click",()=>manual(0));
+  next.addEventListener("click",()=>{if(step<11)manual(step+1);});
+  prev.addEventListener("click",()=>{if(step>1)manual(step-1);});
+  play.addEventListener("click",()=>{
+    if(timer!==null){stop();render();return;}
+    timer=setInterval(()=>select(step+1),1850);
+    select(step>=11?1:step+1);
+  });
+  stages.slice(1).forEach(v=>{const li=document.createElement("li");li.textContent=v;get("[data-list]").append(li);});
+  restore(window.openai?.widgetState);
+  window.addEventListener("openai:set_globals",e=>{
+    if(e.detail?.globals && "widgetState" in e.detail.globals) {
+      const v=e.detail.globals.widgetState?.modelContent;
+      if(v?.topic===topic && v.step===step) return;
+      restore(e.detail.globals.widgetState);
+    }
+  });
+  new ResizeObserver(([entry])=>{
+    if(entry.contentRect.width>0 && Math.abs(entry.contentRect.width-widthUsed)>.3) {
+      renderGraph(entry.contentRect.width);
+      drawFocus();
+    }
+  }).observe(svg);
+})();
+</script>
