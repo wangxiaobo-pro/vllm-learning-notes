@@ -12,6 +12,7 @@
 | 投机解码 | 对照 MTP 串行与 DFlash 并行起草，看目标模型如何验证同一组候选并决定输出 | [speculative-decoding](speculative-decoding/README.md) | [speculative-decoding/index.html](speculative-decoding/index.html) |
 | 静态批处理与连续批处理 | 同一组请求的组批、排队、Prefill / Decode、退出与 KV 释放，附逐轮对比 | [batching](batching/README.md) | [batching/index.html](batching/index.html) |
 | vLLM 请求完整生命周期 | V1 单卡流式请求的 20 步流程、Prefill / Decode、KV 块与结束清理 | [request-lifecycle](request-lifecycle/README.md) | [request-lifecycle/index.html](request-lifecycle/index.html) |
+| Scheduler.schedule() 调度流程 | 四个本轮请求列表、两项 token 预算、KV 抢占回滚与恢复 | [scheduler](scheduler/README.md) | [scheduler/index.html](scheduler/index.html) |
 | vLLM PD 分离 | V0 / V1、P / D、Scheduler / Worker、Mooncake 缓存匹配与传输 | [pd-disaggregation](pd-disaggregation/README.md) | [pd-disaggregation/index.html](pd-disaggregation/index.html) |
 | Chunked prefill | 分块与整段 prefill 对照、四轮状态、CPU / GPU 调用、KV 与输出变化 | [chunked-prefill](chunked-prefill/README.md) | [chunked-prefill/index.html](chunked-prefill/index.html) |
 | vLLM 并行流程 | 六种单项并行与 TP+SP、DP+EP、DP+TP+PP 三种组合，默认 TP+SP，附训练 DP 对照 | [parallelism](parallelism/README.md) | [parallelism/index.html](parallelism/index.html) |
@@ -26,6 +27,7 @@ vllm-learning-notes/
 ├── transform/                         # Transformer 结构讲解与矩阵计算
 ├── vllm-ascend-startup/                # Ascend 服务启动与组件初始化
 ├── request-lifecycle/                 # 请求接入、推理输出与结束清理
+├── scheduler/                         # V1 单轮调度、请求分类与 token 记账
 ├── batching/                          # 静态批处理与连续批处理对照
 ├── chunked-prefill/                   # 分块 prefill 与历史整段调度对照
 ├── speculative-decoding/              # 串行与并行起草、目标模型验证

@@ -64,6 +64,10 @@
                 <span class="flow-copy"><span class="flow-title">vLLM 请求完整生命周期</span><span class="flow-description">20 步追踪 HTTP 接入、调度采样、SSE 输出与 KV 引用释放。</span></span>
                 <span class="flow-tag">源码流程</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
+              <li><a class="flow" href="scheduler/index.html" data-keywords="vLLM V1 Scheduler.schedule() 四个队列 本轮列表 running waiting preempted new resumed skipped num_new_tokens num_computed_tokens num_scheduled_tokens token_budget input_budget 调度 KV 抢占 恢复 PRIORITY">
+                <span class="flow-copy"><span class="flow-title">Scheduler.schedule() 调度流程</span><span class="flow-description">沿请求、KV 分配、调度计划与 Worker 回报追踪四张清单和 token 预算。</span></span>
+                <span class="flow-tag">源码流程</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
               <li><a class="flow" href="batching/index.html" data-keywords="vLLM V1 静态批处理 连续批处理 Static Batching Continuous Batching 请求 队列 调度 Prefill Decode KV 释放">
                 <span class="flow-copy"><span class="flow-title">静态批处理与连续批处理</span><span class="flow-description">对照固定批次与逐轮接入请求，观察调度、执行和 KV 释放。</span></span>
                 <span class="flow-tag">交互动画</span><span class="flow-arrow" aria-hidden="true">↗</span>

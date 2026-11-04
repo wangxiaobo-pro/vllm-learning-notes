@@ -1,0 +1,1368 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scheduler.schedule() 调度流程 · vLLM 学习笔记</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f5f5ef; --panel: #fffefa; --ink: #192923; --muted: #52655b;
+  --line: #d5ddd2; --grid: #e4e8e0; --green: #12634b; --mint: #e7f3e8;
+  --amber: #8a4a18; --sand: #fcf0dc; --shade: #f0f3eb; --ribbon: #1d3d32;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #141c19; --panel: #1b2520; --ink: #e4eee4; --muted: #a8b9ae;
+    --line: #3d4d42; --grid: #314037; --green: #91d8ae; --mint: #264336;
+    --amber: #efbe88; --sand: #473625; --shade: #212f27; --ribbon: #c4e1c9; }
+}
+* { box-sizing: border-box; }
+[hidden] { display:none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.6 system-ui, "Microsoft YaHei", sans-serif; }
+main { width: calc(100% - 32px); max-width: 960px; margin: auto; padding-bottom: 42px; }
+h1,h2,h3,p,dl,dd,ol { margin: 0; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:disabled { opacity: .43; cursor: default; }
+a { color: var(--green); text-underline-offset: 3px; }
+button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+code, .mono, .value, .step-number, .metric strong {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Microsoft YaHei", monospace; font-variant-numeric: tabular-nums;
+}
+code, .mono, dd { overflow-wrap: anywhere; }
+.mast { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center; padding:18px 0 13px; border-bottom:1px solid var(--line); font-size:12px; color:var(--muted); }
+.mast a { text-decoration:none; font-weight:650; } .mast a:hover { text-decoration:underline; }
+.eyebrow { color:var(--green); font:700 11px/1.4 ui-monospace,Consolas,monospace; letter-spacing:.12em; }
+.intro { padding:24px 0 18px; }
+h1 { font-size:clamp(25px, 4vw, 37px); line-height:1.33; letter-spacing:-.035em; margin:5px 0 7px; }
+.intro p:last-child,.sub,.legend,.hint { color:var(--muted); }
+.settings { border:1px solid var(--line); border-radius:12px; padding:14px 16px; background:var(--panel); }
+.case-head,.controls,.buttons,.title-row,.section-title { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.case-head { gap:16px; } .case-head h2,.section-title h2 { font-size:16px; }
+.switch { display:inline-flex; flex-wrap:wrap; gap:3px; padding:3px; background:var(--shade); border-radius:8px; }
+.switch button,.controls button { padding:5px 12px; border:1px solid transparent; border-radius:6px; background:transparent; font-weight:650; font-size:13px; }
+.switch button[aria-pressed=true] { color:var(--panel); background:var(--green); }
+.settings .sub { font-size:13px; margin-top:8px; }
+.assumptions { margin-top:7px; font-size:13px; } summary { color:var(--green); font-weight:650; cursor:pointer; }
+.assumptions p { margin:6px 0; }
+.controls { justify-content:space-between; margin:16px 0 10px; }
+.controls button { background:var(--panel); border-color:var(--line); }
+.controls button[aria-pressed=true], .controls #next:not(:disabled) { background:var(--mint); border-color:var(--green); color:var(--green); }
+.controls .eyebrow { color:var(--muted); } .buttons { gap:5px; }
+.view-tabs { display:flex; flex-wrap:wrap; gap:6px; margin-top:16px; }
+.view-tabs button { background:transparent; color:var(--muted); border:0; padding:5px 12px; border-bottom:2px solid var(--line); font-size:14px; }
+.view-tabs button[aria-pressed=true] { border-bottom-color:var(--green); color:var(--green); font-weight:700; }
+.io-strip { margin:0 0 12px; padding:12px 15px; }
+.io-strip h2 { margin:2px 0 9px; font-size:17px; }
+.io-chain { display:grid; align-items:stretch; grid-template-columns:minmax(0,1fr) 22px minmax(0,1fr) 22px minmax(0,1fr); gap:5px; }
+.io-card { min-width:0; padding:8px 11px; border:1px solid var(--line); border-radius:7px; background:var(--shade); }
+.io-card.current { border-color:var(--green); background:var(--mint); }
+.io-card small,.io-card b,.io-card output { display:block; }
+.io-card small { color:var(--muted); font-size:11px; }
+.io-card b,.io-card output { font-size:13px; line-height:1.5; overflow-wrap:anywhere; }
+.io-card output { margin-top:4px; }
+.io-arrow { align-self:center; text-align:center; color:var(--green); font-size:18px; }
+.io-strip .sources { margin-top:7px; }
+@media(max-width:560px){
+  .io-chain { grid-template-columns:minmax(0,1fr); gap:2px; }
+  .io-arrow { line-height:16px; transform:rotate(90deg); }
+}
+.workbench { display:grid; grid-template-columns:minmax(0,1.18fr) minmax(0,1fr); align-items:start; gap:14px; }
+.panel { min-width:0; background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+.panel-head { padding:14px 15px 10px; }
+.panel h2,.refs h2 { font-size:18px; line-height:1.4; } .title-row { justify-content:space-between; }
+.tag { font:600 11px/1.4 ui-monospace,Consolas,"Microsoft YaHei",monospace; color:var(--muted); letter-spacing:.04em; }
+.legend { font-size:12px; margin-top:5px; line-height:1.5; }
+.rulers,.hop { display:grid; grid-template-columns:minmax(0,54fr) minmax(0,46fr); }
+.rulers { background:var(--shade); color:var(--muted); border-block:1px solid var(--line); font-size:12px; align-items:center; }
+.rulers > span { padding:6px 13px; font-weight:650; } .axis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); text-align:center; }
+.trace { list-style:none; padding:0; } .trace li:last-child .hop { border-radius:0 0 12px 12px; border-bottom:0; }
+.number-flow { padding:12px 15px; grid-column:1; }
+.number-flow h3 { font-size:15px; }
+.number-flow table { width:100%; border-collapse:collapse; font-size:13px; margin:7px 0; text-align:right; font-variant-numeric:tabular-nums; }
+.number-flow th,.number-flow td { padding:4px; border-bottom:1px solid var(--grid); }
+.number-flow th:first-child { text-align:left; }
+.number-flow thead { color:var(--muted); }
+.number-flow td:last-child { background:var(--mint); color:var(--green); font-weight:700; }
+.number-flow p { font-size:12px; color:var(--muted); }
+.round { padding:4px 12px; background:var(--mint); color:var(--green); font-size:11px; font-weight:700; letter-spacing:.04em; }
+.hop { width:100%; padding:0; text-align:left; border:0; border-bottom:1px solid var(--grid); background:transparent; }
+.hop:hover,.hop[aria-current=step] { background:var(--mint); }
+.hop[aria-current=step] { box-shadow:inset 3px 0 var(--green); }
+.verb { padding:9px 5px 9px 10px; display:flex; gap:8px; align-items:flex-start; }
+.verb strong { display:block; font-size:13px; line-height:1.4; }
+.verb small { display:block; color:var(--muted); font-size:11px; line-height:1.45; margin-top:2px; }
+.step-number { font-size:11px; color:var(--green); font-weight:700; padding-top:1px; }
+.rail { position:relative; min-height:44px; display:block;
+  background:repeating-linear-gradient(90deg, transparent 0, transparent calc(12.5% - .5px), var(--line) calc(12.5% - .5px), var(--line) calc(12.5% + .5px),transparent calc(12.5% + .5px), transparent 25%); }
+.rail i { position:absolute; left:var(--left); right:var(--right); top:50%; height:2px; background:currentColor; color:var(--green); }
+.rail i::before,.rail i::after { position:absolute; top:50%; transform:translateY(-50%); content:""; }
+.rail i::before { left:-3px; width:6px; height:6px; background:currentColor; border-radius:50%; }
+.rail i::after { right:-1px; border:4px solid transparent; border-left:7px solid currentColor; border-right:0; }
+.rail.back i::before { left:auto; right:-3px; } .rail.back i::after { right:auto; left:-1px; transform:translateY(-50%) rotate(180deg); }
+.rail.same i { width:12px; height:12px; margin-left:-6px; margin-top:-5px; border:3px double var(--green); border-radius:3px; background:var(--panel); }
+.rail.same i::before,.rail.same i::after { display:none; }
+.rail.exec i { color:var(--amber); }
+.rail em { position:absolute; left:var(--mid); top:calc(50% - 18px); transform:translateX(-50%); font:10px/1.2 ui-monospace,Consolas,monospace; color:var(--muted); }
+.readout { padding:15px; grid-column:2; grid-row:1 / span 2; }
+.section-kicker { display:flex; align-items:baseline; justify-content:space-between; gap:8px; color:var(--green); font-size:12px; font-weight:650; }
+#snapshot-title { margin:5px 0; font-size:20px; }
+#detail { font-size:14px; line-height:1.65; }
+.equation { margin:9px 0 4px; padding:7px 9px; color:var(--green); background:var(--mint); border-left:3px solid var(--green); border-radius:2px; font-size:13px; font-weight:600; }
+.sources { font-size:11px; display:flex; gap:2px 8px; flex-wrap:wrap; align-items:baseline; color:var(--muted); }
+.ledger-section { margin-top:13px; padding-top:10px; border-top:1px solid var(--line); }
+.ledger-section h3 { font-size:14px; margin-bottom:7px; }
+.metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.metric { padding:7px 9px; background:var(--shade); border-radius:6px; }
+.metric code { color:var(--muted); font-size:12px; }
+.metric strong { font-size:22px; line-height:1.1; } .metric small { color:var(--muted); }
+.gauge { display:flex; gap:3px; margin:6px 0 1px; }
+.gauge i { width:100%; height:4px; border-radius:2px; background:var(--line); }
+.gauge i.free { background:var(--green); }
+.pairs { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 7px; align-items:baseline; }
+.pairs dt,.pairs dd { font-size:12px; }
+.pairs dt { color:var(--muted); }
+.pairs dd { color:var(--ink); font-weight:600; text-align:right; }
+.pairs .empty { color:var(--muted); font-weight:400; }
+.list-set { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+.bucket { background:var(--shade); border-radius:6px; padding:6px 9px; min-width:0; }
+.bucket strong { display:block; font-size:14px; } .bucket code { display:block; color:var(--muted); font-size:11px; line-height:1.35; }
+.bucket b { margin-left:4px; font:650 13px/1.3 ui-monospace,Consolas,monospace; color:var(--green); }
+.bucket.last b { color:var(--amber); }
+.meter-detail { margin-top:6px; } .meter-detail dd { font-size:12px; }
+.inline-key { color:var(--muted); font-size:11px; margin-top:6px; }
+.refs { margin-top:22px; }
+.refs h2 { margin-bottom:8px; }
+.reference { border-top:1px solid var(--line); padding:8px 0; }
+.reference summary { font-size:14px; } .reference dl { max-width:80ch; font-size:14px; }
+.reference dt { margin-top:8px; font-weight:650; } .reference dd { margin:1px 0 8px; }
+.footer { border-top:1px solid var(--line); padding-top:10px; color:var(--muted); font-size:12px; }
+@media (max-width:760px) {
+  .workbench { grid-template-columns:minmax(0,1fr); }
+  .readout,.number-flow { grid-column:auto; grid-row:auto; }
+  .number-flow { order:3; }
+  .workbench.focus .trace li:not(.selected), .workbench.focus .round { display:none; }
+  .workbench.focus .selected .hop { border-radius:0 0 12px 12px; }
+}
+@media (max-width:450px) {
+  main { width:calc(100% - 24px); } .intro { padding:15px 0 12px; }
+  .case-head { gap:7px; } .settings,.readout { padding:11px; }
+  .buttons { gap:4px; } .controls { gap:5px; }
+  .controls .eyebrow { width:100%; } .controls button { padding:6px 9px; }
+  .panel-head { padding:11px; } .metrics { gap:5px; }
+  .rulers,.hop { grid-template-columns:minmax(0,56fr) minmax(0,44fr); }
+  .verb { gap:5px; } .verb strong { font-size:12px; }
+  .pairs { grid-template-columns:minmax(0,1fr) minmax(0,auto); }
+}
+</style>
+</head>
+<body>
+<main>
+  <header class="mast"><a href="../index.html">← vLLM 学习笔记</a><span class="mono">V1 ENGINE / 调度器</span></header>
+  <div class="intro">
+    <p class="eyebrow">ENGINE INTERNALS &nbsp;/&nbsp; SCHEDULING</p>
+    <h1><code>Scheduler.schedule()</code> 调度流程</h1>
+    <p>从请求和 KV 块出发，沿箭头看四张清单如何变成 Worker 的输入，以及执行结果怎样回到下一轮调度。</p>
+  </div>
+  <section class="settings" aria-label="算例设置">
+    <div class="case-head"><h2>选择 KV 条件</h2><div class="switch" role="group" aria-label="KV 条件">
+      <button type="button" data-mode="normal">KV 充足</button><button type="button" data-mode="pressure">KV 紧张与恢复</button>
+    </div></div>
+    <p class="sub" id="subtitle"></p>
+    <details class="assumptions"><summary>查看初始请求与调度配置</summary>
+      <p><b>A、B</b> 已在 running 中，依次扫描。A 有 12 个提示 token 和 3 个已生成 token，已算到长度 14。B 有 16 个提示 token 和 1 个已生成 token，已算到长度 16。<b>S、C</b> 在 waiting 中。S 正在编译语法，C 有 12 个提示 token。</p>
+      <p>同步文本生成、MRV1、单一全注意力 KV 组，每块 16 个位置。PRIORITY 数字越小越优先，B=0、A=1、S=5、C=10。两项预算初值均为 8，启用分块预填充，长提示阈值为 0，活动请求上限至少为 3，模型长度上限至少为 32。前缀复用、投机解码和远端 KV 均关闭。</p>
+      <p>两种场景初始请求相同。KV 充足时可为 B 和 C 各分配一块。紧张时只有两块可分配给请求，A、B 各占一块。假设 B 在本轮返回 EOS。</p>
+    </details>
+  </section>
+  <div class="view-tabs" role="group" aria-label="图形视图">
+    <button type="button" id="map-tab">上下游数据流</button><button type="button" id="ledger-tab">队列与计数</button>
+  </div>
+  <nav class="controls" aria-label="流程步骤" id="controls">
+    <span class="eyebrow" id="mode-indicator"></span>
+    <div class="buttons"><button id="overview" type="button">全局关系</button><button id="prev" type="button">← 上一步</button><button id="next" type="button">下一步 →</button></div>
+  </nav>
+  <section id="io-strip" class="panel io-strip" aria-live="polite" hidden>
+    <span class="eyebrow" id="io-step"></span><h2 id="io-title"></h2>
+    <div class="io-chain">
+      <div class="io-card"><small>上游 · 提供输入</small><b id="io-up"></b><output id="io-input"></output></div>
+      <span class="io-arrow" aria-hidden="true">→</span>
+      <div class="io-card current"><small>当前动作 · 产生输出</small><b id="io-action"></b><output id="io-result"></output></div>
+      <span class="io-arrow" aria-hidden="true">→</span>
+      <div class="io-card"><small>下游 · 消费输出</small><b id="io-down"></b><output id="io-use"></output></div>
+    </div>
+    <div class="sources" id="io-sources"></div>
+  </section>
+  <div id="map-view"><style>
+#schedule-map { margin:14px 0; padding:clamp(10px,2vw,19px); color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+#schedule-map * { box-sizing:border-box; }
+#schedule-map h2 { margin:0 0 3px; font-size:20px; }
+#schedule-map .sm-desc { margin:0 0 12px; color:var(--muted); font-size:13px; }
+#schedule-map .sm-board { --sm-gutter:12px; position:relative; padding-left:var(--sm-gutter); }
+#schedule-map .sm-frame { padding:8px 8px 10px; border:1px dashed var(--line); border-radius:10px; }
+#schedule-map .sm-owner { margin:0 0 6px; color:var(--muted); font:600 11px/1.35 ui-monospace,monospace; letter-spacing:.045em; }
+#schedule-map .sm-station { display:block; width:100%; max-width:560px; margin:0 auto; min-width:0; padding:8px 11px; border:1px solid var(--line); border-radius:8px; text-align:left; font:inherit; background:var(--panel); color:var(--ink); }
+#schedule-map .sm-station:enabled:hover { border-color:var(--green); }
+#schedule-map .sm-station.sm-active { border:2px solid var(--green); padding:7px 10px; background:var(--mint); }
+#schedule-map .sm-station:disabled { opacity:1; cursor:default; border-style:dashed; }
+#schedule-map .sm-station-head { display:flex; justify-content:space-between; flex-wrap:wrap; gap:2px 8px; align-items:baseline; }
+#schedule-map .sm-station-name { font-size:14px; font-weight:740; overflow-wrap:anywhere; }
+#schedule-map .sm-ids { color:var(--green); font:650 11px/1.35 ui-monospace,monospace; white-space:normal; }
+#schedule-map .sm-io { display:grid; grid-template-columns:2.55em minmax(0,1fr); gap:0 4px; margin-top:3px; font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+#schedule-map .sm-run-block { margin:0 auto; max-width:600px; border:1px dashed var(--line); padding:5px 8px 8px; border-radius:8px; }
+#schedule-map .sm-run-block > small { display:block; margin:0 0 4px; color:var(--muted); font-size:11px; }
+#schedule-map .sm-stack { display:grid; min-width:0; }
+#schedule-map .sm-stack > span { grid-area:1 / 1; }
+#schedule-map .sm-reserve { visibility:hidden; white-space:pre-line; }
+#schedule-map .sm-field { color:var(--muted); font-size:11px; }
+#schedule-map .sm-values { white-space:pre-line; }
+#schedule-map .sm-branches { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+#schedule-map .sm-branches .sm-station { align-self:stretch; height:100%; }
+#schedule-map .sm-link { --sm-wire:var(--green); position:relative; display:flex; justify-content:center; align-items:center; min-width:0; text-align:center; color:var(--sm-wire); font-size:11px; line-height:1.3; font-weight:620; }
+#schedule-map .sm-link .sm-caption { position:relative; z-index:1; padding:1px 5px; max-width:100%; overflow-wrap:anywhere; background:var(--panel); }
+#schedule-map .sm-link.sm-active .sm-caption { background:var(--mint); border:1px solid var(--green); border-radius:4px; }
+#schedule-map .sm-link.sm-unused { --sm-wire:var(--muted); }
+#schedule-map .sm-link::before { content:""; position:absolute; inset:0 auto 0 50%; border-left:2px solid var(--sm-wire); }
+#schedule-map .sm-link.sm-control::before { border-left-style:dashed; }
+#schedule-map .sm-link.sm-unused::before { border-left-style:dotted; }
+#schedule-map .sm-tip::after { content:""; position:absolute; left:calc(50% - 3px); bottom:0; width:0; height:0; border-left:4px solid transparent; border-right:4px solid transparent; border-top:6px solid var(--sm-wire); }
+#schedule-map .sm-single { min-height:32px; }
+#schedule-map .sm-junction { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+#schedule-map .sm-junction .sm-link { min-height:33px; }
+#schedule-map .sm-junction .sm-link::after { z-index:1; }
+#schedule-map .sm-bar { height:7px; width:50%; margin:auto; display:flex; }
+#schedule-map .sm-bar i { flex:1; border-top:2px solid var(--green); }
+#schedule-map .sm-bar .sm-unused { border-color:var(--muted); border-top-style:dotted; }
+#schedule-map .sm-fork .sm-bar { height:0; }
+#schedule-map .sm-merge .sm-bar { height:0; }
+#schedule-map .sm-stem { min-height:9px; width:100%; }
+#schedule-map .sm-stem.sm-tip { min-height:12px; }
+#schedule-map .sm-span { min-height:36px; }
+#schedule-map .sm-loop { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible; }
+#schedule-map .sm-loop path.sm-return { stroke:var(--green); stroke-width:1.5; fill:none; stroke-dasharray:3 4; }
+#schedule-map .sm-loop path.sm-head { fill:var(--green); }
+#schedule-map .sm-cycle { padding:5px 4px 0; font-size:11px; color:var(--muted); text-align:left; }
+@media(max-width:540px) {
+  #schedule-map { padding:9px 6px; } #schedule-map .sm-board { --sm-gutter:7px; }
+  #schedule-map .sm-frame { padding:5px; } #schedule-map .sm-branches { gap:5px; }
+  #schedule-map .sm-station { padding:6px; } #schedule-map .sm-station.sm-active { padding:5px; }
+  #schedule-map .sm-branches .sm-io { grid-template-columns:minmax(0,1fr); }
+  #schedule-map .sm-station-name { font-size:13px; }
+}
+</style>
+<section id="schedule-map" aria-labelledby="sm-heading">
+  <h2 id="sm-heading">全局调度图</h2>
+  <p class="sm-desc">沿编号箭头读输入和输出。框外虚线划分组件，实线传递数据，虚线箭头表示控制或返回。余额依次为 token_budget / input_budget。点击节点可查看对应步骤。</p>
+  <div class="sm-board"></div>
+</section>
+<script>
+(() => {
+  const board = document.querySelector('#schedule-map .sm-board');
+  const names = {entry:'EngineCore.step() → Scheduler.schedule()', run:'RUNNING · 计算 num_new_tokens', kv:'KVCacheManager.allocate_slots()', wait:'无抢占 → 扫描 WAITING', evict:'KV 不足 → 抢占并重试', pack:'四张清单 → SchedulerOutput', worker:'Executor / Worker · 执行与采样', feedback:'Scheduler.update_from_output()'};
+  // Each entry records the request data on both sides of one action.
+  const examples = {
+    normal: {
+      entry:[[0,'running [A,B]，waiting [S,C]','预算 8 / 8，先取 A、B']],
+      run:[[1,'A 已知 15，已算 14，余 8 / 8','num_new_tokens=1，申请 A 的位置 14'],[2,'B 已知 17，已算 16，余 7 / 7','num_new_tokens=1，申请 B 的位置 16']],
+      kv:[[1,'allocate_slots(A, 1)，A 原块有空位','成功，无新增块，登记 A:1，余 7 / 7'],[2,'allocate_slots(B, 1)，B 跨块','返回新增块，登记 B:1，余 6 / 6']],
+      wait:[[3,'余 6 / 6，候选 [S,C]','语法未就绪，暂存 S，继续看 C'],[4,'C 需 12，余 6 / 6','新准入 [C]，C 获 6，余 0 / 0'],[5,'暂存 [S]，新准入 [C]','S 回 waiting，C 获 6']],
+      evict:[],
+      pack:[[6,'续跑 A,B；新 C；恢复 ∅；抢占 ∅','A:1，B:1，C:6，共 8'],[7,'计划 A:1，B:1，C:6','游标 A15、B17、C6，返回计划']],
+      worker:[[7,'原起点 A14、B16、C0，配额 1/1/6','·'],[8,'A[14]、B[16]、C[0..5]','ModelRunnerOutput：A [x]，B [EOS]，C []']],
+      feedback:[[8,'原计划 {A:1,B:1,C:6} + 模型返回的采样 IDs','在途归零，B 释放块。下轮 running=[A,C]，A 已知 16，C 已算 6']]
+    },
+    pressure: {
+      entry:[[0,'running [A,B]，waiting [S,C]','预算 8 / 8，空闲块 0'],[7,'B 已释放两块，waiting [A,S,C]','重置 8 / 8，running 为空']],
+      run:[[1,'A 已知 15，已算 14','num_new_tokens=1，申请 A 的位置 14'],[2,'B 已知 17，已算 16','num_new_tokens=1，申请 B 的位置 16'],[7,'次轮 running 为空','直接检查等待队列']],
+      kv:[[1,'allocate_slots(A, 1)，原块有空位','成功，暂排 A:1，余 7 / 7'],[2,'allocate_slots(B, 1)，B 跨块，空闲块 0','返回 None，调度器开始选受害者']],
+      wait:[[8,'次轮余 8 / 8，A 为 PREEMPTED','恢复 [A]，A 重算 8，余 0 / 0']],
+      evict:[[3,'分配失败，暂排 A:1','撤销 A:1，归还 1 块，预算回到 8 / 8'],[4,'B 重试，使用 A 释放的块','续跑 [B]，抢占 [A]；余 7 / 7，跳过准入']],
+      pack:[[5,'续跑 B；新 ∅；恢复 ∅；抢占 A','B:1，共 1；通知抢占 A'],[9,'续跑 ∅；新 ∅；恢复 A；抢占 ∅','A:8，共 8；cached 标记 A 恢复']],
+      worker:[[5,'原起点 B16，配额 1','·'],[6,'B[16]','ModelRunnerOutput：B [EOS]'],[9,'原起点 A0，配额 8','·'],[10,'A[0..7]','ModelRunnerOutput：A []']],
+      feedback:[[6,'B EOS，A 在 waiting','释放 B 的 2 块，下轮先看 A'],[10,'A 的重算结果 []','A 游标 8，已知长度 15，仍差 7']]
+    }
+  };
+  const routes = {
+    normal: {
+      scan:[[0,1,2],'读取候选与预算'], slots:[[1,2],'allocate_slots(request, n)'], admit:[[3,4,5],'余额 6，继续准入'], fail:[[],'未触发'],
+      added:[[5,6],'新 C、续跑 A/B、块 ID'], retried:[[],'未触发'], send:[[7],'下发 SchedulerOutput'], report:[[8],'返回 ModelRunnerOutput']
+    },
+    pressure: {
+      scan:[[0,1,2,7],'读取本轮候选'], slots:[[1,2],'allocate_slots(request, n)'], admit:[[7,8],'次轮未发生抢占'], fail:[[2,3],'返回 None，首轮缺 1 块'],
+      added:[[8,9],'次轮恢复 A'], retried:[[4,5],'首轮续跑 B'], send:[[5,9],'下发 SchedulerOutput'], report:[[6,10],'返回 ModelRunnerOutput']
+    }
+  };
+  const overviewData = {
+    normal: {
+      run:['num_tokens − num_computed_tokens：A 15−14，B 17−16','A、B 各需 1 个位置，依次申请 KV 槽'],
+      kv:['allocate_slots(A, 1)、allocate_slots(B, 1)','返回 KVCacheBlocks：A 无新增块，B 新增一块。调度器据此登记 [A,B]，余 6 / 6'],
+      wait:['余 6 / 6，S 等语法，C 需 12','S 暂跳后回队。allocate_slots(C, 6) 成功，C 进入 running，余 0 / 0'],
+      pack:['续跑 [A,B]，新 [C]，恢复 ∅，抢占 ∅，以及块 ID','num_scheduled_tokens={A:1,B:1,C:6}，total=8。计划保留原起点 14/16/0']
+    },
+    pressure: {
+      run:['首轮 A 15−14，B 17−16。次轮 running 为空','首轮依次申请 A、B 各 1 个槽。次轮直接检查等待队列'],
+      kv:['首轮 A 的原块有空槽，B 需要新块。池中空闲块数为 0','A 返回成功，B 返回 None。次轮 RUNNING 无分配调用'],
+      evict:['首轮已排 A:1，B 分配失败，可释放 A 的块','撤销 A、退回双预算、重试成功。B:1，余 7 / 7，本轮跳过准入'],
+      wait:['次轮 waiting=[A,S,C]，A 仍有 15 个已知 token，双预算 8','allocate_slots(A, 8) 成功。恢复 [A]，余 0 / 0']
+    }
+  };
+  const pendingEdges = {scan:'读取候选与预算',slots:'按需申请 KV 槽',admit:'检查准入条件',fail:'检查 KV 容量',added:'汇入准入结果',retried:'汇入重试结果',send:'下发计算计划',report:'返回执行结果'};
+  const create = (tag, cls, value) => {
+    const node = document.createElement(tag); if (cls) node.className = cls;
+    if (value !== undefined) node.textContent = value; return node;
+  };
+  const ordinal = i => String(i + 1).padStart(2,'0');
+  function loopGeometry() {
+    const entry = board.querySelector('[data-sm-node="entry"]');
+    const feedback = board.querySelector('[data-sm-node="feedback"]');
+    const svg = board.querySelector('.sm-loop');
+    if (!entry || !feedback || !svg) return;
+    const base = board.getBoundingClientRect(), a = entry.getBoundingClientRect(), b = feedback.getBoundingClientRect();
+    if (!base.width || !base.height) return;
+    const start = b.left-base.left, end = a.left-base.left, top = a.top-base.top+a.height/2, bottom = b.top-base.top+b.height/2;
+    svg.setAttribute('viewBox', '0 0 '+base.width+' '+base.height);
+    svg.firstElementChild.setAttribute('d','M '+start+' '+bottom+' H 2 V '+top+' H '+(end-3));
+    svg.lastElementChild.setAttribute('d','M '+end+' '+top+' l -5 -3 v 6 z');
+  }
+  new ResizeObserver(loopGeometry).observe(board);
+  window.renderScheduleMap = (mode, stepIndex, steps) => {
+    const data = examples[mode], edges = routes[mode], global = stepIndex === -1, round = global ? null : steps[stepIndex].round;
+    const badges = ids => ids.map(ordinal).join('·');
+    const section = label => { const f=create('div','sm-frame'); f.append(create('p','sm-owner', label)); return f; };
+    function station(id) {
+      const entries = data[id], btn = create('button','sm-station'); btn.type='button'; btn.dataset.smNode=id;
+      const chosen = entries.filter(e => global || (e[0]<=stepIndex && steps[e[0]].round===round));
+      const active = entries.some(e=>e[0]===stepIndex);
+      btn.classList.toggle('sm-active',active);
+      const head=create('span','sm-station-head');
+      head.append(create('span','sm-station-name',names[id]),create('span','sm-ids',entries.length?badges(entries.map(e=>e[0])):'本例未触发'));
+      btn.append(head);
+      const lastPerRound = new Map(); entries.forEach(e=>lastPerRound.set(steps[e[0]].round,e));
+      [1,2].forEach(n=>{
+        const row=create('span','sm-io');
+        const overview = overviewData[mode]?.[id]?.[n-1] || [...lastPerRound.values()].map(e=>(mode==='pressure'?'轮'+steps[e[0]].round+' · ':'')+e[n]).join('\n');
+        const display = global ? overview : chosen.at(-1)?.[n];
+        const stack=create('span','sm-stack');
+        stack.append(create('span','sm-values',display||'·'));
+        // Reserve the largest label at this width so connectors stay in place while stepping.
+        for (const label of new Set([overview, ...entries.map(e=>e[n])])) {
+          const reserve=create('span','sm-reserve',label);
+          reserve.setAttribute('aria-hidden','true');
+          stack.append(reserve);
+        }
+        row.append(create('span','sm-field',n===1?'输入':'输出'),stack);btn.append(row);
+      });
+      const target=(entries.find(e=>e[0]===stepIndex) || entries.find(e=>round!==null&&steps[e[0]].round===round) || entries[0]);
+      if(target) btn.addEventListener('click',()=>window.gotoScheduleStep?.(target[0])); else btn.disabled=true;
+      return btn;
+    }
+    function edge(key, extra='') {
+      const [ids,caption]=edges[key]; const el=create('div','sm-link '+extra);
+      const shownIds=ids.includes(stepIndex)?[stepIndex]:ids;
+      el.classList.toggle('sm-active',ids.includes(stepIndex));el.classList.toggle('sm-unused',!ids.length);
+      const pending=!global && ids.length && !ids.some(i=>i<=stepIndex && steps[i].round===round);
+      el.append(create('span','sm-caption',(ids.length?badges(shownIds)+' · ':'')+(pending?pendingEdges[key]:caption)));return el;
+    }
+    function junction(upper) {
+      const keys=upper?['admit','fail']:['added','retried'];
+      const group=create('div', upper?'sm-fork':'sm-merge');
+      const stem=create('div','sm-link sm-stem'+(upper?'':' sm-tip'));
+      const bar=create('div','sm-bar');
+      const halves=create('div','sm-junction');
+      for(const k of keys) {bar.append(create('i',edges[k][0].length?'':'sm-unused'));halves.append(edge(k,upper?'sm-tip sm-control':''));}
+      group.append(...(upper?[stem,bar,halves]:[halves,bar,stem]));return group;
+    }
+    const sched=section('CPU / EngineCore · Scheduler');
+    const branches=create('div','sm-branches');branches.append(station('wait'),station('evict'));
+    const runningGroup=create('div','sm-run-block');
+    runningGroup.append(create('small','','RUNNING 扫描循环 · 有候选才申请槽位，列表为空时直接离开此框'),station('run'),edge('slots','sm-single sm-tip'),station('kv'));
+    sched.append(station('entry'),edge('scan','sm-single sm-tip sm-control'),runningGroup,junction(true),branches,junction(false),station('pack'));
+    const device=section('执行器 / Worker');device.append(station('worker'));
+    const result=section('CPU / EngineCore · Scheduler');result.append(station('feedback'));
+    const ns='http://www.w3.org/2000/svg', svg=document.createElementNS(ns,'svg');
+    svg.setAttribute('class','sm-loop');svg.setAttribute('aria-hidden','true');
+    ['sm-return','sm-head'].forEach(cls=>{const p=document.createElementNS(ns,'path');p.setAttribute('class',cls);svg.append(p);});
+    board.replaceChildren(sched,edge('send','sm-single sm-span sm-tip'),device,edge('report','sm-single sm-span sm-tip sm-control'),result,svg,
+      create('div','sm-cycle',mode==='pressure'?(global || stepIndex>=6?'↶ 07→08 · B 结束，Scheduler 保留 waiting=[A,S,C]，下轮先检查 A。':'↶ 07→08 · 请求状态供下一轮读取。'):(global || stepIndex>=8?'↶ 09 · Scheduler 保留 A、C 的进度，供下一轮读取。':'↶ 09 · 请求状态供下一轮读取。')));
+    loopGeometry();
+  };
+})();
+</script></div>
+  <div class="workbench" id="workbench">
+    <section class="panel" aria-labelledby="trace-title">
+      <header class="panel-head">
+        <div class="title-row"><h2 id="trace-title">调度流向图</h2><span class="tag" id="trace-count"></span></div>
+        <p class="legend">点编号查看当步数值。箭头连接读写对象，方框表示同列操作。前三列位于调度端。</p>
+      </header>
+      <div aria-hidden="true" class="rulers"><span>动作 / 关键对象</span><div class="axis"><b>队列</b><b>账本</b><b>KV</b><b>执行</b></div></div>
+      <ol class="trace" id="trace"></ol>
+    </section>
+    <section class="panel number-flow" aria-label="请求计算量">
+        <div class="title-row"><h3>从缺口到配额</h3><span class="tag" id="table-round"></span></div>
+        <table aria-label="轮初已知长度和计算进度，到快照时的配额">
+          <thead><tr><th scope="col">请求</th><th scope="col">已知</th><th scope="col">轮初已算</th><th scope="col">缺口</th><th scope="col">获配</th></tr></thead>
+          <tbody id="arithmetic"></tbody>
+        </table>
+        <p>教学配置下，缺口 = <code>num_tokens − num_computed_tokens</code>。裁剪后的 <code>num_new_tokens</code> 在 KV 分配成功时写入 <code>num_scheduled_tokens[id]</code>。右列取当前快照，横线表示没有配额记录。S 等待语法编译。</p>
+    </section>
+    <section class="panel readout" aria-label="请求与预算快照">
+      <header><div class="section-kicker"><span id="snapshot-label"></span><span class="tag" id="round-label"></span></div>
+        <h2 id="snapshot-title" aria-live="polite"></h2><p id="detail"></p><p class="equation mono" id="math"></p><div class="sources" id="sources"></div>
+      </header>
+      <div class="ledger-section"><h3>四张本轮清单</h3><div class="list-set" id="buckets"></div></div>
+      <div class="ledger-section"><h3>剩余预算 <span class="tag">/ tokens</span></h3><div class="metrics" id="metrics"></div>
+        <dl class="pairs meter-detail" id="plan"></dl></div>
+      <div class="ledger-section"><h3>请求现在在哪里</h3><dl class="pairs" id="queues"></dl></div>
+      <div class="ledger-section"><h3>请求进度 <span class="tag">/ tokens</span></h3><dl class="pairs" id="progress"></dl>
+        <p class="inline-key">computed 是调度器的计算游标，in_flight 是已安排、尚待回报的量。结果返回时，清单和预算展示本轮留档。</p></div>
+    </section>
+  </div>
+  <section class="refs"><p class="eyebrow">SOURCE NOTES</p><h2>对照源码</h2>
+<details class="reference">
+  <summary>队列里的请求去了哪里？</summary>
+  <dl>
+    <dt>跨轮保留的请求</dt>
+    <dd><code>self.running</code> 存放已准入请求。等待侧先取持有 KV 块的 <code>self.kv_holding_waiting</code>，再取普通 <code>self.waiting</code>。<code>self.deferred_waiting</code> 是标记阻塞或暂跳请求的集合。请求本身在等待队列中，扫描时也可能在本轮暂跳 deque 中等待回填。<a href="https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/core/sched/scheduler.py#L222-L231">成员定义</a></dd>
+    <dt>每次调用新建的四张清单</dt>
+    <dd>续算成功进入 <code>scheduled_running_reqs</code>。从等待队列准入时，按原状态 WAITING / PREEMPTED 分别进入 <code>scheduled_new_reqs</code> / <code>scheduled_resumed_reqs</code>，随后改为 RUNNING。受害请求记入 <code>preempted_reqs</code> 并回到普通等待队列。</dd>
+    <dt>Worker 收到哪些数据</dt>
+    <dd>MRV1 将首次准入编码为 <code>NewRequestData</code>，将续算与恢复合并为 <code>CachedRequestData</code>，用 <code>resumed_req_ids</code> 标出恢复者。MRV2 把恢复者并入新请求格式。输出中的 <code>preempted_req_ids</code> 取自跨调用累计的 <code>self.reset_preempted_req_ids</code>。<a href="https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/core/sched/scheduler.py#L1416-L1446">输出打包</a></dd>
+  </dl>
+</details>
+<details class="reference">
+  <summary>如何从请求长度算出这一轮的 token 数？</summary>
+  <dl>
+    <dt>RUNNING 的进度缺口</dt>
+    <dd><code>num_tokens</code> 含提示和已追加的输出，<code>num_tokens_with_spec</code> 再加候选草稿。初始 <code>num_new_tokens = num_tokens_with_spec + num_output_placeholders − num_computed_tokens</code>。异步输出占位代表尚待回填的位置。按有效的长提示阈值、双预算及 <code>max_model_len − num_computed_tokens − num_sampled_tokens_per_step</code> 截断。<a href="https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/core/sched/scheduler.py#L692-L710">RUNNING 公式</a></dd>
+    <dt>WAITING 的可复用前缀</dt>
+    <dd>进度为零时查询前缀，将本地 <code>num_new_local_computed_tokens</code> 与额外的 <code>num_external_computed_tokens</code> 相加。若需重放前缀尾部，再减去重放量。已有进度直接沿用。普通准入取 <code>num_new_tokens = num_tokens − 有效前缀进度</code>，所以恢复请求也会计入历史输出。异步拉取 KV 时先分配块，本轮新算量为零。<a href="https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/core/sched/scheduler.py#L1093-L1118">WAITING 公式</a></dd>
+    <dt>两本预算与一个请求名额</dt>
+    <dd><code>token_budget</code> 起于 <code>max_num_scheduled_tokens</code>，<code>input_budget</code> 起于 <code>max_num_batched_tokens</code>。本请求最多可排 <code>min(token_budget, input_budget − draft_slots)</code>。若 <code>n = 2</code> 且 <code>draft_slots = 2</code>，成功后分别扣 2 和 4。准入另查 <code>len(running) + num_waiting_for_streaming_input</code> 是否达到 <code>max_num_active_reqs</code>，这里数的是请求。</dd>
+    <dt>本轮计划与模型回报</dt>
+    <dd>分配成功才写 <code>num_scheduled_tokens[id] = n</code>，所有请求求和得到 <code>total_num_scheduled_tokens</code>。构造输出后、返回前，请求的 <code>num_computed_tokens</code> 和 <code>num_in_flight_tokens</code> 各加 n。模型结果返回后扣除在途量，拒绝的草稿可回滚进度。<code>num_output_tokens</code> 数的是已经追加到请求的输出 token。<a href="https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/core/sched/scheduler.py#L1616-L1635">进度更新</a></dd>
+  </dl>
+</details>
+<details class="reference">
+  <summary>跳过、停止扫描和抢占，下一步分别到哪里？</summary>
+  <dl>
+    <dt>跳过并继续扫描</dt>
+    <dd>RUNNING 本次可算量为零时，留在原列表并继续看下一项。等待者若仍在编译语法等，<code>skip_request()</code> 暂存到 <code>step_skipped_waiting</code> 或 <code>step_skipped_kv_holding</code>，扫描结束后按持块情况回填。它们对应流程里的“跳过”分支。<a href="https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/core/sched/scheduler.py#L889-L921">等待队列扫描</a></dd>
+    <dt>退出本阶段</dt>
+    <dd>等待侧请求名额已满、输入位置不足，或队首 KV 分配失败时，结束等待扫描。已经排定的请求仍会进入本轮输出。</dd>
+    <dt>抢占并等待后续轮次恢复</dt>
+    <dd>RUNNING 分配失败且可即时释放时选取受害者。FCFS 取队尾，priority 策略取优先级最低者。若后者本轮已记账，撤销分配记录并退还双预算。释放请求的块、清零计算进度，令 <code>num_preemptions += 1</code>。本轮发生抢占就跳过整个等待阶段，恢复最早在后续轮次发生。<a href="https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/core/sched/scheduler.py#L783-L837">抢占与回滚</a></dd>
+  </dl>
+</details>
+  </section>
+  <footer class="footer">基于 vLLM <a href="https://github.com/vllm-project/vllm/tree/295c062db8a48ea73bbd05d1174cb37d24bf86f9"><code>295c062db8</code></a> 的 V1 基础调度器。数值为教学推演。<a href="https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/engine/core.py#L644-L670">EngineCore 的调度、执行与回写</a></footer>
+</main>
+<script>
+// One snapshot per action. The graph, ledger and source links share this sequence.
+const scenarios = {
+  "normal": {
+    "name": "KV 充足",
+    "subtitle": "A、B 各续算一个位置，S 等待语法编译，C 使用余下的预算。",
+    "steps": [
+      {
+        "round": 1,
+        "title": "建立本轮账本",
+        "detail": "running 的扫描顺序为 A、B。S 的语法还在编译，入队时已登记到 deferred_waiting。",
+        "math": "token_budget = input_budget = 8",
+        "from": "init",
+        "to": "run",
+        "ref": "593–605, 2436–2462",
+        "state": {
+          "running": "A · B",
+          "waiting": "S · C",
+          "held": "∅",
+          "skipped": "∅",
+          "deferred": "S",
+          "carry": "∅",
+          "fresh": "∅",
+          "resumed": "∅",
+          "preempted": "∅",
+          "plan": "∅",
+          "token": 8,
+          "input": 8,
+          "total": null,
+          "computed": "A 14 · B 16 · S 0 · C 0",
+          "flight": "A 0 · B 0 · S 0 · C 0"
+        }
+      },
+      {
+        "round": 1,
+        "title": "A 用已有块续算",
+        "detail": "A 有 15 个已知 token，前 14 个已安排计算。现有块还有空位，登记本轮第一个请求。",
+        "math": "A：15 − 14 = 1；两项预算 8 → 7",
+        "from": "run",
+        "to": "lists",
+        "ref": "692–710, 764–775, 839–846",
+        "state": {
+          "running": "A · B",
+          "waiting": "S · C",
+          "held": "∅",
+          "skipped": "∅",
+          "deferred": "S",
+          "carry": "A",
+          "fresh": "∅",
+          "resumed": "∅",
+          "preempted": "∅",
+          "plan": "A 1",
+          "token": 7,
+          "input": 7,
+          "total": null,
+          "computed": "A 14 · B 16 · S 0 · C 0",
+          "flight": "A 0 · B 0 · S 0 · C 0"
+        }
+      },
+      {
+        "round": 1,
+        "title": "B 跨块续算",
+        "detail": "B 的前 16 个位置占满一块。KV 管理器分配下一块，调度器给 B 登记一个位置。",
+        "math": "B：17 − 16 = 1；两项预算 7 → 6",
+        "from": "kv",
+        "to": "lists",
+        "ref": "692–710, 764–775, 839–846",
+        "state": {
+          "running": "A · B",
+          "waiting": "S · C",
+          "held": "∅",
+          "skipped": "∅",
+          "deferred": "S",
+          "carry": "A · B",
+          "fresh": "∅",
+          "resumed": "∅",
+          "preempted": "∅",
+          "plan": "A 1 · B 1",
+          "token": 6,
+          "input": 6,
+          "total": null,
+          "computed": "A 14 · B 16 · S 0 · C 0",
+          "flight": "A 0 · B 0 · S 0 · C 0"
+        }
+      },
+      {
+        "round": 1,
+        "title": "暂存语法未就绪的 S",
+        "detail": "持有 KV 的等待队列为空，调度器从 waiting 取候选。S 优先于 C，但语法尚未就绪，移入本轮无 KV 的暂存队列，再看 C。",
+        "math": "waiting [S, C] → [C]；预算仍为 6",
+        "from": "wait",
+        "to": "skip",
+        "ref": "888–921, 3201–3205",
+        "state": {
+          "running": "A · B",
+          "waiting": "C",
+          "held": "∅",
+          "skipped": "S",
+          "deferred": "S",
+          "carry": "A · B",
+          "fresh": "∅",
+          "resumed": "∅",
+          "preempted": "∅",
+          "plan": "A 1 · B 1",
+          "token": 6,
+          "input": 6,
+          "total": null,
+          "computed": "A 14 · B 16 · S 0 · C 0",
+          "flight": "A 0 · B 0 · S 0 · C 0"
+        }
+      },
+      {
+        "round": 1,
+        "title": "C 用余额做分块预填充",
+        "detail": "C 的提示长 12，前缀命中为 0。为本轮的前 6 个位置分配成功后，C 从 waiting 进入 running，记入 new。",
+        "math": "C：min(12 − 0, 6) = 6；两项预算 6 → 0",
+        "from": "wait",
+        "to": "lists",
+        "ref": "1107–1118, 1144–1159, 1244–1264, 1332–1367",
+        "state": {
+          "running": "A · B · C",
+          "waiting": "∅",
+          "held": "∅",
+          "skipped": "S",
+          "deferred": "S",
+          "carry": "A · B",
+          "fresh": "C",
+          "resumed": "∅",
+          "preempted": "∅",
+          "plan": "A 1 · B 1 · C 6",
+          "token": 0,
+          "input": 0,
+          "total": null,
+          "computed": "A 14 · B 16 · S 0 · C 0",
+          "flight": "A 0 · B 0 · S 0 · C 0"
+        }
+      },
+      {
+        "round": 1,
+        "title": "将 S 放回 waiting",
+        "detail": "本轮等待扫描结束，按原队列类型回填 S。PRIORITY 队列按优先级重新入堆，S 仍登记在 deferred_waiting。",
+        "math": "waiting = [S]；S 本轮计算量为 0",
+        "from": "skip",
+        "to": "wait",
+        "ref": "1380–1384, 893–899",
+        "state": {
+          "running": "A · B · C",
+          "waiting": "S",
+          "held": "∅",
+          "skipped": "S（已回填）",
+          "deferred": "S",
+          "carry": "A · B",
+          "fresh": "C",
+          "resumed": "∅",
+          "preempted": "∅",
+          "plan": "A 1 · B 1 · C 6",
+          "token": 0,
+          "input": 0,
+          "total": null,
+          "computed": "A 14 · B 16 · S 0 · C 0",
+          "flight": "A 0 · B 0 · S 0 · C 0"
+        }
+      },
+      {
+        "round": 1,
+        "title": "打包本轮计划",
+        "detail": "求和并检查预算。MRV1 把 C 放入新请求数据，把 A、B 放入已有请求数据，同时保留本轮各请求的计算起点。",
+        "math": "total_num_scheduled_tokens = 1 + 1 + 6 = 8",
+        "from": "lists",
+        "to": "output",
+        "ref": "1392–1404, 1429–1446, 1500–1509",
+        "state": {
+          "running": "A · B · C",
+          "waiting": "S",
+          "held": "∅",
+          "skipped": "S（已回填）",
+          "deferred": "S",
+          "carry": "A · B",
+          "fresh": "C",
+          "resumed": "∅",
+          "preempted": "∅",
+          "plan": "A 1 · B 1 · C 6",
+          "token": 0,
+          "input": 0,
+          "total": 8,
+          "computed": "A 14 · B 16 · S 0 · C 0",
+          "flight": "A 0 · B 0 · S 0 · C 0"
+        }
+      },
+      {
+        "round": 1,
+        "title": "发给执行器前推进计数",
+        "detail": "调度器先把各请求的 computed 和 in_flight 加上本轮计划量，再从 schedule() 返回。C 还有 6 个提示位置留给后续轮次。",
+        "math": "computed：A 14→15，B 16→17，C 0→6",
+        "from": "output",
+        "to": "worker",
+        "ref": "1554–1556, 1616–1636",
+        "state": {
+          "running": "A · B · C",
+          "waiting": "S",
+          "held": "∅",
+          "skipped": "∅",
+          "deferred": "S",
+          "carry": "A · B",
+          "fresh": "C",
+          "resumed": "∅",
+          "preempted": "∅",
+          "plan": "A 1 · B 1 · C 6",
+          "token": 0,
+          "input": 0,
+          "total": 8,
+          "computed": "A 15 · B 17 · S 0 · C 6",
+          "flight": "A 1 · B 1 · S 0 · C 6"
+        }
+      },
+      {
+        "round": 1,
+        "title": "消费本轮输出",
+        "detail": "假设 A 采样一个普通 token，B 采样 EOS 后结束并释放块，C 处于中间预填充块，返回空 token 列表。调度器扣回飞行计数，A 的已知长度增至 16。",
+        "math": "A：num_tokens 15→16，computed 仍为 15；C：12 − 6 = 6",
+        "from": "worker",
+        "to": "init",
+        "ref": "2076–2085, 2164–2168, 2223–2245, 2292–2294, 2495–2508",
+        "state": {
+          "running": "A · C",
+          "waiting": "S",
+          "held": "∅",
+          "skipped": "∅",
+          "deferred": "S",
+          "carry": "A · B",
+          "fresh": "C",
+          "resumed": "∅",
+          "preempted": "∅",
+          "plan": "A 1 · B 1 · C 6",
+          "token": 0,
+          "input": 0,
+          "total": 8,
+          "computed": "A 15 · B 17（结束）· S 0 · C 6",
+          "flight": "A 0 · B 0 · S 0 · C 0"
+        }
+      }
+    ]
+  },
+  "pressure": {
+    "name": "KV 紧张与恢复",
+    "subtitle": "A、B 占满仅有的两个数据块。观察 A 的配额怎样退回，以及它在下一轮从哪个位置恢复。",
+    "steps": [
+      {
+        "round": 1,
+        "title": "建立本轮账本",
+        "detail": "A、B 各占一块且没有空闲数据块。running 仍按 A、B 扫描，抢占时按 PRIORITY 选择受害者。",
+        "math": "token_budget = input_budget = 8",
+        "from": "init",
+        "to": "run",
+        "ref": "593–605, 646–651, 785–795",
+        "state": {
+          "running": "A · B",
+          "waiting": "S · C",
+          "held": "∅",
+          "skipped": "∅",
+          "deferred": "S",
+          "carry": "∅",
+          "fresh": "∅",
+          "resumed": "∅",
+          "preempted": "∅",
+          "plan": "∅",
+          "token": 8,
+          "input": 8,
+          "total": null,
+          "computed": "A 14 · B 16 · S 0 · C 0",
+          "flight": "A 0 · B 0 · S 0 · C 0"
+        }
+      },
+      {
+        "round": 1,
+        "title": "A 先占一份计划",
+        "detail": "A 的第 15 个位置在原块内，分配成功。其 computed 仍为 14，调度器暂时给本轮计划记 1。",
+        "math": "A：15 − 14 = 1；两项预算 8 → 7",
+        "from": "run",
+        "to": "lists",
+        "ref": "692–710, 764–775, 839–846",
+        "state": {
+          "running": "A · B",
+          "waiting": "S · C",
+          "held": "∅",
+          "skipped": "∅",
+          "deferred": "S",
+          "carry": "A",
+          "fresh": "∅",
+          "resumed": "∅",
+          "preempted": "∅",
+          "plan": "A 1",
+          "token": 7,
+          "input": 7,
+          "total": null,
+          "computed": "A 14 · B 16 · S 0 · C 0",
+          "flight": "A 0 · B 0 · S 0 · C 0"
+        }
+      },
+      {
+        "round": 1,
+        "title": "B 跨块分配失败",
+        "detail": "B 的第 17 个位置需要第二块，当前空闲块数为 0。按 running 中最大的 (priority, arrival_time) 选出 A，A 的块可立即释放。",
+        "math": "B 需 1 个新块；A.priority = 1 > B.priority = 0",
+        "from": "run",
+        "to": "kv",
+        "ref": "764–795",
+        "state": {
+          "running": "A · B",
+          "waiting": "S · C",
+          "held": "∅",
+          "skipped": "∅",
+          "deferred": "S",
+          "carry": "A",
+          "fresh": "∅",
+          "resumed": "∅",
+          "preempted": "∅",
+          "plan": "A 1",
+          "token": 7,
+          "input": 7,
+          "total": null,
+          "computed": "A 14 · B 16 · S 0 · C 0",
+          "flight": "A 0 · B 0 · S 0 · C 0"
+        }
+      },
+      {
+        "round": 1,
+        "title": "撤销 A 并退还预算",
+        "detail": "从 running、scheduled_running_reqs 和计划映射移除 A，归还先前扣掉的预算。释放其块、把 computed 清零，A 以 PREEMPTED 回到 waiting。",
+        "math": "两项预算 7 + 1 = 8；A：computed 14→0，num_tokens 仍为 15",
+        "from": "kv",
+        "to": "wait",
+        "ref": "797–830, 1589–1614",
+        "state": {
+          "running": "B",
+          "waiting": "A · S · C",
+          "held": "∅",
+          "skipped": "∅",
+          "deferred": "S",
+          "carry": "∅",
+          "fresh": "∅",
+          "resumed": "∅",
+          "preempted": "A",
+          "plan": "∅",
+          "token": 8,
+          "input": 8,
+          "total": null,
+          "computed": "A 0 · B 16 · S 0 · C 0",
+          "flight": "A 0 · B 0 · S 0 · C 0"
+        }
+      },
+      {
+        "round": 1,
+        "title": "B 重试成功，跳过准入",
+        "detail": "B 取到释放的块，登记 1 个位置。本轮已有抢占，即使还剩 7 份预算，整个 WAITING 阶段也会跳过。",
+        "math": "计划 {B: 1}；两项预算 8 → 7",
+        "from": "kv",
+        "to": "lists",
+        "ref": "764–775, 825–846, 888–891",
+        "state": {
+          "running": "B",
+          "waiting": "A · S · C",
+          "held": "∅",
+          "skipped": "∅",
+          "deferred": "S",
+          "carry": "B",
+          "fresh": "∅",
+          "resumed": "∅",
+          "preempted": "A",
+          "plan": "B 1",
+          "token": 7,
+          "input": 7,
+          "total": null,
+          "computed": "A 0 · B 16 · S 0 · C 0",
+          "flight": "A 0 · B 0 · S 0 · C 0"
+        }
+      },
+      {
+        "round": 1,
+        "title": "打包 B 并推进计数",
+        "detail": "本轮总量为 1，输出含 B 的计划和 A 的抢占通知。schedule() 返回前先推进 B 的游标与在途计数。",
+        "math": "B：computed 16→17，in_flight 0→1",
+        "from": "output",
+        "to": "worker",
+        "ref": "1392–1397, 1500–1509, 1554–1556, 1626–1635",
+        "state": {
+          "running": "B",
+          "waiting": "A · S · C",
+          "held": "∅",
+          "skipped": "∅",
+          "deferred": "S",
+          "carry": "B",
+          "fresh": "∅",
+          "resumed": "∅",
+          "preempted": "A",
+          "plan": "B 1",
+          "token": 7,
+          "input": 7,
+          "total": 1,
+          "computed": "A 0 · B 17 · S 0 · C 0",
+          "flight": "A 0 · B 1 · S 0 · C 0"
+        }
+      },
+      {
+        "round": 1,
+        "title": "B 结束并释放两块",
+        "detail": "假设 B 采样 EOS 且满足停止条件。调度器收到结果，清掉其在途计数，释放两块并将 B 移出 running。",
+        "math": "B：in_flight 1→0；可用数据块 0→2",
+        "from": "worker",
+        "to": "init",
+        "ref": "2076–2082, 2164–2168, 2223–2245, 2292–2294, 2499–2508",
+        "state": {
+          "running": "∅",
+          "waiting": "A · S · C",
+          "held": "∅",
+          "skipped": "∅",
+          "deferred": "S",
+          "carry": "B",
+          "fresh": "∅",
+          "resumed": "∅",
+          "preempted": "A",
+          "plan": "B 1",
+          "token": 7,
+          "input": 7,
+          "total": 1,
+          "computed": "A 0 · B 17（结束）· S 0 · C 0",
+          "flight": "A 0 · B 0 · S 0 · C 0"
+        }
+      },
+      {
+        "round": 2,
+        "title": "次轮重建账本",
+        "detail": "新一轮重新初始化四个列表、计划和两项预算。running 为空，按优先级先看 waiting 中仍有 15 个已知 token 的 A。",
+        "math": "waiting = [A, S, C]；两项预算重新置 8",
+        "from": "init",
+        "to": "wait",
+        "ref": "593–605, 646–651, 888–918",
+        "state": {
+          "running": "∅",
+          "waiting": "A · S · C",
+          "held": "∅",
+          "skipped": "∅",
+          "deferred": "S",
+          "carry": "∅",
+          "fresh": "∅",
+          "resumed": "∅",
+          "preempted": "∅",
+          "plan": "∅",
+          "token": 8,
+          "input": 8,
+          "total": null,
+          "computed": "A 0 · B 17（结束）· S 0 · C 0",
+          "flight": "A 0 · B 0 · S 0 · C 0"
+        }
+      },
+      {
+        "round": 2,
+        "title": "A 以 resumed 身份入选",
+        "detail": "A 没有可重用前缀，从 0 开始重算已知序列。分块取前 8 个位置，A 从 waiting 移入 running，旧状态 PREEMPTED 使它归入 resumed。",
+        "math": "A：min(15 − 0, 8) = 8；两项预算 8 → 0",
+        "from": "wait",
+        "to": "lists",
+        "ref": "948–956, 1107–1118, 1158–1159, 1244–1264, 1332–1367",
+        "state": {
+          "running": "A",
+          "waiting": "S · C",
+          "held": "∅",
+          "skipped": "∅",
+          "deferred": "S",
+          "carry": "∅",
+          "fresh": "∅",
+          "resumed": "A",
+          "preempted": "∅",
+          "plan": "A 8",
+          "token": 0,
+          "input": 0,
+          "total": null,
+          "computed": "A 0 · B 17（结束）· S 0 · C 0",
+          "flight": "A 0 · B 0 · S 0 · C 0"
+        }
+      },
+      {
+        "round": 2,
+        "title": "打包恢复计划并推进",
+        "detail": "MRV1 将 A 编入 cached 请求数据，携带恢复标记及块信息。schedule() 返回前把 computed 和 in_flight 同时推进到 8。",
+        "math": "total = 8；A：computed 0→8，in_flight 0→8",
+        "from": "output",
+        "to": "worker",
+        "ref": "1392–1397, 1439–1446, 1554–1556, 1626–1635, 1729–1737",
+        "state": {
+          "running": "A",
+          "waiting": "S · C",
+          "held": "∅",
+          "skipped": "∅",
+          "deferred": "S",
+          "carry": "∅",
+          "fresh": "∅",
+          "resumed": "A",
+          "preempted": "∅",
+          "plan": "A 8",
+          "token": 0,
+          "input": 0,
+          "total": 8,
+          "computed": "A 8 · B 17（结束）· S 0 · C 0",
+          "flight": "A 8 · B 0 · S 0 · C 0"
+        }
+      },
+      {
+        "round": 2,
+        "title": "A 完成首个重算块",
+        "detail": "执行器完成 A 的 8 个输入位置，这一中间块返回空 token 列表。A 留在 running，后续调度从位置 8 继续追赶已知长度 15。",
+        "math": "A：in_flight 8→0；仍需重算 15 − 8 = 7 个位置",
+        "from": "worker",
+        "to": "init",
+        "ref": "2076–2082, 2104–2107, 2495–2499",
+        "state": {
+          "running": "A",
+          "waiting": "S · C",
+          "held": "∅",
+          "skipped": "∅",
+          "deferred": "S",
+          "carry": "∅",
+          "fresh": "∅",
+          "resumed": "A",
+          "preempted": "∅",
+          "plan": "A 8",
+          "token": 0,
+          "input": 0,
+          "total": 8,
+          "computed": "A 8 · B 17（结束）· S 0 · C 0",
+          "flight": "A 0 · B 0 · S 0 · C 0"
+        }
+      }
+    ]
+  }
+};
+
+const byId = (id) => document.getElementById(id);
+const ioExamples = {
+  "normal": [
+    {
+      "up": "EngineCore.step() / Scheduler 实例",
+      "input": "调用参数 throttle_prefills=False。实例内 running=[A,B]、waiting=[S,C]，预算上限各 8。",
+      "action": "schedule() 新建四个本轮列表及计划字典",
+      "result": "四表为空，num_scheduled_tokens={}，两项余额各 8",
+      "down": "schedule() 的 RUNNING 循环",
+      "use": "先取 running[0]，读 A 的请求游标。"
+    },
+    {
+      "up": "Request A / KVCacheManager",
+      "input": "已知 15，computed=14，原块尚有空槽",
+      "action": "算差额 1，allocate_slots(A, 1) 成功后记账",
+      "result": "scheduled_running_reqs=[A]，计划 A:1，余额各 7",
+      "down": "RUNNING 循环处理 B",
+      "use": "B 在同一轮使用剩余的 7 份预算。"
+    },
+    {
+      "up": "Request B / KVCacheManager",
+      "input": "已知 17，computed=16，原块的 16 个槽已满",
+      "action": "allocate_slots(B, 1) 返回一个新数据块",
+      "result": "req_to_new_blocks[B] 记新块，计划 B:1，余额各 6",
+      "down": "schedule() 的 WAITING 循环",
+      "use": "没有抢占。用剩余预算寻找可准入的请求。"
+    },
+    {
+      "up": "waiting / Request S",
+      "input": "队首 S 尚无 grammar，未持有 KV 块",
+      "action": "_handle_blocked_waiting_request() 返回 False，skip_request() 暂存 S",
+      "result": "step_skipped_waiting=[S]，waiting=[C]，预算各 6",
+      "down": "WAITING 循环的 peek_request()",
+      "use": "跳过 S 后查看 C，S 的计划量仍为 0。"
+    },
+    {
+      "up": "Request C / KVCacheManager",
+      "input": "已知 12，命中 0，request_token_budget=6",
+      "action": "裁到 6 并 allocate_slots，成功后将 C 从 waiting 移至 running",
+      "result": "scheduled_new_reqs=[C]，计划 C:6，余额各 0",
+      "down": "schedule() 的等待队列回填段",
+      "use": "预算耗尽，结束准入扫描，处理暂存的 S。"
+    },
+    {
+      "up": "step_skipped_waiting",
+      "input": "无 KV 的暂存请求 [S]，预算各 0",
+      "action": "waiting.prepend_requests(...) 按 PRIORITY 将 S 再次入堆",
+      "result": "waiting=[S]，deferred_waiting 仍包含 S",
+      "down": "Scheduler.waiting / 后续 WAITING 扫描",
+      "use": "保留 S 的候选位置，后续有准入预算时再检查 grammar。"
+    },
+    {
+      "up": "四个本轮列表 / 计划及块表",
+      "input": "new=[C]，running 分类=[A,B]，计划量 [1,1,6]",
+      "action": "构造 NewRequestData、CachedRequestData 及 SchedulerOutput",
+      "result": "total=8，三个请求的计算起点分别为 A 14、B 16、C 0",
+      "down": "_update_after_schedule(output)",
+      "use": "用逐请求计划量推进账本，output 留有本轮的原始起点。"
+    },
+    {
+      "up": "SchedulerOutput / Scheduler.requests",
+      "input": "原起点 A 14、B 16、C 0，计划分别为 1、1、6",
+      "action": "schedule() 调用 _update_after_schedule() 预记进度，再返回 output",
+      "result": "调度侧 computed=15/17/6，in_flight=1/1/6",
+      "down": "EngineCore → model_executor.execute_model",
+      "use": "worker 按原起点组出 A[14]、B[16]、C[0..5]。前向执行时才写 KV。"
+    },
+    {
+      "up": "执行器 / 本轮 SchedulerOutput",
+      "input": "模型结果 A=[普通 token]、B=[EOS]、C=[]，计划 1/1/6",
+      "action": "update_from_output() 扣回在途，追加采样，处理 B 的停止",
+      "result": "in_flight 全部归零，A 已知 16，running=[A,C]，B 块已释放",
+      "down": "下一轮 schedule() 的 RUNNING 循环",
+      "use": "A 可算新采样的位置 15，C 可从位置 6 继续预填充。"
+    }
+  ],
+  "pressure": [
+    {
+      "up": "EngineCore.step() / Scheduler 实例",
+      "input": "调用参数 throttle_prefills=False。实例内 running=[A,B]，空闲块 0。",
+      "action": "schedule() 初始化本轮四表及双预算",
+      "result": "计划为空，两项余额 8，running 仍按 A、B 扫描",
+      "down": "schedule() 的 RUNNING 循环",
+      "use": "先考虑 A，优先级数值用于分配受阻时选受害者。"
+    },
+    {
+      "up": "Request A / KVCacheManager",
+      "input": "序列长 15，computed=14，原块还有空槽",
+      "action": "allocate_slots(A, 1) 成功，登记本轮续算",
+      "result": "scheduled_running_reqs=[A]，计划 A:1，余额各 7",
+      "down": "RUNNING 循环处理 B",
+      "use": "将 B 的下一个位置交给 KV 管理器申请槽位。"
+    },
+    {
+      "up": "Request B / KVCacheManager",
+      "input": "computed=16，需要第 17 个槽，空闲块数为 0",
+      "action": "allocate_slots(B, 1) 返回 None，按 PRIORITY 比较运行请求",
+      "result": "受害者 A 已入本轮计划，且其块可立即释放",
+      "down": "schedule() 的 priority 抢占分支",
+      "use": "先撤销 A 的本轮计划，再执行 _preempt_request(A)。"
+    },
+    {
+      "up": "A 的临时计划 / Request A",
+      "input": "计划 A:1，余额 7，A 持有一个可释放块",
+      "action": "移除 A 的分类及映射，退还 1 个 token 的预算，_preempt_request(A) 释放块、重置游标",
+      "result": "余额各 8，preempted_reqs=[A]，A.computed=0，waiting=[A,S,C]",
+      "down": "B 的 allocate_slots() 重试循环",
+      "use": "B 可申请 A 刚释放的块，A 的 15 个已知 token 保留。"
+    },
+    {
+      "up": "KVCacheManager / preempted_reqs",
+      "input": "空闲一块，B 待算 1，抢占表为 [A]",
+      "action": "allocate_slots(B, 1) 重试成功，有抢占则跳过 WAITING 分支",
+      "result": "scheduled_running_reqs=[B]，计划 B:1，余额各 7",
+      "down": "SchedulerOutput 的构造段",
+      "use": "只打包 B 的计算和 A 的抢占通知。"
+    },
+    {
+      "up": "本轮计划 / reset_preempted_req_ids",
+      "input": "B:1，B 原起点 16，抢占 ID 集合含 A",
+      "action": "打包 output，再由 _update_after_schedule() 预推进 B",
+      "result": "total=1，preempted_req_ids={A}，B.computed=17、in_flight=1",
+      "down": "EngineCore → model_executor.execute_model",
+      "use": "worker 以原起点 16 计算 B 的第 17 个位置，在前向中写 KV。"
+    },
+    {
+      "up": "执行器 / 本轮 SchedulerOutput",
+      "input": "B 返回 EOS，计划 B:1，B 当前占用两块",
+      "action": "update_from_output() 扣回在途，命中停止条件后 _free_request(B)",
+      "result": "B.in_flight=0，running 为空，两个数据块可用",
+      "down": "下一轮 schedule() / KVCacheManager",
+      "use": "新一轮可给等待请求分配块，A 仍以 PREEMPTED 排队。"
+    },
+    {
+      "up": "Scheduler.waiting / SchedulerConfig",
+      "input": "waiting=[A,S,C]，running 为空，空闲块 2",
+      "action": "重新调用 schedule()，重建四表、预算与本轮映射",
+      "result": "两项预算各 8，抢占表为空，waiting 队首是 A",
+      "down": "WAITING 循环的 peek_request()",
+      "use": "本轮允许准入，先取优先级数值最小的 A。"
+    },
+    {
+      "up": "Request A / KVCacheManager",
+      "input": "PREEMPTED，已知 15，命中 0，余额各 8",
+      "action": "分配前 8 个槽，按原状态记入 resumed，再置 RUNNING",
+      "result": "scheduled_resumed_reqs=[A]，计划 A:8，余额各 0",
+      "down": "_make_cached_request_data()",
+      "use": "MRV1 为恢复的 A 打包重新分配的块与起点 0。"
+    },
+    {
+      "up": "cached 请求数据 / 本轮计划",
+      "input": "resumed_req_ids={A}，新块表，原起点 0，计划 A:8",
+      "action": "构造 SchedulerOutput，再推进 A.computed 和在途计数",
+      "result": "total=8，A.computed=8、in_flight=8",
+      "down": "EngineCore → model_executor.execute_model",
+      "use": "worker 按恢复标记更新块表，在位置 0..7 重新前向并写 KV。"
+    },
+    {
+      "up": "执行器 / 本轮 SchedulerOutput",
+      "input": "A 返回空 token 列表，本轮计划 A:8",
+      "action": "update_from_output() 扣回已执行的 8 个在途位置",
+      "result": "A.in_flight=0，computed=8，已知长度仍为 15",
+      "down": "下一轮 schedule() 的 RUNNING 循环",
+      "use": "A 还需重算位置 8..14，未裁剪前需求为 15−8=7。"
+    }
+  ]
+};
+const endpoints = {
+  init: [1, '调度器'], run: [0, 'running'], wait: [0, 'waiting'],
+  skip: [0, '暂跳 deque'], lists: [1, '本轮清单'], kv: [2, 'KV 块'],
+  output: [1, '调度计划'], worker: [3, '执行器']
+};
+const listKeys = [
+  ['carry', '续跑', 'scheduled_running_reqs'], ['fresh', '首次准入', 'scheduled_new_reqs'],
+  ['resumed', '恢复', 'scheduled_resumed_reqs'], ['preempted', '抢占', 'preempted_reqs']
+];
+const schedulerSource = 'https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/core/sched/scheduler.py';
+const storageKey = 'vllm-scheduler-trace-v1';
+const num = (i) => String(i + 1).padStart(2, '0');
+let mode = 'normal';
+let stepIndex = -1;
+let view = 'map';
+
+function element(tag, text, className) {
+  const node = document.createElement(tag);
+  if (text !== undefined) node.textContent = text;
+  if (className) node.className = className;
+  return node;
+}
+function rows(container, pairs) {
+  const dl = byId(container);
+  dl.replaceChildren();
+  for (const [key, value] of pairs) {
+    const term = element('dt');
+    term.append(element('code', key));
+    dl.append(term, element('dd', value, value === '∅' ? 'value empty' : 'value'));
+  }
+}
+function buildTrace() {
+  const {steps} = scenarios[mode];
+  const trace = byId('trace');
+  trace.replaceChildren();
+  for (const [index, step] of steps.entries()) {
+    const item = element('li');
+    if (index === 0 || step.round !== steps[index - 1].round) {
+      item.append(element('div', '第 ' + step.round + ' 轮 · schedule()', 'round'));
+    }
+    const [fromLane, fromName] = endpoints[step.from];
+    const [toLane, toName] = endpoints[step.to];
+    const button = element('button', undefined, 'hop');
+    button.type = 'button';
+    button.dataset.index = index;
+    const verb = element('span', undefined, 'verb');
+    verb.append(element('span', num(index), 'step-number'));
+    const caption = element('span');
+    caption.append(element('strong', step.title), element('small', fromName + ' → ' + toName));
+    verb.append(caption);
+    const rail = element('span', undefined, 'rail');
+    rail.setAttribute('aria-hidden', 'true');
+    rail.classList.toggle('back', fromLane > toLane);
+    rail.classList.toggle('same', fromLane === toLane);
+    rail.classList.toggle('exec', fromLane === 3 || toLane === 3);
+    rail.style.setProperty('--left', (12.5 + Math.min(fromLane, toLane) * 25) + '%');
+    rail.style.setProperty('--right', (87.5 - Math.max(fromLane, toLane) * 25) + '%');
+    rail.style.setProperty('--mid', (12.5 + (fromLane + toLane) * 12.5) + '%');
+    rail.append(element('i'), element('em', num(index)));
+    button.append(verb, rail);
+    item.append(button);
+    trace.append(item);
+  }
+}
+function showSource(ref, id = 'sources') {
+  const box = byId(id);
+  box.replaceChildren(element('span', 'scheduler.py'));
+  for (const range of ref.split(/,\s*/)) {
+    const [first, last] = range.split('–');
+    const link = element('a', range);
+    link.href = schedulerSource + '#L' + first + (last ? '-L' + last : '');
+    box.append(link);
+  }
+}
+function showArithmetic(step) {
+  const {round, state} = step;
+  const initial = round === 1 ? [['A', 15, 14], ['B', 17, 16], ['C', 12, 0]] : [['A', 15, 0], ['C', 12, 0]];
+  const planned = Object.fromEntries(Array.from(state.plan.matchAll(/([A-Z]) (\d+)/g), match => [match[1], match[2]]));
+  byId('table-round').textContent = '第 ' + round + ' 轮';
+  const body = byId('arithmetic');
+  body.replaceChildren();
+  for (const [id, known, computed] of initial) {
+    const tr = element('tr');
+    const header = element('th', id);
+    header.scope = 'row';
+    tr.append(header);
+    const grant = planned[id] ?? (state.preempted === id ? '撤回' : '—');
+    for (const value of [known, computed, known - computed, grant]) tr.append(element('td', value));
+    body.append(tr);
+  }
+}
+function showLedger(state) {
+  const buckets = byId('buckets');
+  buckets.replaceChildren();
+  for (const [key, label, field] of listKeys) {
+    const box = element('div', undefined, key === 'preempted' ? 'bucket last' : 'bucket');
+    const title = element('strong', label + ' ');
+    title.append(element('b', state[key]));
+    box.append(title, element('code', field));
+    buckets.append(box);
+  }
+  const metrics = byId('metrics');
+  metrics.replaceChildren();
+  for (const [key, cap] of [['token', 8], ['input', 8]]) {
+    const value = state[key];
+    const metric = element('div', undefined, 'metric');
+    const tally = element('div');
+    tally.append(element('strong', value), element('small', ' / ' + cap));
+    const gauge = element('div', undefined, 'gauge');
+    gauge.setAttribute('aria-hidden', 'true');
+    for (let i = 0; i < cap; i++) gauge.append(element('i', undefined, i < value ? 'free' : ''));
+    metric.append(element('code', key + '_budget'), tally, gauge);
+    metrics.append(metric);
+  }
+  rows('plan', [['num_scheduled_tokens', state.plan], ['total_num_scheduled_tokens', state.total ?? '待汇总']]);
+  rows('queues', [['running', state.running], ['kv_holding_waiting', state.held], ['waiting', state.waiting],
+    ['step_skipped_waiting', state.skipped], ['deferred_waiting（集合）', state.deferred]]);
+  rows('progress', [['num_computed_tokens', state.computed], ['num_in_flight_tokens', state.flight]]);
+}
+function render() {
+  const {steps, name, subtitle} = scenarios[mode];
+  const global = stepIndex === -1;
+  const overviewIndex = steps.findIndex(step => step.state.total !== null);
+  const step = steps[global ? overviewIndex : stepIndex];
+  byId('map-view').hidden = view !== 'map';
+  byId('workbench').hidden = view !== 'ledger';
+  byId('map-tab').setAttribute('aria-pressed', view === 'map');
+  byId('ledger-tab').setAttribute('aria-pressed', view === 'ledger');
+  byId('io-strip').hidden = global || view !== 'map';
+  if (!global && view === 'map') {
+    const io = ioExamples[mode][stepIndex];
+    byId('io-step').textContent = '第 ' + step.round + ' 轮 / 步骤 ' + num(stepIndex);
+    byId('io-title').textContent = step.title;
+    for (const [field, value] of Object.entries(io)) byId('io-' + field).textContent = value;
+    showSource(step.ref, 'io-sources');
+    if (step.from === 'worker' || step.to === 'worker' || step.from === 'init') {
+      const engineLink = element('a', 'EngineCore.step()');
+      engineLink.href = 'https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/engine/core.py#L644-L673';
+      byId('io-sources').append(engineLink);
+    }
+  }
+  if (view === 'map') window.renderScheduleMap(mode, stepIndex, steps);
+  byId('workbench').classList.toggle('focus', !global);
+  byId('subtitle').textContent = subtitle;
+  byId('mode-indicator').textContent = name + ' / ' + (global ? '全局关系' : '步骤 ' + num(stepIndex) + ' / ' + steps.length);
+  byId('trace-count').textContent = steps.length + ' 个动作';
+  byId('snapshot-label').textContent = global ? '第 1 轮 · 计划快照' : '步骤 ' + num(stepIndex) + ' · 动作后的快照';
+  byId('round-label').textContent = 'ROUND ' + num(step.round - 1);
+  byId('snapshot-title').textContent = global ? '本轮下发 ' + step.state.total + ' 个 token' : step.title;
+  byId('detail').textContent = global ?
+    (mode === 'normal' ? 'A、B 各续算 1 个位置，C 用余下的 6 个开始预填充。S 回到等待队列。' :
+      'A 的配额已退回，只有 B 获得 1 个位置。虽然还剩 7 个 token，本轮发生过抢占，等待队列留到下一轮。') : step.detail;
+  byId('math').textContent = global ? 'num_scheduled_tokens = { ' + step.state.plan.replaceAll(' · ', ', ').replace(/([A-Z]) (\d+)/g, '$1: $2') + ' }' : step.math;
+  showSource(step.ref);
+  showArithmetic(step);
+  showLedger(step.state);
+  document.querySelectorAll('[data-mode]').forEach(button => button.setAttribute('aria-pressed', button.dataset.mode === mode));
+  byId('overview').setAttribute('aria-pressed', global);
+  byId('prev').disabled = stepIndex <= 0;
+  byId('next').disabled = stepIndex === steps.length - 1;
+  document.querySelectorAll('.hop').forEach((button, i) => {
+    if (i === stepIndex) button.setAttribute('aria-current', 'step');
+    else button.removeAttribute('aria-current');
+    button.parentElement.classList.toggle('selected', i === stepIndex);
+  });
+}
+function select(nextMode, nextStep) {
+  const changed = mode !== nextMode;
+  mode = nextMode;
+  stepIndex = Math.max(-1, Math.min(nextStep, scenarios[mode].steps.length - 1));
+  if (changed) buildTrace();
+  render();
+  try { localStorage.setItem(storageKey, JSON.stringify({mode, stepIndex, view})); } catch {}
+}
+try {
+  const saved = JSON.parse(localStorage.getItem(storageKey));
+  if (saved && Object.hasOwn(scenarios, saved.mode) && Number.isInteger(saved.stepIndex)
+      && saved.stepIndex >= -1 && saved.stepIndex < scenarios[saved.mode].steps.length) {
+    mode = saved.mode;
+    stepIndex = saved.stepIndex;
+    view = saved.view === 'ledger' ? 'ledger' : 'map';
+  }
+} catch {}
+window.gotoScheduleStep = (index) => {
+  select(mode, index);
+  byId('controls').scrollIntoView({block:'start'});
+};
+for (const nextView of ['map', 'ledger']) {
+  byId(nextView + '-tab').addEventListener('click', () => {
+    view = nextView;
+    select(mode, stepIndex);
+  });
+}
+document.querySelectorAll('[data-mode]').forEach(btn => btn.addEventListener('click', () => select(btn.dataset.mode, -1)));
+byId('overview').addEventListener('click', () => select(mode, -1));
+byId('prev').addEventListener('click', () => select(mode, stepIndex - 1));
+byId('next').addEventListener('click', () => select(mode, stepIndex + 1));
+byId('trace').addEventListener('click', event => {
+  const button = event.target.closest('button[data-index]');
+  if (!button) return;
+  select(mode, Number(button.dataset.index));
+  if (matchMedia('(max-width:760px)').matches) byId('controls').scrollIntoView({block:'start'});
+});
+buildTrace();
+render();
+</script>
+</body></html>
