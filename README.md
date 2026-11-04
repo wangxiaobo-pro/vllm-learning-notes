@@ -7,6 +7,7 @@
 | 项目 | 内容 | 说明 | HTML 入口 |
 | --- | --- | --- | --- |
 | Transformer 结构与矩阵 | 模型结构、注意力、MLP、逐步矩阵计算 | [transform](transform/README.md) | [transform/index.html](transform/index.html) |
+| 注意力机制逐步演算 | 在 15 幅图上单步追踪头共享、滑动窗口、分块计算、状态递推和压缩 KV | [attention-mechanisms](attention-mechanisms/README.md) | [attention-mechanisms/index.html](attention-mechanisms/index.html) |
 | vLLM-Ascend 启动流程 | 组件初始化清单、26 步启动流程、TP 分片、物理 KV 与调度器 | [vllm-ascend-startup](vllm-ascend-startup/README.md) | [vllm-ascend-startup/index.html](vllm-ascend-startup/index.html) |
 | vLLM-Ascend 图优化 | 首次捕获与后续回放、逐算子底层调用、FIA 动态参数更新与条件性融合 | [vllm-ascend-graph](vllm-ascend-graph/README.md) | [vllm-ascend-graph/index.html](vllm-ascend-graph/index.html) |
 | 权重 CPU Offload / Prefetch | 四份 CPU 权重轮用两个 NPU 静态槽，追踪层输入、输出和预取依赖 | [weight-offload-prefetch](weight-offload-prefetch/README.md) | [weight-offload-prefetch/index.html](weight-offload-prefetch/index.html) |
@@ -29,6 +30,7 @@ vllm-learning-notes/
 ├── index.html                         # 按模块组织的紧凑流程目录
 ├── assets/                            # 首页样式、搜索与模块导航脚本
 ├── transform/                         # Transformer 结构讲解与矩阵计算
+├── attention-mechanisms/              # 注意力机制的逐步演算与动画
 ├── vllm-ascend-startup/                # Ascend 服务启动与组件初始化
 ├── request-lifecycle/                 # 请求接入、推理输出与结束清理
 ├── scheduler/                         # V1 单轮调度、请求分类与 token 记账

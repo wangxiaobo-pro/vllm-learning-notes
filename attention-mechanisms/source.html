@@ -1,0 +1,1428 @@
+<section id="attn-complete-plates" lang="zh-CN">
+  <style>
+    #attn-complete-plates{display:grid;gap:calc(var(--font-size-base)*.6);min-width:0;overflow-wrap:anywhere}
+    #attn-complete-plates .choose{display:flex;align-items:center;flex-wrap:wrap;gap:.35em 1em}
+    #attn-complete-plates .choose label{flex:1 1 14em;min-width:0}
+    #attn-complete-plates .param{display:flex;align-items:center;flex-wrap:wrap;gap:.25em .7em}
+    #attn-complete-plates .param input{flex:1 1 9em;min-width:0}
+    #attn-complete-plates [hidden]{display:none!important}
+    #attn-complete-plates .diagram-host{min-width:0}
+    #attn-complete-plates .plate-svg{display:block;width:100%;font-family:inherit}
+    #attn-complete-plates .refs{display:flex;flex-wrap:wrap;gap:.25em .8em}
+  </style>
+  <div class="choose"><h2>注意力演算</h2><label class="form-label"><span class="sr-only">选择注意力机制</span><select data-p="model" class="form-select"></select></label></div>
+  <div data-p="param" class="param" hidden><label for="attention-parameter" data-p="paramname" class="form-label"></label><input id="attention-parameter" class="form-range" type="range" min="0" step="1" data-p="slider"></div>
+  <div class="viz-controls" role="group" aria-label="计算回放">
+    <button type="button" class="btn btn-primary" data-p="next">执行下一步</button>
+    <button type="button" class="btn" data-p="play" aria-pressed="false">自动执行</button>
+    <button type="button" class="btn" data-p="prev">上一步</button>
+    <button type="button" class="btn btn-ghost" data-p="reset">重置</button>
+  </div>
+  <div role="status" aria-live="polite" aria-atomic="true"><strong data-p="step"></strong><span class="sr-only" data-p="result"></span></div>
+  <div data-p="host" class="diagram-host"></div>
+  <div class="refs text-small" data-p="refs"></div>
+</section>
+<script>
+(()=>{
+  const root=document.getElementById('attn-complete-plates'),el=k=>root.querySelector('[data-p="'+k+'"]');
+  const modelSelect=el('model'),host=el('host'),slider=el('slider');
+  const scenes={},runSteps={};
+   const colors={ink:'var(--foreground)',dim:'var(--muted-foreground)',line:'var(--border)',paper:'var(--background)',soft:'var(--muted)',none:'none'};
+ for(let i=1;i<=6;i++){colors['s'+i]='var(--viz-series-'+i+')';colors['soft'+i]='color-mix(in srgb,var(--viz-series-'+i+') 18%,var(--background))';}
+ const ns='http://www.w3.org/2000/svg',S=(tag,attrs={},txt)=>{const n=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))if(v!=null)n.setAttribute(k,v);if(txt!==undefined)n.textContent=txt;return n;};
+ const palette=k=>colors[k]||k;
+ function painter(svg,w){
+   const put=(tag,props,style={},text)=>{
+     const attrs={...props};
+     for(const [key,value] of Object.entries(style)){
+       if(key==='fill'||key==='stroke')attrs[key]=palette(value);
+       if(key==='sw')attrs['stroke-width']=value;
+       if(key==='rx'||key==='opacity')attrs[key]=value;
+       if(key==='dash')attrs['stroke-dasharray']=value;
+     }
+     const n=S(tag,attrs,text);svg.append(n);return n;
+   };
+   return {w,text:(x,y,str,o={})=>put('text',{x,y,fill:palette(o.tone||'ink'),'font-size':o.size||14,'font-weight':o.weight||400,'text-anchor':o.anchor||'start'},{},str),
+    rect:(x,y,width,height,o={})=>put('rect',{x,y,width,height,rx:0},{fill:'none',stroke:'none',...o}),
+    line:(x1,y1,x2,y2,o={})=>put('line',{x1,y1,x2,y2},{stroke:'line',sw:1,...o}),
+    path:(d,o={})=>put('path',{d},{fill:'none',stroke:'line',sw:1,...o}),
+    circle:(cx,cy,r,o={})=>put('circle',{cx,cy,r},{fill:'none',stroke:'none',...o})
+   };
+ }
+
+  (() => {
+  const b=[2,0,1,1,0,0,1,0], v=[0,4,3,1,8,2,10,6], sub='₀₁₂₃₄₅₆₇₈₉';
+  function fraction(n,d) {
+    const gcd=(a,b)=>b?gcd(b,a%b):a, g=gcd(Math.abs(n),d);
+    return d/g===1?String(n/g):n/g+'/'+(d/g);
+  }
+  function sparse(id,param) {
+    const f=Number(param), block=id==='block', t=block?8-f:f+1, q='q'+sub[t];
+    const group=Math.floor((t-1)/2), chosen=group?'A、'+'ABCD'[group]:'A';
+    const ids=block
+      ? v.map((_,i)=>i+1).filter(j=>j<=t&&(j<=2||Math.floor((j-1)/2)===group))
+      : v.map((_,i)=>i+1).filter(j=>j<=t&&(j>=t-2||(id==='streaming'&&j<=2)));
+    const weights=ids.map(j=>2**b[j-1]);
+    const den=weights.reduce((sum,w)=>sum+w,0);
+    const num=weights.reduce((sum,w,i)=>sum+w*v[ids[i]-1],0);
+    const z=fraction(num,den), values=ids.map(j=>v[j-1]);
+    const selected='{'+ids.join(', ')+'}';
+    const selection=block?'查询块 '+'ABCD'[group]+' 取键块 '+chosen+'，再应用因果约束'
+      :id==='swa'?'窗口宽 3，包含当前 token'
+      :'固定前两个已出现的位置，与近期三个位置取并集';
+    const row={
+      label:block?'选块并应用因果掩码':'确定本拍的可见位置',
+      match:block?'列是键 k':/^(?:上一拍|开始前)/,
+      value:selection+'。'+q+' 可以读取 '+selected+'。'
+    };
+    const softmax={
+      label:'按可见键归一化',
+      match:block?/^q[₁₂₃₄₅₆₇₈] 读取键块/:'当前权重 α',
+      value:'所选位置的 exp(qₜ kⱼ / √1) 为 ['+weights.join(', ')+']，除以总和 '+den+'，得到权重 ['+weights.map(a=>fraction(a,den)).join(', ')+']。'
+    };
+    if(block){
+      row.until='斜线格';row.wide={min:560,x:2,endX:330};
+      softmax.until='头输出 z';softmax.wide={min:560,x:330,right:1};
+    }
+    return [
+      {label:'读取上层表示',match:'上层输入 h',value:'当前 t'+sub[t]+' 的 hₜ=(1,'+b[t-1]+','+v[t-1]+')。各位置使用自己的 bⱼ 和 vⱼ。'},
+      {label:'投影查询、键和值',match:'投影给出 q=1',value:q+'=1，kⱼ=bⱼ ln 2，Vⱼ=vⱼ；当前 kₜ='+['0','ln 2','2 ln 2'][b[t-1]]+'，Vₜ='+v[t-1]+'。'},
+      row,softmax,
+      {label:'混合可见的 V',match:block?'先读 ':'将柱高乘各自的 V',value:'V=['+values.join(', ')+']；zₜ=('+weights.map((a,i)=>a+'×'+values[i]).join(' + ')+')/'+den+'='+z+'。'},
+      {label:'输出投影和残差',match:'头读出为 zₜ',value:'zₜ(1,0,−1)=('+z+', 0, '+fraction(-num,den)+')。加回 hₜ 后得到 ('+fraction(den+num,den)+', '+b[t-1]+', '+fraction(v[t-1]*den-num,den)+')。'}
+    ];
+  }
+  Object.assign(runSteps, {
+    base:()=>[
+      {label:'读取词向量',match:'①',value:'猫 x₁=(1,0)，跑 x₂=(1,1)，跟踪第二个位置。'},
+      {label:'投影 Q、K、V',match:'②',value:'q₂=1；两个键为 0、ln 3；两个值分别为 (2,0)、(0,4)。'},
+      {label:'点积并做 softmax',match:'③',value:'可见位置 {1,2}。点积分数 [0,ln 3] → 指数 [1,3] → 权重 [¼,¾]。'},
+      {label:'按权重缩短两根向量',match:'沿两条加权箭头',value:'¼×(2,0)=(0.5,0)，¾×(0,4)=(0,3)。'},
+      {label:'两向量相加',match:'④',value:'头输出 o₂=(0.5,0)+(0,3)=(0.5,3)。'},
+      {label:'输出投影和残差',match:'⑤',value:'(0.5,3) Wₒ=(3.5,−2.5)，加回 x₂=(1,1) 得到 (4.5,−1.5)。'}
+    ],
+    swa:f=>sparse('swa',f),streaming:f=>sparse('streaming',f),block:f=>sparse('block',f)
+  });
+})();
+
+(()=>{
+  const H=['h₀','h₁','h₂','h₃'],T=['t₁','t₂','t₃','t₄'];
+  const q=['a','−a','2a','−2a'],qn=[1,-1,2,-2];
+  const kv={
+    A:{k:[0,0,1,1],v:[0,2,3,1]},B:{k:[0,0,-1,-1],v:[0,2,4,2]},
+    C:{k:[0,0,1,1],v:[0,4,6,2]},D:{k:[0,0,-1,-1],v:[0,2,2,0]}
+  };
+  const cases={
+    mha:{map:'ABCD',out:['5/3','7/3','18/5','1'],y:'[94/15,74/15]'},
+    mqa:{map:'AAAA',out:['5/3','4/3','9/5','6/5'],y:'[14/3,29/15]'},
+    gqa:{map:'AABB',out:['5/3','4/3','7/5','13/5'],y:'[17/3,2/15]'}
+  };
+  const pidx=p=>Math.max(0,Math.min(3,Number(p)||0));
+  const ls=n=>({'-2':'−2a','-1':'−a','0':'0','1':'a','2':'2a'})[n];
+  const vec=a=>'['+a.join(',')+']';
+  const topLeft={min:570,left:0,right:.49},topRight={min:570,left:.49,right:1};
+  const input={label:'读取隐藏向量',match:'上层输入 X',until:'x₄ 经 W_Q',value:'四个位置各有两个输入特征。当前查询位置 t₄ 的隐藏向量为 (1,1)，它可读取 t₁ 至 t₄。'};
+  const project={label:'投影出 Q 与 KV',match:'x₄ 经 W_Q',value:'令 a=ln 2。x₄ 经查询投影得到 [a,−a,2a,−2a]；组 A 的四个键为 [0,0,1,1]，值为 [0,2,3,1]。'};
+  function head(mode,param){
+    const f=pidx(param),spec=cases[mode],g=spec.map[f],{k,v}=kv[g],s=k.map(key=>key*qn[f]);
+    const floor=Math.min(...s),nums=s.map(value=>2**(value-floor)),den=nums.reduce((a,b)=>a+b);
+    const numerator=nums.map((n,i)=>n+'×'+v[i]).join('+');
+    return [input,project,
+      {label:'接入对应 KV 头',match:'① 查询头选择 KV',until:'本层为每个 token 保存',wide:topLeft,
+        value:'四条线分别接到 '+spec.map.split('').join('、')+'。本次高亮 '+H[f]+'，它用查询 '+q[f]+' 读取组 '+g+'。'},
+      {label:'用查询逐位置打分',match:'② '+H[f]+' 从 KV '+g+' 取值',until:'q·K',wide:topRight,
+        value:'键 K='+vec(k)+'。以 '+q[f]+' 逐项相乘并除以 √1，得到分数 '+vec(s.map(ls))+'。'},
+      {label:'沿位置做 softmax',match:'softmax 权重',until:'权重 × V',wide:topRight,
+        value:'对这一行四项取指数、按行和归一化，'+H[f]+' 的权重为 '+vec(nums)+'/'+den+'。'},
+      {label:'加权读取 V',match:'权重 × V',wide:topRight,
+        value:'组 '+g+' 的 V='+vec(v)+'。'+H[f]+' = ('+numerator+')/'+den+' = '+spec.out[f]+'。'},
+      {label:'拼接并做输出投影',match:'四头拼接 → 输出投影',
+        value:'四个头并行得到 '+vec(spec.out)+'。依次拼接后乘 Wᴼ，t₄ 的 attention 分支输出为 '+spec.y+'。'}
+    ];
+  }
+  function paged(param=3){
+    const j=pidx(param),b=Math.floor(j/2),page=[7,2][b],off=j%2,slot=2*page+off;
+    return [input,project,
+      {label:'定位逻辑块',match:'① 请求的逻辑位置',until:'块表 [7, 2]',
+        value:'本次追踪 '+T[j]+' 的 KV。零基位置 j='+j+'，每块 2 个 token，逻辑块号 floor('+j+'/2)='+b+'，块内偏移 '+off+'。'},
+      {label:'查块表',match:'块表 [7, 2]',until:'② 物理块',
+        value:'table['+b+']='+page+'。查询仍来自 t₄，访问的 KV 位于物理块 '+page+'。'},
+      {label:'读取物理槽',match:'② 物理块',until:/^(?:物理)?块 [27] × 2 \+ 偏移/,
+        value:'展平槽号 = '+page+'×2+'+off+'='+slot+'。头 h₀ 在此槽读到 K='+kv.A.k[j]+'、V='+kv.A.v[j]+'。'},
+      {label:'对四个位置统一归一化',match:'③ h₀ 汇总四个位置',until:'分子相加',
+        value:'逻辑顺序访问槽 [14,15,4,5]。h₀ 的指数权重是 [1,1,2,2]，输出 (1×0+1×2+2×3+2×1)/6=5/3。'},
+      {label:'拼接并做输出投影',match:'四头拼接 → 输出投影',
+        value:'另三个头读出 7/3、18/5、1。四头拼接再乘 Wᴼ，t₄ 的 attention 分支输出为 [94/15,74/15]。'}
+    ];
+  }
+  function flash(){
+    return [
+      {label:'从 X 投影头 h₀',match:'输入 · 头 h₀',until:'V = [0, 2, 3, 1]',wide:{min:585,x:278,right:1},
+        value:'输入 x=(u,w)。头 h₀ 的 q=a·u、k=u、v=w，a=ln 2。第 4 行用 q₄=a，从 K=[0,0,1,1]、V=[0,2,3,1] 读数。'},
+      {label:'定位因果矩阵的第 4 行',match:/^①\s*把分数矩阵/,until:'Ⅰ、Ⅱ 为 Q 块',wide:{min:585,left:0,endX:276},
+        value:'矩阵按 2×2 分块。q₄ 位于下排 Q 块，四个位置均可见，分数依次为 [0,0,a,a]。先处理左边的块 A。'},
+      {label:'块 A 进入片上工作区',match:'时刻 1 · 载入 A',until:'z=0+2=2',
+        value:'A 的 K=[0,0]、V=[0,2]。分数 [0,0]，移去最大值 m=0 后指数为 [1,1]，得 ℓ=2、z=2。'},
+      {label:'保留 A 的三个统计量',match:'带到 B',until:'A 的逐位置分数',
+        value:'把 A 的 m=0、ℓ=2、z=2 传给下一块。下一块可以覆盖片上的临时分数缓冲。'},
+      {label:'换入块 B',match:'时刻 2 · 换入 B',until:'z=3+1=4',
+        value:'B 的 K=[1,1]、V=[3,1]。分数 [a,a]，移去本块最大值 a 后指数为 [1,1]，得 ℓ块=2、z块=4。'},
+      {label:'换基准并合并',match:'对齐最大值，合并统计量',until:'h₀ 输出',
+        value:'新最大值 a，A 的旧统计都乘 exp(0−a)=½。ℓ′=½×2+2=3，z′=½×2+4=5，h₀=z′/ℓ′=5/3。'},
+      {label:'拼接各头再投影',match:/^③\s*各头独立完成/,
+        value:'同理得到另外三头 [7/3,18/5,1]。拼接四头并乘 Wᴼ，t₄ 的 attention 分支输出是 [94/15,74/15]。'}
+    ];
+  }
+  Object.assign(runSteps,{
+    mha:param=>head('mha',param),mqa:param=>head('mqa',param),gqa:param=>head('gqa',param),paged,flash
+  });
+})();
+
+Object.assign(runSteps, {
+  ssm: () => [
+    {label:'从输入算写入值和保留率',value:'x₁=(0,1)、x₂=(1,7/4) → u=(1,7/4)，r=(½,¼)',match:'上层隐藏向量驱动 SSM'},
+    {label:'沿时间递推状态',value:'s₀=0 → s₁=½×0+1=1 → s₂=¼×1+7/4=2',match:'r₁=½，u₁=1'},
+    {label:'把两个读出交给注意力层',value:'y₁=1，y₂=2 → h′₁=(1,1)，h′₂=(1,2)',match:'读出状态，传给下一注意力层'},
+    {label:'投影成 Q、K、V',value:'q₂=1，K=[0,ln 2]，V=[1,2]',match:'分别投影 h′₁、h′₂'},
+    {label:'对合法位置打分并归一化',value:'s=[0,ln 2] → exp(s)=[1,2] → 权重 [⅓,⅔]',match:'q₂ 取回两个位置的 V'},
+    {label:'用权重混合两个 V',value:'z₂=⅓×1+⅔×2=5/3',match:'⅓ × V₁'},
+    {label:'投影回两维',value:'y′₂=(5/3)×(0,3)=(0,5)',match:'输出投影和残差'},
+    {label:'加回注意力层输入',value:'h′₂+y′₂=(1,2)+(0,5)=(1,7)，交给后续子层',match:'加回 attention 输入'}
+  ],
+  kda: () => [
+    {label:'确定矩阵形状和读写顺序',value:'每头状态为 2×1；先衰减、按 k 修正，再用 q 读更新后的状态',match:'每个头维护 S'},
+    {label:'读取两个隐藏向量',value:'x₁=(4,3,10)，x₂=(1,0,5)',match:'隐藏向量产生 q、k、v 和门'},
+    {label:'投影并归一化 q、k',value:'q₁=q₂=(0.8,0.6)，k₁=(0.8,0.6)，k₂=(1,0)，v₁=10，v₂=5',match:'设 x=(a,b,c)'},
+    {label:'由门投影算保留率与写入量',value:'g=(0,ln 3) → α=(½,¼)；Wβ=0 → β=½',match:'逐通道门 α'},
+    {label:'t₁ 写入并读出',value:'S₀=(0,0)ᵀ，δ₁=10 → S₁=(4,3)ᵀ → o₁=5',match:'t₁ 写入空的 2×1 记忆'},
+    {label:'t₂ 逐行衰减旧状态',value:'D₂=diag(½,¼) S₁=(2,0.75)ᵀ',match:'t₂ 衰减两行，再纠正预测误差'},
+    {label:'以 k₂ 预测并求误差',value:'D₂ᵀk₂=2，δ₂=v₂−2=3',match:'预测 D₂ᵀk₂'},
+    {label:'沿 key 方向写回误差',value:'βk₂δ₂ᵀ=(1.5,0)ᵀ → S₂=(3.5,0.75)ᵀ',match:'外积写回 S₂'},
+    {label:'以 q₂ 读取两行',value:'o₂=S₂ᵀq₂=0.8×3.5+0.6×0.75=3.25',match:'用 q₂ 读，再映射回隐藏空间'},
+    {label:'归一化并应用输出门',value:'RMSNorm(3.25)=1，输出门 σ(0)=½，乘门后为 ½',match:'RMSNorm 增益'},
+    {label:'做输出投影',value:'y₂=½×(2,0,−2)=(1,0,−1)',match:'y₂=½×Wₒ'},
+    {label:'加回本层输入',value:'x₂+y₂=(1,0,5)+(1,0,−1)=(2,0,4)，交给后续子层',match:'加回本层输入 x₂'}
+  ]
+});
+
+Object.assign(runSteps, {
+  mla: () => [
+    {label:'压缩内容', match:'压缩内容 ·', value:'3 行隐藏向量乘图中的降维矩阵，得到每个位置共享的 c₁=(1,0)、c₂=(0,2)、c₃=(1,1)。'},
+    {label:'旋转位置键', match:'另投影位置键', value:'三份位置键都从 (1,0) 出发，按 0°、90°、180° 旋转，分别得到 (1,0)、(0,1)、(−1,0)。'},
+    {label:'写缓存、生成查询', match:'合并两路缓存', value:'每个位置保存 (c,kᴿ)。丙生成两个内容查询 √3，头 A 的位置查询为 (−√3,0)，头 B 为 (0,0)。'},
+    {label:'两头打分并读值', match:'按位置算分、归一化', value:'头 A 对三个位置的分数为 [0,0,2]，头 B 为 [0,2,1]。沿各自的位置行做 softmax、乘 V 并求和，得到 2.7870 和 0.3348。'},
+    {label:'输出投影', match:'拼接后做输出投影', value:'将 (A,B) 映射成 (A,B,A+B)，丙的注意力输出约为 (2.7870, 0.3348, 3.1217)。'}
+  ],
+  dsa: () => [
+    {label:'追加缓存槽', match:'按 token 次序追加', value:'甲、乙、丙分别写入槽 1、2、3。每个槽位存一份索引键供粗排，再存 (c,kᴿ) 供主注意力读取。'},
+    {label:'索引器粗排', match:'当前查询先为每个槽位', value:'两颗索引头的贡献分别为 [0.5,0,0] 和 [0,2,1]。同一列相加，三个槽的索引分为 [0.5,2,1]。'},
+    {label:'按 top-2 取缓存', match:'取 top-2 下标', value:'槽 2、3 入选，主头按下标读取它们的 MLA 缓存。槽 1 本次跳过，仍可供后续查询检索。'},
+    {label:'主头重算', match:'主头在入选槽位', value:'在槽 2、3 上，主头 A 用分数 [0,2] 给槽 3 约 88.1% 权重，主头 B 用 [2,1] 给槽 2 约 73.1%。取值结果分别为 2.8808、0.2689。'},
+    {label:'输出投影', match:'拼接后做输出投影', value:'两头的标量按 (A,B,A+B) 投影。丙的注意力输出约为 (2.8808, 0.2689, 3.1497)。'}
+  ],
+  csa: () => [
+    {label:'重叠压缩', match:'①　上层输入', value:'三条摘要分别覆盖 t₁–t₂、t₁–t₄、t₃–t₆。按格内的 1、2 门权重求加权均值，第一坐标依次得到 8/3、2、5/6。'},
+    {label:'索引选 C', match:'②　对摘要算索引分', value:'索引查询 (0,1) 读取归一化后的第二坐标，A、B、C 得分约 0.497、0.632、1.086。top-1 选出 C。'},
+    {label:'合并局部 KV', match:'③　摘要 ＋ 最近原始 KV', value:'C、局部 t₅、t₆ 与 sink 共用分母。主头查询读取第一坐标，softmax 权重依次约为 34.4%、37.8%、13.9%、13.9%。'},
+    {label:'汇总并投影', match:'④　按权重逐维取值', value:'加权 KV 得 (0.6893, 0.9483)。组内取两分量之差 g，再投影成 (g,2g)，得到约 (−0.2589, −0.5179)。'}
+  ],
+  hca: () => [
+    {label:'分组压缩', match:'①　上层输入', value:'t₁–t₃、t₄–t₆ 分成互不重叠的两组。各组按 1∶1∶2 加权，得到原始摘要 A=(2,1)、B=(0.5,1)。'},
+    {label:'读取全部摘要', match:'②　写入摘要队列', value:'RMSNorm 后，A≈(1.265,0.632)，B≈(0.632,1.265)。所有已完成的摘要直接进入主注意力。'},
+    {label:'合并局部 KV', match:'③　摘要 ＋ 最近原始 KV', value:'以同一个分母归一化。A、B、局部 t₅、t₆、sink 的权重分别约为 34.9%、18.6%、26.8%、9.9%、9.9%。'},
+    {label:'汇总并投影', match:'④　按权重逐维取值', value:'加权 KV 得 (0.8271,0.8630)。取 g=o₁−o₂，投影为 (g,2g)，得到约 (−0.0359,−0.0718)。'}
+  ]
+});
+
+  function diagram(svg,w,n) {
+  const whole=S('g'),body=S('g',{'data-diagram':'complete',id:'attention-art'});whole.append(body);svg.append(whole);
+  const layers=Array.from({length:n},(_,i)=>{
+    const layer=S('g',{'data-part':i});
+    body.append(layer);
+    return {layer,p:painter(layer,w),frames:[],title:null};
+  });
+  const duration=1800,clamp=t=>Math.max(0,Math.min(1,t));
+  let height=0,detailHeight=0,opened=false,cut=null,copy=null,lens=null,onSelect=null;
+  const lensBands={};
+  function register(i,cb,opts={}){
+    const ratio=(v,f)=>v==null?f:v>1?v/duration:v;
+    const start=clamp(ratio(opts.delay,0)),span=Math.max(.001,Math.min(1-start,ratio(opts.dur,1-start)));
+    const update=t=>{const u=clamp((t-start)/span);cb(u*u*(3-2*u));};
+    layers[i].frames.push(update);return update;
+  }
+  function transform(i,node,fn,opts){
+    const initial=node.getAttribute('transform')||'';
+    register(i,t=>{
+      if(t>=1){if(initial)node.setAttribute('transform',initial);else node.removeAttribute('transform');}
+      else node.setAttribute('transform',fn(t)+' '+initial);
+    },opts);return node;
+  }
+  const d={w,p:painter(body,w),g:i=>layers[i].p,
+    note:(x,y,s,o={})=>painter(body,w).text(x,y,s,o),
+    stage(i,y,text){
+      const l=layers[i],p=l.p;
+      const h=S('g',{'data-stage-handle':i,class:'cursor-interaction'});l.layer.append(h);
+      const hp=painter(h,w);
+      hp.rect(2,Math.max(0,y-16),w-4,22,{fill:'transparent'});
+      const dot=hp.rect(5,y-13,21,17,{fill:'soft',rx:5});
+      hp.text(15.5,y,String(i+1),{size:12,anchor:'middle'});
+      const label=hp.text(32,y,text,{size:14,weight:500});
+      l.title={dot,label,y};
+      return p;
+    },
+    move:(i,node,dx,dy,opts)=>transform(i,node,t=>'translate('+dx*(1-t)+' '+dy*(1-t)+')',opts),
+    turn:(i,node,cx,cy,a,opts)=>transform(i,node,t=>'rotate('+a*(1-t)+' '+cx+' '+cy+')',opts),
+    grow(i,node,axis='x',opts){
+      const b=node.getBBox(),x=b.x,y=b.y+b.height;
+      return transform(i,node,t=>'translate('+x+' '+y+') scale('+(axis==='x'?t:1)+' '+(axis==='y'?t:1)+') translate('+(-x)+' '+(-y)+')',opts);
+    },
+    trace(i,path,opts){
+      const length=path.getTotalLength(),original=path.getAttribute('stroke-dasharray');
+      register(i,t=>{
+        if(t===1){if(original)path.setAttribute('stroke-dasharray',original);else path.removeAttribute('stroke-dasharray');path.removeAttribute('stroke-dashoffset');}
+        else{path.setAttribute('stroke-dasharray',length+' '+(length+1));path.setAttribute('stroke-dashoffset',(1-t)*length);}
+      },opts);return path;
+    },
+    travel(i,points,opts={}){
+      const node=S('g',{'data-particle':'',visibility:'hidden','pointer-events':'none','aria-hidden':'true'});
+      layers[i].layer.append(node);
+      const p=painter(node,w),tone=opts.tone||'s1';
+      p.circle(0,0,opts.r||4,{fill:tone,stroke:'paper',sw:1.3});
+      if(opts.label)p.text(0,-8,opts.label,{size:12,anchor:'middle',weight:500});
+      const part=points.slice(1).map(([x,y],j)=>Math.hypot(x-points[j][0],y-points[j][1]));
+      const length=part.reduce((a,b)=>a+b,0);
+      register(i,t=>{
+        if(t<=0||t>=1){node.setAttribute('visibility','hidden');return;}
+        let distance=length*t,j=0;
+        while(j<part.length-1&&distance>part[j])distance-=part[j++];
+        const u=part[j]?distance/part[j]:1,[x,y]=points[j],[tx,ty]=points[j+1];
+        node.setAttribute('transform','translate('+(x+u*(tx-x))+' '+(y+u*(ty-y))+')');node.setAttribute('visibility','visible');
+      },opts);return node;
+    },
+    change:(i,cb,opts)=>register(i,cb,opts),
+    onSelect:fn=>{onSelect=fn;},
+    lens:(i,from,to)=>{lensBands[i]=[from,to];},
+    finish:h=>{height=h;},
+    apply(i,t){if(i>=0)for(const f of layers[i].frames)f(t);},
+    focus(i){
+      if(onSelect)onSelect(i);
+      layers.forEach((l,j)=>{
+        if(!l.title)return;
+        l.title.dot.setAttribute('fill',i===j?colors.soft1:colors.soft);
+        l.title.dot.setAttribute('stroke',i===j?colors.s1:'none');
+        if(i===j){l.layer.setAttribute('data-run-focus',i);l.layer.setAttribute('data-anchor',l.title.label.textContent);}
+        else{l.layer.removeAttribute('data-run-focus');l.layer.removeAttribute('data-anchor');}
+      });
+    },
+    inspect(i,enable){
+      if(!lens){
+        const defs=S('defs'),clip=S('clipPath',{id:'live-crop'});
+        cut=S('rect',{x:0,y:0,width:w});clip.append(cut);defs.append(clip);svg.prepend(defs);
+        lens=S('g',{'data-detail':'','aria-hidden':'true','pointer-events':'none'});
+        copy=S('use',{href:'#attention-art'});const crop=S('g',{'clip-path':'url(#live-crop)'});crop.append(copy);lens.append(crop);
+        const p=painter(lens,w);
+        p.line(5,detailHeight+5,w-5,detailHeight+5,{stroke:'line'});
+        p.text(6,detailHeight+24,'全流程 · 点图中步骤可重播',{size:12,tone:'dim'});
+        svg.append(lens);
+      }
+      opened=i>=0&&enable;
+      const pad=opened?detailHeight+36:0;
+      if(opened){
+        const from=lensBands[i]?.[0]??Math.max(0,layers[i].title.y-16);
+        const to=lensBands[i]?.[1]??(layers[i+1]?layers[i+1].title.y-19:height);
+        cut.setAttribute('height',Math.min(detailHeight,Math.max(20,to-from+2)));
+        copy.setAttribute('transform','translate(0 '+(-from)+')');
+      }
+      lens.setAttribute('display',opened?'inline':'none');
+      whole.setAttribute('transform','translate(0 '+pad+')');
+      svg.setAttribute('viewBox','0 0 '+w+' '+(height+pad));svg.style.height=(height+pad)+'px';
+    },
+    activate(fn){body.addEventListener('click',e=>{
+      const part=e.target.closest('[data-part]');if(part)fn(Number(part.dataset.part));
+    });},
+    ready(){
+      layers.forEach((l,i)=>{
+        if(!l.title||!l.frames.length)throw new Error('缺少执行阶段 '+(i+1));
+        l.layer.setAttribute('data-motions',l.frames.length);
+        for(const f of l.frames)f(1);
+      });
+      detailHeight=Math.ceil(Math.max(...layers.map((l,i)=>{
+        const band=lensBands[i];return band?band[1]-band[0]+2:(layers[i+1]?.title.y??(height+18))-l.title.y+2;
+      })));
+      return height;
+    }
+  };
+  return d;
+}
+
+  (()=>{
+  const token=['t₁','t₂','t₃','t₄'],v=[0,2,3,1],k=[0,0,1,1],q=['0','0','a','a'];
+  const tx=(p,x,y,s,o={})=>p.text(x,y,s,{size:13,...o});
+  const mid=(p,x,y,s,o={})=>tx(p,x,y,s,{anchor:'middle',...o});
+  const box=(p,x,y,w,h,fill='soft',stroke='none',rx=3)=>p.rect(x,y,w,h,{fill,stroke,rx});
+  const edge=(p,points,c='line',sw=1.2)=>p.path(points.map(([x,y],i)=>(i?'L':'M')+x+' '+y).join(' '),{stroke:c,sw,fill:'none'});
+  function row(d,p,y,l,values,tone=1){
+    const left=43,width=(d.w-left-8)/values.length;
+    tx(p,6,y+15,l,{tone:'dim',size:12});
+    return values.map((v,i)=>{
+      const x=left+i*width;box(p,x,y,width-3,21,'soft'+tone);
+      return mid(p,x+(width-3)/2,y+15,String(v),{size:13});
+    });
+  }
+  function inputs(d,paged){
+    const p=d.stage(0,17,paged?'从上层取四个隐藏向量':'把隐藏向量投影成 Q、K、V');
+    const start=43,w=(d.w-start-8)/4;
+    token.forEach((t,i)=>mid(p,start+(i+.5)*w,40,t,{tone:'dim',size:12}));
+    const xs=row(d,p,46,'X',['(0,0)','(0,2)','(1,3)','(1,1)']);
+    xs.forEach((n,i)=>d.move(0,n,0,-14,{delay:.07*i,dur:.65}));
+    const b=paged?d.stage(1,91,'投影查询、键和值 · 头 h₀'):p,top=paged?101:76,i=paged?1:0;
+    tx(b,7,top+10,'x=(u,w)　a=ln 2　dₖ=1',{tone:'dim',size:12});
+    [q,k,v].forEach((values,r)=>row(d,b,top+16+r*24,['Q=au','K=u','V=w'][r],values,r===2?2:1).forEach((n,j)=>{
+      d.move(i,n,0,-16,{delay:(paged?.02:.22)+r*.12+j*.025,dur:.42});
+    }));
+    if(paged){tx(b,7,top+107,'当前 x₄ → 四头 Q = [a, −a, 2a, −2a]',{size:12});}
+    return top+(paged?136:118);
+  }
+  function output(d,y){
+    const p=d.stage(6,y,'四头拼接 · 投影到残差分支');
+    const values=['5/3','7/3','18/5','1'],left=43,ww=(d.w-left-8)/4;
+    values.forEach((_,i)=>mid(p,left+(i+.5)*ww,y+22,'h'+['₀','₁','₂','₃'][i],{size:12,tone:'dim'}));
+    row(d,p,y+27,'o',values,3);
+    tx(p,6,y+68,'Wᴼ(o) = (o₀+o₂+o₃,  o₁+o₂−o₃)',{size:13});
+    row(d,p,y+81,'y₄',['94/15','74/15'],3).forEach((n,j)=>d.move(6,n,0,-12,{delay:.64+j*.09,dur:.22}));
+    for(let j=0;j<4;j++){
+      const x=left+(j+.5)*ww;
+      const tos=j===0?[0]:j===1?[1]:[0,1];
+      tos.forEach(dest=>d.travel(6,[[x,y+49],[x,y+54],[left+(dest+.5)*ww*2,y+76],[left+(dest+.5)*ww*2,y+80]],{delay:.09*j,dur:.55,tone:'s3'}));
+    }
+    d.finish(y+112);
+  }
+  function paged(d,f){
+    const w=d.w,b=Math.floor(f/2),off=f%2,phys=[7,2][b],slot=2*phys+off;
+    let y=inputs(d,true);
+    const p=d.stage(2,y,'逻辑位置 → 块号与偏移');
+    const left=8,cw=(w-16)/4,cx=i=>left+(i+.5)*cw;
+    for(let g=0;g<2;g++){
+      box(p,left+2*g*cw,y+11,2*cw-4,49,g===b?'soft1':'soft',g===b?'s1':'line');
+      mid(p,left+(2*g+1)*cw-2,y+27,'逻辑块 '+g,{size:12});
+    }
+    for(let j=0;j<4;j++){
+      if(j===f)box(p,left+j*cw+4,y+32,cw-10,24,'paper','s1');
+      mid(p,cx(j)-2,y+48,token[j]+' · '+(j%2),{weight:j===f?500:400});
+    }
+    const locator=box(p,left+f*cw+4,y+32,cw-10,24,'none','s1');
+    d.change(2,t=>{
+      const enter=Math.min(1,2*t),pick=Math.max(0,2*t-1);
+      locator.setAttribute('x',left+2*b*cw*enter+off*cw*pick+4);
+      locator.setAttribute('width',(4-2*enter-pick)*cw-10);
+    });
+    tx(p,8,y+80,'j='+f+'　⌊j/2⌋='+b+'　j mod 2='+off,{size:13});
+    d.travel(2,[[cx(f),y+8],[cx(f),y+32]],{tone:'s1'});
+    const s3=y+110,t=d.stage(3,s3,'查块表 · 每个逻辑块指向一个物理块');
+    const tableX=[w*.26,w*.74],tableW=Math.min(150,w*.42);
+    for(let g=0;g<2;g++){
+      box(t,tableX[g]-tableW/2,s3+11,tableW,29,b===g?'soft1':'soft',b===g?'s1':'line');
+      mid(t,tableX[g],s3+31,'table['+g+']  →  '+[7,2][g]);
+    }
+    const selected=tableX[b];
+    d.travel(3,[[cx(f),y+60],[cx(f),y+89],[selected,y+89],[selected,s3+10]],{tone:'s1'});
+    const s4=s3+89,mem=d.stage(4,s4,'从物理 KV 缓存取值');
+    const bw=(w-43)/8,px=n=>38+(n+.5)*bw,grid=s4+23;
+    const pts=[[selected,s3+41],[selected,s3+54],[w-4,s3+54],[w-4,grid-7],[px(phys),grid-7],[px(phys),grid]];
+    const line=edge(t,pts,'s2',1.7);d.trace(3,line,{delay:.3,dur:.65});d.travel(3,pts,{delay:.33,dur:.6,tone:'s2'});
+    tx(mem,6,grid+14,'块',{size:12});tx(mem,6,grid+36,'偏 0',{size:12});tx(mem,6,grid+58,'偏 1',{size:12});
+    for(let j=0;j<8;j++){
+      const x=px(j)-bw/2+1;
+      box(mem,x,grid,bw-2,65,(j===2||j===7)?'paper':'soft',j===phys?'s2':'line',2);
+      mid(mem,px(j),grid+14,String(j),{size:12,tone:'dim'});
+      for(let r=0;r<2;r++){
+        const jj=j===7?r:j===2?r+2:-1,ry=grid+20+22*r;
+        if(jj===f)box(mem,x+1,ry,bw-4,21,'soft2','s2');
+        mid(mem,px(j),ry+15,jj<0?'·':token[jj],{size:12});
+      }
+    }
+    const at=[px(phys),grid+30+off*22],dst=[w-52,grid+92];
+    d.lens(3,s3-15,grid+68);
+    const adr=phys+'×2+'+off+' = 槽 '+slot;
+    tx(mem,7,grid+93,adr,{weight:500});
+    box(mem,w-104,grid+74,97,28,'soft2','s2');
+    mid(mem,dst[0],grid+93,'K='+k[f]+'　V='+v[f],{size:13});
+    d.travel(4,[at,[at[0],grid+68],[dst[0],grid+68],dst],{tone:'s2'});
+    d.lens(4,s4-16,grid+108);
+    const s5=grid+132,s=d.stage(5,s5,'按逻辑顺序归一化 · 读四个 V');
+    const col=(w-56)/4,cc=j=>48+(j+.5)*col;
+    tx(s,6,s5+28,'槽',{size:12,tone:'dim'});tx(s,6,s5+66,'α',{size:12,tone:'dim'});
+    for(let j=0;j<4;j++){
+      const x=cc(j),ew=[1,1,2,2][j],h=ew*12;
+      mid(s,x,s5+28,String([14,15,4,5][j]),{size:12});
+      const bar=box(s,x-9,s5+67-h,18,h,'s1');
+      d.grow(5,bar,'y',{delay:.06*j,dur:.54});
+      mid(s,x,s5+84,ew+'/6',{size:12});
+    }
+    row(d,s,s5+91,'× V',v,2);
+    tx(s,8,s5+135,'o₀ = (0 + 2 + 6 + 2) / 6 = 5/3',{weight:500});
+    output(d,s5+166);
+  }
+  function flash(d){
+    const w=d.w,y=inputs(d,false),p=d.stage(1,y,'因果分数矩阵 · 每块 2×2');
+    const cell=24,gap=4,left=32,top=y+37,off=j=>j*cell+(j>=2?gap:0);
+    const sc=[['0','×','×','×'],['0','0','×','×'],['0','0','a','×'],['0','0','a','a']];
+    [0,1].forEach(j=>mid(p,left+off(j*2)+cell,y+28,'KV '+(j?'B':'A'),{size:12}));
+    for(let i=0;i<4;i++){
+      mid(p,15,top+off(i)+16,'q'+['₁','₂','₃','₄'][i],{size:12});
+      for(let j=0;j<4;j++){
+        const x=left+off(j),yy=top+off(i);box(p,x,yy,cell-1,cell-1,j>i?'paper':i===3?(j<2?'soft1':'soft2'):'soft');
+        mid(p,x+cell/2,yy+16,sc[i][j],{size:12,tone:j>i?'dim':'ink'});
+      }
+    }
+    for(let i=0;i<2;i++)for(let j=0;j<2;j++)box(p,left+off(2*j)-1,top+off(2*i)-1,2*cell+1,2*cell+1,'none',i===1?(j?'s2':'s1'):'line');
+    const marker=box(p,left,top+off(3),cell*2,cell,'none','s1');
+    d.change(1,t=>{marker.setAttribute('x',left+(2*cell+gap)*t);marker.setAttribute('stroke',t>.5?colors.s2:colors.s1);});
+    const side=left+4*cell+gap+12;
+    ['查询块 Ⅰ　q₁, q₂','查询块 Ⅱ　q₃, q₄','×　屏蔽未来','q₄　[0,0 | a,a]'].forEach((v,j)=>tx(p,side,top+15+j*23,v,{size:12,tone:j===3?'ink':'dim'}));
+    const s2=top+133,s=d.stage(2,s2,'块 A → SRAM · 算局部 softmax 统计');
+    const tx1=8,hw=Math.min(146,w*.34),xx=tx1+hw+30,ww=w-xx-8,memY=s2+36;
+    tx(s,tx1,s2+26,'HBM · KV 块',{size:12,tone:'dim'});tx(s,xx,s2+26,'SRAM · 同一缓冲区',{size:12,tone:'dim'});
+    const blocks=[['A','0,0','0,2'],['B','1,1','3,1']];
+    blocks.forEach(([name,key,val],j)=>{
+      const yy=memY+j*57,col=j+1;
+      box(s,tx1,yy,hw,49,'soft'+col,'s'+col);
+      mid(s,tx1+hw/2,yy+19,name+' · '+(j?'t₃ t₄':'t₁ t₂'),{weight:500});
+      mid(s,tx1+hw/2,yy+38,'K '+key+' | V '+val,{size:11});
+    });
+    box(s,xx,memY,ww,106,'soft','line');
+    const liveBlock=box(s,xx+5,memY+5,ww-10,30,'soft2','s2');
+    const name=mid(s,xx+ww/2,memY+25,'B · t₃ t₄',{weight:500});
+    const line1=tx(s,xx+7,memY+54,'',{size:12}),line2=tx(s,xx+7,memY+76,'',{size:12}),line3=tx(s,xx+7,memY+97,'',{size:12});
+    function chip(j,phase=1){
+      if(j<0){name.textContent='等待 KV';liveBlock.setAttribute('fill',colors.soft);liveBlock.setAttribute('stroke',colors.line);
+        line1.textContent='q₄ = a';line2.textContent='';line3.textContent='';return;}
+      name.textContent=j?'B · t₃ t₄':'A · t₁ t₂';
+      liveBlock.setAttribute('fill',colors['soft'+(j+1)]);liveBlock.setAttribute('stroke',colors['s'+(j+1)]);
+      line1.textContent=phase>.12?'q₄K = '+(j?'[a,a]':'[0,0]'):'q₄ = a';
+      line2.textContent=phase>.36?'exp(s−m) = [1,1]':'';
+      line3.textContent=phase>.85?'Σ exp·V = '+(j?'3+1 = 4':'0+2 = 2'):phase>.61?'指数 × V = '+(j?'[3,1]':'[0,2]'):'';
+    }
+    d.onSelect(i=>chip(i<4?0:1));
+    // The two transfers write the same visible register. The original HBM source stays in place.
+    for(const [stage,j] of [[2,0],[4,1]]){
+      const cc=j+1,cy=memY+j*57+24,group=d.g(stage),yy=memY+19;
+      const cargo=S('g',{'data-tile-transfer':j,'visibility':'hidden'});name.parentNode.append(cargo);
+      const c=painter(cargo,w),tw=Math.min(65,hw-8);
+      box(c,-tw/2,-11,tw,22,'soft'+cc,'s'+cc);mid(c,0,4,'KV '+blocks[j][0],{size:12});
+      const route=[[tx1+hw,cy],[xx-12,cy],[xx-12,yy],[xx+3,yy]];
+      edge(group,route,'s'+cc,1.2);
+      d.change(stage,t=>{
+        if(t<.52)chip(j===0?-1:0);
+        else chip(j,Math.min(1,(t-.52)/.48));
+        if(t<.035||t>=.98){cargo.setAttribute('visibility','hidden');return;}
+        cargo.setAttribute('visibility','visible');
+        const sx=tx1+hw/2,ex=xx+ww/2;
+        cargo.setAttribute('transform','translate('+(sx+(ex-sx)*t)+' '+(cy+(yy-cy)*t-10*Math.sin(Math.PI*t))+')');
+      });
+    }
+    const s3=memY+137,reg=d.stage(3,s3,'A 的统计量留在寄存器');
+    row(d,reg,s3+11,'A',['m = 0','ℓ = 2','z = 2'],1);
+    d.change(3,()=>chip(0));
+    const cw=(w-51)/3;
+    ['最大分数','指数和','加权值和'].forEach((v,j)=>mid(reg,43+(j+.5)*cw,s3+49,v,{size:12,tone:'dim'}));
+    for(let j=0;j<3;j++)d.travel(3,[[xx+ww/2,memY+107],[xx+ww/2,memY+117],[43+(j+.5)*cw,memY+117],[43+(j+.5)*cw,s3+12]],{tone:'s1',delay:.09*j,dur:.6});
+    const s4=s3+78,b=d.stage(4,s4,'块 B 覆盖 SRAM · 用同一查询再算');
+    d.lens(4,s2+11,memY+113);
+    row(d,b,s4+11,'B',['m = a','ℓ = 2','z = 4'],2).forEach(n=>d.move(4,n,0,-9,{delay:.65,dur:.35}));
+    const s5=s4+63,m=d.stage(5,s5,'对齐最大值 · 合并分母和分子');
+    tx(m,8,s5+24,'m′=max(0,a)=a　　旧块系数 e⁻ᵃ=½',{size:13});
+    const bx=80,maxW=w-bx-60;
+    for(let r=0;r<2;r++){
+      const yy=s5+40+r*32,old=2,add=r?4:2,unit=maxW/6;
+      tx(m,8,yy+12,r?'分子 z′':'分母 ℓ′',{size:12});
+      const a=box(m,bx,yy,unit,15,'s1'),bb=box(m,bx+unit,yy,unit*add,15,'s2');
+      const end=tx(m,w-54,yy+13,r?'1+4=5':'1+2=3',{size:12});
+      d.change(5,t=>{
+        const ww=(old-Math.min(1,t*2))*unit;
+        a.setAttribute('width',ww);bb.setAttribute('x',bx+ww);bb.setAttribute('width',Math.max(0,Math.min(1,t*2-1))*unit*add);
+        end.setAttribute('visibility',t>=.85?'visible':'hidden');
+      });
+    }
+    tx(m,8,s5+116,'h₀ = z′ / ℓ′ = 5/3',{weight:500});
+    output(d,s5+147);
+  }
+  Object.assign(scenes,{flash,paged});
+})();
+
+(()=>{
+  const sub='₀₁₂₃₄₅₆₇₈₉', H=['h₀','h₁','h₂','h₃'], aNames={'-2':'−2a','-1':'−a','0':'0','1':'a','2':'2a'};
+  const hval=[[0,0],[0,2],[1,3],[1,1]],Q=[1,-1,2,-2];
+  const kv={
+    A:{k:[0,0,1,1],v:[0,2,3,1],proj:['u','w']},B:{k:[0,0,-1,-1],v:[0,2,4,2],proj:['−u','u+w']},
+    C:{k:[0,0,1,1],v:[0,4,6,2],proj:['u','2w']},D:{k:[0,0,-1,-1],v:[0,2,2,0],proj:['−u','w−u']}
+  };
+  const configs={
+    mha:{m:'ABCD',o:['5/3','7/3','18/5','1'],y:'[94/15, 74/15]'},
+    mqa:{m:'AAAA',o:['5/3','4/3','9/5','6/5'],y:'[14/3, 29/15]'},
+    gqa:{m:'AABB',o:['5/3','4/3','7/5','13/5'],y:'[17/3, 2/15]'}
+  };
+  const B=[2,0,1,1,0,0,1,0],V=[0,4,3,1,8,2,10,6];
+  const clamp=(v,low,high)=>Math.min(high,Math.max(low,v));
+  const sum=a=>a.reduce((v,i)=>v+i,0);
+  const gcd=(a,b)=>b?gcd(b,a%b):Math.abs(a);
+  const frac=(n,d)=>{const g=gcd(n,d);return (d/g===1?String(n/g):n/g+'/'+(d/g)).replace('-','−');};
+  const rect=(p,x,y,w,h,fill='soft',stroke='none',sw=1,rx=4)=>p.rect(x,y,w,h,{fill,stroke,sw,rx});
+  const tx=(p,x,y,s,opt={})=>p.text(x,y,String(s),{size:13,anchor:'middle',...opt});
+  const lf=(p,x,y,s,opt={})=>tx(p,x,y,s,{anchor:'start',...opt});
+  const ln=(p,x,y,xx,yy,stroke='line',sw=1)=>p.line(x,y,xx,yy,{stroke,sw});
+  const path=(p,points,stroke='s1',sw=1.6)=>p.path(points.map(([x,y],i)=>(i?'L':'M')+x+' '+y).join(' '),{fill:'none',stroke,sw});
+  const cell=(p,c,y,w,h,value,active=false,tone=1)=>{
+    const b=rect(p,c-w/2,y,w,h,active?'soft'+tone:'soft',active?'s'+tone:'line',active?1.5:1);
+    const t=tx(p,c,y+h/2+4.5,value,{weight:active?500:400});
+    return [b,t];
+  };
+  const steps=(w,n,pad=8)=>Array.from({length:n},(_,i)=>pad+(w-2*pad)*(i+.5)/n);
+  const animateMove=(d,i,nodes,dx,dy,opts={})=>nodes.forEach(node=>d.move(i,node,dx,dy,opts));
+  const travel=(d,i,pts,delay=0,dur=.6,tone='s1')=>d.travel(i,pts,{delay,dur,tone});
+  const dashed=(p,x,y,w,h,stroke='line')=>p.rect(x,y,w,h,{fill:'none',stroke,dash:'4 3',rx:3,sw:1.1});
+  function bars(d,i,y,indices,numbers,den,show){
+    const w=d.w,p=d.g(i),c=steps(w,indices.length),slot=(w-16)/indices.length;
+    const base=y+65;
+    ln(p,8,base,w-8,base);
+    indices.forEach((j,col)=>{
+      const active=show(col),ratio=active?numbers[col]/den:0;
+      const h=43*ratio,barWidth=Math.min(38,slot*.45);
+      tx(p,c[col],base+14,'t'+sub[j],{size:12,tone:active?'ink':'dim'});
+      if(!active){tx(p,c[col],base-5,'·',{tone:'dim'});return;}
+      const bar=rect(p,c[col]-barWidth/2,base-h,barWidth,h,'s1','none',1,2);
+      d.grow(i,bar,'y',{delay:.035*col,dur:.62});
+      const pct=tx(p,c[col],base-h-4,frac(numbers[col],den),{size:12,weight:500});
+      d.move(i,pct,0,Math.min(12,h*.5),{delay:.035*col,dur:.62});
+    });
+    return base+16;
+  }
+  function merge(d,i,y,vals,ns,den,keep,name){
+    const p=d.g(i),w=d.w,c=steps(w,vals.length),slot=(w-16)/vals.length;
+    const cx=w/2,mid=y+53;
+    const entries=vals.map((v,col)=>keep(col)?ns[col]*v:0),total=sum(entries),selected=vals.map((_,j)=>j).filter(keep);
+    vals.forEach((v,col)=>{
+      const active=keep(col),cy=y+10;
+      const bw=Math.min(slot-3,76);
+      rect(p,c[col]-bw/2,cy-10,bw,21,active?'soft2':'soft','none');
+      tx(p,c[col],cy+5,active?ns[col]+'×'+v:'·',{size:12,tone:active?'ink':'dim'});
+      if(!active)return;
+      const endpoint=cx+clamp((c[col]-cx)*.12,-31,31);
+      const points=[[c[col],cy+13],[c[col],cy+19],[endpoint,mid-10]];
+      const edge=path(p,points,'line',1.1);d.trace(i,edge,{delay:.02*col,dur:.42});
+      travel(d,i,points,.07+.035*col,.55,'s2');
+    });
+    const bw=Math.min(w-18,220);
+    rect(p,cx-bw/2,mid-9,bw,25,'soft2','s2');
+    const value=tx(p,cx,mid+8,'',{size:14,weight:500});
+    d.change(i,t=>{
+      const n=clamp(Math.floor(t*(selected.length+1)),0,selected.length);
+      const current=sum(selected.slice(0,n).map(col=>entries[col]));
+      const raw=total+'/'+den,reduced=frac(total,den);
+      value.textContent=t>=.999?name+' = '+raw+(raw===reduced?'':' = '+reduced):'Σ = '+current+' / '+den;
+    });
+    return mid+18;
+  }
+  function heads(d,param,kind){
+    const f=clamp(Math.floor(Number(param)||0),0,3),cfg=configs[kind],g=cfg.m[f],data=kv[g];
+    const w=d.w,W=w-16,c=steps(w,4),slot=W/4,q=Q[f],s=data.k.map(k=>q*k);
+    const ns=s.map(x=>2**(x-Math.min(...s))),den=sum(ns);
+    let y=19;
+    let p=d.stage(0,y,'读入 X · 每个位置两个特征');y+=10;
+    c.forEach((x,j)=>{
+      const shape=rect(p,x-slot/2+2,y,slot-4,36,j===3?'soft1':'soft',j===3?'s1':'line');
+      const token=tx(p,x,y+14,'t'+sub[j+1],{size:12,tone:'dim'}),v=tx(p,x,y+30,'('+hval[j].join(',')+')',{weight:j===3?500:400});
+      animateMove(d,0,[shape,token,v],0,-8,{delay:.06*j,dur:.45});
+    });
+    y+=61;p=d.stage(1,y,'投影 · a=ln 2，x=(u,w)');y+=12;
+    const xx=8,lw=Math.min(113,W*.40),end=w-8,outX=xx+lw+24,outW=end-outX;
+    const items=[['Q','(au,−au,2aw,−2aw)','[a,−a,2a,−2a]'],['K'+g,data.proj[0], '['+data.k.join(',')+']'],['V'+g,data.proj[1], '['+data.v.join(',')+']']];
+    items.forEach(([label,formula,result],j)=>{
+      const ry=y+j*24;
+      rect(p,xx,ry,lw,20,'soft','line',1,3);
+      tx(p,xx+lw/2,ry+14,formula,{size:j===0&&w<420?11:13});
+      const edge=path(p,[[xx+lw,ry+10],[outX-2,ry+10]],j===2?'s2':'s1');
+      d.trace(1,edge,{delay:.07*j,dur:.38});
+      travel(d,1,[[xx+lw,ry+10],[outX-2,ry+10]],.08*j,.46,j===2?'s2':'s1');
+      const box=rect(p,outX,ry,outW,20,j===2?'soft2':'soft1','none');
+      const text=tx(p,outX+outW/2,ry+14,label+' = '+result,{size:13,weight:500});
+      animateMove(d,1,[box,text],-8,0,{delay:.1+j*.07,dur:.45});
+    });
+    y+=92;p=d.stage(2,y,'四个查询头读取对应 KV');y+=11;
+    const groups=[...new Set(cfg.m)],gc=groups.map(group=>{const list=c.filter((_,i)=>cfg.m[i]===group);return sum(list)/list.length;});
+    const groupY=y+55;
+    H.forEach((head,i)=>{
+      const dest=gc[groups.indexOf(cfg.m[i])],x=c[i],on=i===f,sy=y+22,ey=groupY-2;
+      const edge=p.path(`M${x} ${sy} C${x} ${sy+13},${dest} ${ey-13},${dest} ${ey}`,{fill:'none',stroke:on?'s1':'line',sw:on?2.8:1.5});
+      d.trace(2,edge,{delay:.035*i,dur:.55});
+      const points=Array.from({length:11},(_,n)=>{const t=n/10,u=1-t;return [x+(dest-x)*(3*t*t-2*t*t*t),u*u*u*sy+3*u*u*t*(sy+13)+3*u*t*t*(ey-13)+t*t*t*ey];});
+      travel(d,2,points,.035*i,.60,on?'s1':'s2');
+      cell(p,x,y,Math.min(65,slot-4),21,head+' '+aNames[Q[i]],on);
+    });
+    groups.forEach((group,index)=>{
+      const x=gc[index],bw=Math.min(81,W/groups.length-6);
+      rect(p,x-bw/2+3,groupY+3,bw-2,22,'paper',group===g?'s2':'line');
+      cell(p,x,groupY,bw,21,'KV '+group,group===g,2);
+    });
+    y=groupY+50;p=d.stage(3,y,H[f]+' × K'+g+' · 逐位置打分');y+=10;
+    c.forEach((x,j)=>{
+      const top=tx(p,x,y+12,'t'+sub[j+1]+' · k='+data.k[j],{size:12,tone:'dim'});
+      const box=rect(p,x-slot/2+2,y+17,slot-4,22,'soft1','none');
+      const label=tx(p,x,y+32,'',{weight:500});
+      d.move(3,top,0,-6,{delay:.04*j,dur:.4});
+      d.move(3,box,0,-5,{delay:.04*j,dur:.4});
+      d.change(3,t=>{label.textContent=t<.5?aNames[q]+' × '+data.k[j]:aNames[s[j]];});
+    });
+    y+=63;d.stage(4,y,'softmax · 四个位置的权重');
+    const by=bars(d,4,y,[1,2,3,4],ns,den,()=>true);
+    y=by+24;d.stage(5,y,'乘本组的 V，再除以 '+den);
+    const z=merge(d,5,y+10,data.v,ns,den,()=>true,H[f]);
+    y=z+24;p=d.stage(6,y,'拼接 4 头 · 右乘 Wᴼ');y+=11;
+    const mat=['(1,0)','(0,1)','(1,1)','(1,−1)'];
+    c.forEach((x,i)=>{
+      const headOut=cell(p,x,y,Math.min(slot-4,103),22,H[i]+' '+cfg.o[i],i===f);
+      animateMove(d,6,headOut,0,-8,{delay:.03*i,dur:.4});
+      tx(p,x,y+38,'×'+mat[i],{size:12,tone:'dim'});
+      const points=[[x,y+40],[x,y+45],[w/2+(x-w/2)*.2,y+56]];
+      d.trace(6,path(p,points,'line',1),{delay:.05*i,dur:.35});
+      travel(d,6,points,.10+.04*i,.5,'s2');
+    });
+    const bw=Math.min(W,259);
+    const result=cell(p,w/2,y+57,bw,27,'y₄ = '+cfg.y,true,2);
+    animateMove(d,6,result,0,-5,{delay:.53,dur:.37});
+    return d.finish(y+96);
+  }
+  function inputs(d,t){
+    const w=d.w,c=steps(w,8,18),ss=(w-36)/8;
+    let y=19,p=d.stage(0,y,'隐藏向量 hⱼ=(1,bⱼ,vⱼ)');y+=8;
+    lf(p,4,y+32,'b',{size:11,tone:'dim'});lf(p,4,y+48,'v',{size:11,tone:'dim'});
+    c.forEach((x,i)=>{
+      const active=i+1===t;
+      const sh=rect(p,x-ss/2+1,y,ss-2,53,active?'soft1':i+1<=t?'soft':'paper',active?'s1':'line',1,3);
+      const nodes=[sh,tx(p,x,y+15,'t'+sub[i+1],{size:12,tone:i+1>t?'dim':'ink'}),tx(p,x,y+32,B[i],{size:12}),tx(p,x,y+48,V[i],{size:12})];
+      animateMove(d,0,nodes,0,-7,{delay:.025*i,dur:.46});
+    });
+    y+=80;p=d.stage(1,y,'投影当前查询与逐位置 K/V');y+=10;
+    const cols=steps(w,3),cw=(w-16)/3;
+    [['常数 1','q = 1'],['b × ln 2','kₜ = '+['0','ln 2','2 ln 2'][B[t-1]]],['取 v','Vₜ = '+V[t-1]]].forEach(([op,result],j)=>{
+      const xx=cols[j];tx(p,xx,y+13,op,{size:12,tone:'dim'});
+      ln(p,xx,y+16,xx,y+29,j===2?'s2':'s1');
+      travel(d,1,[[xx,y+15],[xx,y+31]],.04*j,.48,j===2?'s2':'s1');
+      const nodes=cell(p,xx,y+30,Math.min(cw-4,139),21,result,true,j===2?2:1);
+      animateMove(d,1,nodes,0,-6,{delay:.10+.04*j,dur:.45});
+    });
+    return y+77;
+  }
+  function positionRails(d,y,t,fixed){
+    const p=d.stage(2,y,fixed?'保留前缀 · 移动近期窗口':'宽度 3 · 窗口从上一拍滑入'),w=d.w,margin=8,slot=(w-2*margin)/8;
+    const x=j=>margin+(j-1)*slot, top=y+27;
+    for(let j=1;j<=8;j++){
+      const isPast=j<=t;rect(p,x(j)+2,top,slot-4,26,isPast?'soft':'paper','line',1,3);
+      tx(p,x(j)+slot/2,top+17,'t'+sub[j],{size:13,tone:isPast?'ink':'dim'});
+    }
+    const bounds=k=>({first:Math.max(1,k-2),n:Math.min(3,k)});
+    const prior=bounds(t-1),next=bounds(t);
+    if(prior.n)dashed(p,x(prior.first)+.5,top-2,slot*prior.n-1,30);
+    const active=p.rect(x(next.first),top-3,slot*next.n,32,{fill:'none',stroke:'s1',sw:2.5,rx:4});
+    const xpos0=x(prior.first),xpos1=x(next.first),width0=prior.n*slot,width1=next.n*slot;
+    d.change(2,progress=>{
+      active.setAttribute('x',xpos0+(xpos1-xpos0)*progress);
+      active.setAttribute('width',Math.max(1,width0+(width1-width0)*progress));
+    });
+    if(fixed){
+      const fy=top-8,base=margin;
+      const cap=rect(p,base,fy,Math.min(2,t)*slot,4,'s2','none',1,1);
+      d.change(2,progress=>cap.setAttribute('width',slot*(Math.min(2,t-1)+(Math.min(2,t)-Math.min(2,t-1))*progress)));
+      lf(p,8,top+48,'橙线 · 固定前缀',{size:12,tone:'dim'});
+      tx(p,w-8,top+48,'实框 · 近期窗口',{size:12,tone:'dim',anchor:'end'});
+    }else{
+      lf(p,8,top+48,'虚框 · 上一拍',{size:12,tone:'dim'});
+      tx(p,w-8,top+48,'实框 · q'+sub[t]+' 本拍',{size:12,tone:'dim',anchor:'end'});
+    }
+    return top+68;
+  }
+  function blockMap(d,y,t){
+    const p=d.stage(2,y,'块掩码 · 首块与当前块'),w=d.w;
+    const step=Math.min(w<400?14:17,Math.floor((w-121)/8)),ox=31,oy=y+36;
+    const idx=j=>j*step+Math.floor(j/2)*2, names='ABCD',group=Math.floor((t-1)/2);
+    for(let g=0;g<4;g++){
+      const m=ox+idx(2*g)+step;
+      tx(p,m,oy-6,names[g],{size:12,weight:500});
+      tx(p,ox-9,oy+idx(2*g)+step+4,names[g],{size:12,tone:'dim'});
+    }
+    for(let i=0;i<8;i++)for(let j=0;j<8;j++){
+      const rr=Math.floor(i/2),cc=Math.floor(j/2),selected=(cc===0||cc===rr),legal=selected&&j<=i;
+      const x=ox+idx(j),ty=oy+idx(i),active=i===t-1&&legal;
+      const node=rect(p,x,ty,step-1,step-1,active?'s1':legal?'soft2':'soft',active?'s1':'line',1,1);
+      if(selected&&j>i)ln(p,x+2,ty+step-4,x+step-4,ty+2,'line');
+      if(active)d.grow(2,node,'x',{delay:.15+.025*j,dur:.5});
+    }
+    for(const gg of [...new Set([0,group])]){
+      const x=ox+idx(gg*2)-1,by=oy+idx(group*2)-1,s=2*step;
+      const border=p.path(`M${x} ${by}h${s}v${s}h-${s}z`,{fill:'none',stroke:'s2',sw:1.9});
+      d.trace(2,border,{delay:0,dur:.45});
+    }
+    const rowWidth=idx(7)+step;
+    const rowBox=rect(p,ox-2,oy+idx(t-1)-1,rowWidth+3,step+1,'none','s1',1.8,2);
+    d.move(2,rowBox,0,t>1?-step-2:0,{delay:.18,dur:.55});
+    const right=ox+rowWidth+11;
+    [['查询行','q'+sub[t]],['键块',group?'A + '+names[group]:'A'],['块内筛选','j ≤ '+t]].forEach(([a,b],i)=>{
+      const ry=oy+i*34;
+      lf(p,right,ry+5,a,{size:11,tone:'dim'});lf(p,right,ry+22,b,{size:14,weight:500});
+    });
+    return oy+rowWidth+25;
+  }
+  function residual(d,y,t,total,den){
+    const p=d.stage(5,y,'输出投影，再加回 hₜ'),w=d.w,pad=w<420?56:83,cw=(w-pad-8)/3;
+    const inp=[1,B[t-1],V[t-1]],delta=[total,0,-total];
+    const labels=['zₜ Wᴼ','+ hₜ','= 输出'];
+    const vals=[delta.map(v=>frac(v,den)),inp,inp.map((v,i)=>frac(v*den+delta[i],den))];
+    labels.forEach((label,r)=>{
+      const by=y+13+r*25;lf(p,8,by+15,label,{size:12,tone:r===2?'ink':'dim'});
+      for(let j=0;j<3;j++){
+        const cx=pad+(j+.5)*cw;
+        const nodes=cell(p,cx,by,cw-3,21,vals[r][j],r===2,r===2?2:1);
+        animateMove(d,5,nodes,0,r===0?-8:r===1?-6:-5,{delay:r*.17+j*.025,dur:.42});
+      }
+    });
+    return y+95;
+  }
+  function sparse(d,param,id){
+    const f=clamp(Math.floor(Number.isFinite(Number(param))?Number(param):id==='block'?0:7),0,7),t=id==='block'?8-f:1+f;
+    const keep=j=>{
+      const idx=j+1;
+      return idx<=t&&(id==='block'?(idx<=2||Math.floor(j/2)===Math.floor((t-1)/2)):(idx>=t-2||(id==='streaming'&&idx<=2)));
+    };
+    const exp=B.map((b,j)=>keep(j)?2**b:0),den=sum(exp),total=sum(exp.map((a,j)=>a*V[j]));
+    let y=inputs(d,t);
+    y=id==='block'?blockMap(d,y,t):positionRails(d,y,t,id==='streaming');
+    d.stage(3,y,'对可见位置做 softmax · 分母 '+den);
+    y=bars(d,3,y,[1,2,3,4,5,6,7,8],exp,den,keep)+23;
+    d.stage(4,y,'指数权重乘 V · 汇总后除以 '+den);
+    y=merge(d,4,y+10,V,exp,den,keep,'z'+sub[t])+23;
+    const height=residual(d,y,t,total,den);
+    return d.finish(height);
+  }
+  Object.assign(scenes,{
+    mha:(d,f)=>heads(d,f,'mha'),mqa:(d,f)=>heads(d,f,'mqa'),gqa:(d,f)=>heads(d,f,'gqa'),
+    swa:(d,f)=>sparse(d,f,'swa'),streaming:(d,f)=>sparse(d,f,'streaming'),block:(d,f)=>sparse(d,f,'block')
+  });
+})();
+
+(() => {
+  const txt=(p,x,y,s,opt={})=>p.text(x,y,s,{size:13,...opt});
+  const mid=(p,x,y,s,opt={})=>txt(p,x,y,s,{anchor:'middle',...opt});
+  const rect=(p,x,y,w,h,fill='soft',stroke='none',rx=2)=>p.rect(x,y,w,h,{fill,stroke,rx,sw:1});
+  const line=(p,x1,y1,x2,y2,stroke='line',sw=1)=>p.line(x1,y1,x2,y2,{stroke,sw});
+  const clamp=x=>Math.max(0,Math.min(1,x));
+  const fmt=x=>String(Math.round(x*100)/100);
+  function arrowPath(a,b) {
+    const [x,y]=a,[ex,ey]=b,dx=ex-x,dy=ey-y,h=Math.hypot(dx,dy)||1;
+    const ax=dx/h,ay=dy/h,s=Math.min(5,h/2);
+    return `M ${x} ${y} L ${ex} ${ey} M ${ex-s*ax+0.55*s*ay} ${ey-s*ay-0.55*s*ax} L ${ex} ${ey} L ${ex-s*ax-0.55*s*ay} ${ey-s*ay+0.55*s*ax}`;
+  }
+  function arrow(p,a,b,col='s1',sw=1.6) {return p.path(arrowPath(a,b),{stroke:col,sw,fill:'none'});}
+  function vec(d,i,p,c,y,values,width,tone=1,motion=true) {
+    const dx=width/values.length;
+    values.forEach((v,j)=>{
+      const x=c-width/2+j*dx;
+      rect(p,x,y,dx-1,25,'soft'+tone,'s'+tone);
+      const node=mid(p,x+(dx-1)/2,y+17,String(v),{weight:500});
+      if(motion)d.move(i,node,0,-13);
+    });
+  }
+  function bar(d,i,p,x,y,w,h,ratio,tone=1) {
+    rect(p,x,y,w,h,'soft');
+    const v=rect(p,x,y,w*ratio,h,'soft'+tone,'s'+tone);
+    d.grow(i,v,'x');return v;
+  }
+  function addResidual(d,i,y,input,branch,result) {
+    const p=d.g(i),x1=d.w*.195,x2=d.w*.51,x3=d.w*.825,ww=Math.min(137,d.w*.242);
+    [[x1,'输入',input,3],[x2,'分支',branch,2],[x3,'相加',result,1]].forEach(([x,n,v,c])=>{
+      mid(p,x,y,n,{tone:'dim'});vec(d,i,p,x,y+9,v,ww,c,false);
+    });
+    mid(p,(x1+x2)/2,y+28,'+');mid(p,(x2+x3)/2,y+28,'=');
+    d.travel(i,[[x1,y+38],[x1,y+46],[x3,y+46],[x3,y+38]],{tone:'s3'});
+    return p;
+  }
+  function plotAxes(p,origin,s,maxX,maxY){
+    const [x,y]=origin;
+    line(p,x-3,y,x+s*maxX+5,y,'line');line(p,x,y+3,x,y-s*maxY-6,'line');
+    for(let j=1;j<=maxX;j++)line(p,x+j*s,y-2,x+j*s,y+3);
+    for(let j=1;j<=maxY;j++)line(p,x-2,y-j*s,x+2,y-j*s);
+    mid(p,x-6,y+12,'0',{size:11,tone:'dim'});
+  }
+  function base(d) {
+    const w=d.w,c1=w*.27,c2=w*.73,vw=Math.min(122,w*.32),l=12;
+    let p=d.stage(0,21,'读取两个词向量');
+    mid(p,c1,48,'猫 · x₁');mid(p,c2,48,'跑 · x₂');vec(d,0,p,c1,56,[1,0],vw);vec(d,0,p,c2,56,[1,1],vw);
+    p=d.stage(1,109,'投影出查询、键和值');
+    const ax=w*.565,bx=w*.821;
+    mid(p,ax,136,'猫');mid(p,bx,136,'跑');
+    [['Q · W=(0,1)','0','1'],['K · W=(0,ln 3)','0','ln 3'],['V · x Wᵥ','(2,0)','(0,4)']].forEach(([name,a,b],j)=>{
+      const y=144+j*25;rect(p,l,y,w-2*l,23,j===2?'soft2':'soft');
+      txt(p,l+4,y+16,name);d.move(1,mid(p,ax,y+16,a),-12,0);d.move(1,mid(p,bx,y+16,b),-12,0);
+    });
+    txt(p,l,239,'Wᵥ 的两行是 (2,0)、(−2,4)。',{tone:'dim'});
+    p=d.stage(2,272,'因果范围内的 softmax');
+    const x0=19,pw=w-38,qbar=pw*.25;
+    txt(p,l,296,'q₂=1，q₂K/√1=[0,ln 3]，指数=[1,3]。');
+    const cat=rect(p,x0,307,qbar,15,'soft1','s1'),run=rect(p,x0+qbar,307,pw-qbar,15,'soft2','s2');
+    const cut=p.line(x0+qbar,301,x0+qbar,328,{stroke:'s3',sw:2});
+    d.change(2,t=>{
+      // Raising exp(score) from 1 to 3 grows token 2's share continuously.
+      const boundary=pw/(2+2*t);cat.setAttribute('width',boundary);run.setAttribute('x',x0+boundary);
+      run.setAttribute('width',pw-boundary);cut.setAttribute('x1',x0+boundary);cut.setAttribute('x2',x0+boundary);
+    });
+    mid(p,x0+qbar/2,343,'¼ · 猫');mid(p,x0+qbar+(pw-qbar)/2,343,'¾ · 跑');
+    p=d.stage(3,377,'沿 V 的方向按权重缩短');
+    const unit=Math.min(19,(w-28)/17),xs=[w*.14,w*.62],oy=475;
+    [[2,0,.25,1],[0,4,.75,2]].forEach(([vx,vy,scale,col],j)=>{
+      const x=xs[j],pt=(a,b)=>[x+a*unit,oy-b*unit],a=pt(0,0);
+      plotAxes(p,a,unit,3,4);
+      p.path(arrowPath(a,pt(vx,vy)),{stroke:'line',dash:'3 3',fill:'none',sw:1.5});
+      const arr=arrow(p,a,pt(vx*scale,vy*scale),'s'+col,2.5);
+      d.change(3,t=>{const mult=1+(scale-1)*t;arr.setAttribute('d',arrowPath(a,pt(vx*mult,vy*mult)));});
+    });
+    mid(p,c1,506,'¼ V₁=(0.5,0)');mid(p,c2,506,'¾ V₂=(0,3)');
+    p=d.stage(4,543,'首尾相接，两个向量相加');
+    const s=Math.min(22,w*.065),xo=Math.max(24,w*.17),yo=633,point=(a,b)=>[xo+a*s,yo-b*s];
+    plotAxes(p,point(0,0),s,3,3);
+    arrow(p,point(0,0),point(.5,0),'s1',2.4);
+    const v2=arrow(p,point(.5,0),point(.5,3),'s2',2.4);
+    d.move(4,v2,-.5*s,0);
+    const total=arrow(p,point(0,0),point(.5,3),'s3',2.6);d.trace(4,total);
+    txt(p,w*.48,591,'(0.5,0) + (0,3)');txt(p,w*.48,617,'o₂ = (0.5,3)',{size:16,weight:500});
+    p=d.stage(5,676,'输出投影，再加回输入');
+    txt(p,l,701,'Wₒ 两行 (1,1)、(1,−1)');txt(p,l,724,'o₂ Wₒ=(0.5+3,0.5−3)=(3.5,−2.5)');
+    addResidual(d,5,749,[1,1],[3.5,'−2.5'],[4.5,'−1.5']);
+    d.finish(808);
+  }
+  function ssm(d) {
+    const w=d.w,c0=w*.102,c1=w*.422,c2=w*.778,l=12,vw=Math.min(119,w*.285);
+    let p=d.stage(0,21,'从输入得到保留率和写入值');
+    mid(p,c1,46,'t₁ · x₁');mid(p,c2,46,'t₂ · x₂');
+    vec(d,0,p,c1,56,[0,1],vw);vec(d,0,p,c2,56,[1,'7/4'],vw);
+    txt(p,l,105,'x=(a,b) → u=b，r=σ(−a ln 3)');
+    mid(p,c1,127,'r₁=½，u₁=1');mid(p,c2,127,'r₂=¼，u₂=7/4');
+    p=d.stage(1,159,'同一格状态连续更新');
+    const reservoirW=Math.min(68,w*.155),rh=39,top=197;
+    [c0,c1,c2].forEach((c,j)=>{
+      rect(p,c-reservoirW/2,top,reservoirW,rh,'paper','s1',4);
+      const carry=rect(p,c-reservoirW/2+2,top+rh-2,reservoirW-4,0,'soft1');
+      const write=rect(p,c-reservoirW/2+2,top+rh-2,reservoirW-4,0,'soft2');
+      const number=mid(p,c,top+25,String(j),{size:18,weight:500});
+      d.change(1,t=>{
+        const tick=j===1?clamp(t*2):clamp(t*2-1);
+        const kept=j===2?.25*clamp(tick*3):0;
+        const input=j===2?1.75*clamp((tick-1/3)*1.5):j===1?tick:0;
+        const kh=(rh-4)*kept/2,ih=(rh-4)*input/2;
+        carry.setAttribute('height',kh);carry.setAttribute('y',top+rh-2-kh);
+        write.setAttribute('height',ih);write.setAttribute('y',top+rh-2-kh-ih);
+        number.textContent=fmt(kept+input);
+      });
+      mid(p,c,top+rh+19,['s₀','s₁','s₂'][j]);
+    });
+    [[c0,c1,'×½'],[c1,c2,'×¼']].forEach(([a,b,v])=>{
+      arrow(p,[a+reservoirW/2+2,top+19],[b-reservoirW/2-2,top+19],'s1');
+      mid(p,(a+b)/2,top+8,v);});
+    mid(p,c1,top-8,'+1');mid(p,c2,top-8,'+7/4');
+    txt(p,l,281,'s₁=½×0+1=1，s₂=¼×1+7/4=2。');
+    p=d.stage(2,313,'状态读出沿网络深度下传');
+    txt(p,l,339,'y=s，h′=y(0,1)+(1,0)=(1,s)');
+    mid(p,c1,362,'s₁=1 → h′₁');mid(p,c2,362,'s₂=2 → h′₂');
+    vec(d,2,p,c1,371,[1,1],vw);vec(d,2,p,c2,371,[1,2],vw);
+    p=d.stage(3,429,'各位置生成此层的 Q、K、V');
+    const dt1=w*.573,dt2=w*.814;
+    mid(p,dt1,455,'t₁');mid(p,dt2,455,'t₂');
+    [['WQ=(1,0)','1','1'],['WK=(−L,L)','0','L'],['WV=(0,1)','1','2']].forEach(([n,a,b],j)=>{
+      const y=463+j*24;rect(p,l,y,w-24,22,j?'soft2':'soft');txt(p,l+4,y+15,n);
+      d.move(3,mid(p,dt1,y+15,a),-12,-5);d.move(3,mid(p,dt2,y+15,b),-12,-5);
+    });
+    txt(p,l,557,'L=ln 2。K、V 的两列分别缓存。',{tone:'dim'});
+    p=d.stage(4,589,'只在可见的两个键上归一化');
+    txt(p,l,613,'q₂K/√1=[0,L] → exp=[1,2]');
+    const bx=17,bw=w-34,split=bw/3;
+    const aa=rect(p,bx,624,split,12,'soft1','s1');
+    const ab=rect(p,bx+split,624,bw-split,12,'soft2','s2');d.grow(4,aa,'x');d.grow(4,ab,'x');
+    mid(p,bx+split/2,655,'⅓');mid(p,bx+split+(bw-split)/2,655,'⅔');
+    p=d.stage(5,687,'两列 V 贡献给同一个读数');
+    const mx=w*.52;
+    mid(p,c1,712,'⅓×1');mid(p,c2,712,'⅔×2');
+    [[c1,1],[c2,2]].forEach(([cx,col])=>{
+      arrow(p,[cx,718],[mx,745],'s'+col,col);
+      d.travel(5,[[cx,718],[mx,745]],{tone:'s'+col});});
+    mid(p,mx,767,'z₂ = ⅓ + 4/3 = 5/3',{size:16,weight:500});
+    p=d.stage(6,799,'投影回两维');
+    txt(p,l,827,'5/3 × (0,3)  =');vec(d,6,p,w*.72,808,[0,5],vw,2);
+    p=d.stage(7,867,'将 h′₂ 加回分支输出');
+    addResidual(d,7,891,[1,2],[0,5],[1,7]);
+    d.finish(950);
+  }
+  // Every cell has the same value scale (0...4). An overlay highlights the new write.
+  function memory(d,stage,p,c,top,width,from,to,kind) {
+    const h=33,inner=width-8;
+    to.forEach((v,i)=>{
+      const y=top+i*h,x=c-width/2;
+      rect(p,x,y,width,h,'paper','line',0);
+      rect(p,x+4,y+h-11,inner,7,'soft');
+      const base=rect(p,x+4,y+h-11,inner*v/4,7,'soft1','s1');
+      const extra=rect(p,x+4,y+h-11,0,7,'soft2','s2');
+      const text=mid(p,c,y+16,String(v),{weight:500});
+      d.change(stage,t=>{
+        const current=from[i]+(v-from[i])*t;
+        const keep=kind==='write'?Math.min(current,from[i]):current;
+        base.setAttribute('width',inner*keep/4);
+        extra.setAttribute('x',x+4+inner*keep/4);
+        extra.setAttribute('width',inner*Math.max(0,current-keep)/4);
+        text.textContent=fmt(current);
+      });
+    });
+    p.path(`M ${c-width/2+2} ${top-2} h-5 v70 h5 M ${c+width/2-2} ${top-2} h5 v70 h-5`,{stroke:'s1',fill:'none',sw:1.4});
+  }
+  function kda(d) {
+    const w=d.w,l=12,c1=w*.264,c2=w*.736,vw=Math.min(145,w*.357);
+    let p=d.stage(0,21,'一块矩阵的读写顺序');
+    const cx=w*.20,mw=Math.min(80,w*.21);
+    memory(d,0,p,cx,42,mw,[0,0],[0,0],'keep');
+    mid(p,cx,122,'S ∈ ℝ²ˣ¹',{size:12,tone:'dim'});
+    const ops=['Dₜ = diag(αₜ) Sₜ₋₁','δₜ = vₜ − Dₜᵀ kₜ','Sₜ = Dₜ + βₜ kₜ δₜᵀ','oₜ = Sₜᵀ qₜ'];
+    ops.forEach((s,j)=>txt(p,w*.424,48+22*j,s));
+    d.travel(0,[[cx+mw/2+3,75],[w*.397,75],[w*.397,44],[w*.397,111]],{tone:'s1'});
+    p=d.stage(1,142,'从上层读取两个 token');
+    mid(p,c1,166,'x₁');mid(p,c2,166,'x₂');vec(d,1,p,c1,176,[4,3,10],vw);vec(d,1,p,c2,176,[1,0,5],vw);
+    p=d.stage(2,231,'投影 q、k、v');
+    const tx1=w*.58,tx2=w*.82;
+    mid(p,tx1,257,'t₁');mid(p,tx2,257,'t₂');
+    [['q=N(4a,3a)','(.8,.6)','(.8,.6)'],['k=N(a,b)','(.8,.6)','(1,0)'],['v=c','10','5']].forEach(([n,a,b],j)=>{
+      const y=266+j*24;rect(p,l,y,w-24,22,j===2?'soft2':'soft');txt(p,l+4,y+15,n);
+      d.move(2,mid(p,tx1,y+15,a),-10,-8);d.move(2,mid(p,tx2,y+15,b),-10,-8);
+    });
+    txt(p,l,359,'x=(a,b,c)，N 表示除以向量长度。',{tone:'dim'});
+    p=d.stage(3,393,'算出两个遗忘率和一个写入门');
+    txt(p,l,413,'Wα=Wβ=0，通道偏置 g=(0,ln 3)');
+    txt(p,l,432,'α=1/(1+exp g)，β=σ(0)');
+    const bits=[['α₁','½',.5,1],['α₂','¼',.25,1],['β','½',.5,2]];
+    bits.forEach(([name,n,val,tone],j)=>{
+      const len=(w-36)/3,x=12+j*(w-24)/3;mid(p,x+len/2,451,name+'='+n);
+      bar(d,3,p,x,458,len,9,val,tone);
+    });
+    p=d.stage(4,490,'t₁ 写入空矩阵并读取');
+    const left=w*.235,right=w*.75,mg=Math.min(142,w*.268);
+    mid(p,left,516,'S₀');mid(p,right,516,'S₁');
+    memory(d,4,p,left,525,mg,[0,0],[0,0],'keep');memory(d,4,p,right,525,mg,[0,0],[4,3],'write');
+    [0,1].forEach((j)=>{
+      const y=545+j*33;arrow(p,[left+mg/2+5,y],[right-mg/2-5,y],'s2');
+      mid(p,(left+right)/2,y-6,j?'+3':'+4');});
+    txt(p,l,615,'δ₁=10−0，½ k₁δ₁=(4,3)ᵀ。');
+    txt(p,l,636,'o₁=(.8,.6)·(4,3)=5。');
+    p=d.stage(5,670,'t₂ 逐行衰减原有记忆');
+    mid(p,left,695,'旧 S₁');mid(p,right,695,'暂存 D₂');
+    memory(d,5,p,left,704,mg,[4,3],[4,3],'keep');memory(d,5,p,right,704,mg,[4,3],[2,.75],'decay');
+    [0,1].forEach(j=>{const y=726+33*j;arrow(p,[left+mg/2+5,y],[right-mg/2-5,y],'s1');mid(p,(left+right)/2,y-6,j?'×¼':'×½');});
+    txt(p,l,796,'D₂=diag(α) S₁=(2,0.75)ᵀ。');
+    p=d.stage(6,828,'先预测，再量出误差');
+    txt(p,l,852,'p=D₂ᵀk₂=(2,0.75)·(1,0)=2');
+    const nx=22,nw=w-44,ny=885;
+    line(p,nx,ny,nx+nw,ny);
+    [0,1,2,3,4,5].forEach(j=>{const x=nx+nw*j/5;line(p,x,ny-2,x,ny+4);mid(p,x,ny+20,String(j),{size:12,tone:'dim'});});
+    const gap=arrow(p,[nx+nw*.4,ny-8],[nx+nw,ny-8],'s2',2.2);d.trace(6,gap);
+    mid(p,nx+nw*.71,ny-17,'δ₂ = 5−2 = 3');
+    p=d.stage(7,941,'沿 k₂ 的方向写回误差');
+    mid(p,left,965,'D₂');mid(p,right,965,'新 S₂');
+    memory(d,7,p,left,974,mg,[2,.75],[2,.75],'keep');memory(d,7,p,right,974,mg,[2,.75],[3.5,.75],'write');
+    [0,1].forEach(j=>{const y=995+33*j;arrow(p,[left+mg/2+5,y],[right-mg/2-5,y],j?'line':'s2');mid(p,(left+right)/2,y-6,j?'+0':'+1.5');});
+    txt(p,l,1064,'S₂=D₂+βk₂δ₂ᵀ，新增 (1.5,0)ᵀ。');
+    p=d.stage(8,1097,'用 q₂ 读新矩阵的两行');
+    txt(p,l,1121,'q₂=(.8,.6) → .8×3.5 与 .6×0.75');
+    const bx=18,bw=w-36,pct=2.8/3.25;
+    const first=rect(p,bx,1132,bw*pct,13,'soft1','s1');const second=rect(p,bx+bw*pct,1132,bw*(1-pct),13,'soft2','s2');
+    d.grow(8,first,'x');d.grow(8,second,'x');
+    txt(p,bx,1167,'2.8 + 0.45 = 3.25',{weight:500});
+    p=d.stage(9,1200,'归一化后乘输出门');
+    [['o₂','3.25',1],['RMSNorm','1',1/3.25],['× σ(0)','0.5',.5/3.25]].forEach(([n,a,r],j)=>{
+      const y=1219+j*23,xx=w*.37,ww=w*.43;txt(p,l,y+9,n);bar(d,9,p,xx,y,ww,9,r,j===2?2:1);txt(p,xx+ww+5,y+9,a);
+    });
+    txt(p,l,1301,'一维、增益 1、ε=0：3.25/3.25=1。',{tone:'dim'});
+    p=d.stage(10,1334,'输出投影回三维');
+    txt(p,l,1358,'½ × Wₒ，Wₒ=(2,0,−2)');
+    vec(d,10,p,w*.5,1370,[1,0,'−1'],vw,2);
+    p=d.stage(11,1428,'把 x₂ 加回，保留 S₂');
+    addResidual(d,11,1452,[1,0,5],[1,0,'−1'],[2,0,4]);
+    txt(p,l,1523,'下一个 token 接 S₂=(3.5,0.75)ᵀ。',{tone:'dim'});
+    d.finish(1537);
+  }
+  Object.assign(scenes,{base,ssm,kda});
+})();
+
+(()=>{
+  const text=(p,x,y,t,a='start',size=13,tone='ink',weight=400)=>p.text(x,y,String(t),{anchor:a,size,tone,weight});
+  const rect=(p,x,y,w,h,i=0)=>p.rect(x,y,w,h,{fill:i?'soft'+i:'soft',stroke:i?'s'+i:'line',sw:.8,rx:3});
+  const line=(p,x,y,X,Y,c='line',dash)=>p.line(x,y,X,Y,{stroke:c,sw:1.2,...(dash?{dash}:{})});
+  const bound=(x)=>Math.max(0,Math.min(1,x));
+  const fmt=(x,n=3)=>Math.abs(x)<1e-8?'0':Math.abs(x-Math.round(x))<1e-8?String(Math.round(x)):x.toFixed(n);
+  const token=['甲','乙','丙'], key=[[1,0],[0,1],[-1,0]],latent=[[1,0],[0,2],[1,1]],H=[[1,0,1],[0,2,1],[1,1,1]];
+  function arrow(p,x1,y1,x2,y2,c='line'){
+    const a=Math.atan2(y2-y1,x2-x1),u=Math.cos(a),v=Math.sin(a);
+    return p.path(`M${x1} ${y1} L${x2} ${y2} M${x2-5*u+3*v} ${y2-5*v-3*u} L${x2} ${y2} L${x2-5*u-3*v} ${y2-5*v+3*u}`,{stroke:c,sw:1.4,fill:'none'});
+  }
+  function matrix(d,p,stage,x,y,cells,s,i,offset=0){
+    const h=cells.length*s,w=cells[0].length*s;
+    const bracket=p.path(`M${x+3} ${y-1} h-5 v${h+2} h5 M${x+w-3} ${y-1} h5 v${h+2} h-5`,{stroke:'line',fill:'none'});
+    if(offset)d.trace(stage,bracket);
+    cells.forEach((row,r)=>row.forEach((v,c)=>{
+      const n=rect(p,x+c*s+1,y+r*s+1,s-2,s-2,i);
+      const t=text(p,x+(c+.5)*s,y+(r+.5)*s+4,v,'middle',12);
+      if(offset){d.move(stage,n,offset,0);d.move(stage,t,offset,0);}
+    }));
+  }
+  function heads(d,y,sparse) {
+    const p=d.stage(3,y,sparse?'主头在入选槽位上重算注意力':'按位置算分、归一化，再读值');
+    const w=d.w,left=w<450?64:95,cw=(w-left-8)/3,center=i=>left+(i+.5)*cw;
+    text(p,8,y+22,'z=(qᶜkᶜ+qᴿ·kᴿ)/√3，αⱼ=exp(zⱼ)/Σ exp(z)。','start',w<320?12:13);
+    [0,1].forEach(h=>{
+      const A=h===0,jy=y+43+h*99,c=A?1:2,score=A?[0,0,2]:[0,2,1],value=A?[2,2,3]:[1,0,1];
+      const zterms=A?['1−1=0','0+0=0','1+1=2']:['0+0=0','2+0=2','1+0=1'];
+      const den=score.reduce((n,z,i)=>n+(sparse&&i===0?0:Math.exp(z)),0);
+      const aa=score.map((z,i)=>sparse&&i===0?0:Math.exp(z)/den);
+      const sum=aa.reduce((n,a,i)=>n+a*value[i],0),prefix=A?'A':'B';
+      text(p,8,jy,prefix+(A?'　kᶜ=x，V=2x+y':'　kᶜ=y，V=x')+'　→　'+sum.toFixed(4),'start',14,'ink',500);
+      text(p,8,jy+22,'内容+位置','start',12,'dim');
+      text(p,8,jy+44,'权重 α','start',12,'dim');
+      text(p,8,jy+67,'α × V','start',12,'dim');
+      let live=[];
+      score.forEach((_,i)=>{
+        const x=center(i),skip=sparse&&i===0;
+        if(skip){[22,44,67].forEach(v=>text(p,x,jy+v,'—','middle',12,'dim'));return;}
+        text(p,x,jy+22,zterms[i],'middle',13);
+        rect(p,x-cw*.45,jy+30,cw*.9,17);
+        const bar=rect(p,x-cw*.45,jy+30,cw*.9*aa[i],17,c);
+        const pct=text(p,x,jy+43,(aa[i]*100).toFixed(1)+'%','middle',12);
+        const term=text(p,x,jy+67,aa[i].toFixed(3)+'×'+value[i],'middle',12);
+        live.push({i,bar,pct,term});
+      });
+      d.change(3,t=>{
+        const ex=score.map((z,i)=>(sparse&&!i)?0:Math.exp(t*z)),s=ex.reduce((n,v)=>n+v,0);
+        live.forEach(({i,bar,pct,term})=>{const a=ex[i]/s;bar.setAttribute('width',cw*.9*a);pct.textContent=(a*100).toFixed(1)+'%';term.textContent=a.toFixed(3)+'×'+value[i];});
+      });
+      line(p,8,jy+78,w-8,jy+78);
+    });
+    return y+252;
+  }
+  function out(d,y,sparse){
+    const w=d.w,p=d.stage(4,y,'拼接后做输出投影'),from=[w*.25,w*.75],X=i=>w*(i+.5)/3;
+    const vals=sparse?[2.8807970779778826,.2689414213699951]:[2.7869860421615984,.3347590442251781],res=[...vals,vals[0]+vals[1]];
+    from.forEach((x,i)=>text(p,x,y+25,(i?'B = ':'A = ')+vals[i].toFixed(4),'middle',13));
+    [[0,0],[0,2],[1,1],[1,2]].forEach(([i,j])=>d.trace(4,arrow(p,from[i],y+31,X(j),y+53,'s'+(i+1))));
+    const nums=res.map((v,i)=>text(p,X(i),y+72,v.toFixed(4),'middle',15,'ink',500));
+    ['A','B','A+B'].forEach((s,i)=>text(p,X(i),y+90,s,'middle',12,'dim'));
+    d.change(4,t=>{
+      const a=bound(2*t)*vals[0],b=bound(2*t-1)*vals[1];
+      [a,b,a+b].forEach((v,i)=>nums[i].textContent=v.toFixed(4));
+    });
+    return d.finish(y+102);
+  }
+  function mla(d){
+    const w=d.w;
+    let p=d.stage(0,19,'压缩内容 · 三行输入乘降维矩阵');
+    const cell=Math.min(19,(w-95)/7),left=(w-(7*cell+64))/2,X=left+3*cell+32,C=X+2*cell+32;
+    text(p,left+1.5*cell,42,'H · 甲乙丙','middle',12);text(p,X+cell,42,'Wᴰᵀ','middle',12);text(p,C+cell,42,'C · (x,y)','middle',12);
+    matrix(d,p,0,left,49,H,cell,0);matrix(d,p,0,X,49,[[1,0],[0,1],[0,0]],cell,2);matrix(d,p,0,C,49,latent,cell,1,left-C);
+    text(p,X-16,55+cell*1.5,'×','middle',17);text(p,C-16,55+cell*1.5,'=','middle',17);
+    const y=49+3*cell+32;
+    p=d.stage(1,y,'另投影位置键，再旋转每对坐标');
+    text(p,8,y+20,'基键 (p,0)=(1,0)　　θ=mωᵢ，ωᵢ=base^(−2i/dᴿ)','start',w<350?11.5:13);
+    text(p,8,y+38,'教学取 ω=π/2　　Rθ(1,0)=(cosθ,sinθ)','start',13);
+    const x=i=>w*(i+.5)/3,ry=y+68;
+    key.forEach(([a,b],i)=>{
+      const cx=x(i);p.circle(cx,ry,20,{fill:'soft2',stroke:'s2'});
+      line(p,cx-15,ry,cx+15,ry);line(p,cx,ry-15,cx,ry+15);
+      const pointer=arrow(p,cx,ry,cx+15*a,ry-15*b,'s2');d.turn(1,pointer,cx,ry,90*i);
+      const angle=text(p,cx,ry+39,'','middle',12);d.change(1,t=>{angle.textContent=Math.round(90*i*t)+'°';});angle.textContent=90*i+'°';
+      text(p,cx,ry+56,'('+a+','+b+')','middle',12);
+    });
+    const cacheY=ry+84;
+    p=d.stage(2,cacheY,'合并两路缓存，丙生成两头的查询');
+    for(let i=0;i<3;i++){
+      const cx=x(i),cw=w/3-6;
+      text(p,cx,cacheY+20,'槽 '+(i+1),'middle',12,'dim');
+      const r=rect(p,cx-cw/2,cacheY+25,cw,36,1);d.move(2,r,0,-10);
+      const c=text(p,cx,cacheY+40,'c=('+latent[i]+')','middle',12),k=text(p,cx,cacheY+56,'kᴿ=('+key[i]+')','middle',12);
+      d.move(2,c,-9,-8);d.move(2,k,9,-8);
+    }
+    text(p,8,cacheY+80,'丙的 p₃=1 → 两头 qᶜ=√3；头 B 的 qᴿ=(0,0)。','start',w<350?12:13);
+    text(p,8,cacheY+99,'头 A 的 qᴿ=R₁₈₀°(√3,0)=(−√3,0)。','start',13);
+    return out(d,heads(d,cacheY+129,false),false);
+  }
+  function dsa(d){
+    const w=d.w,L=w<450?60:90,cw=(w-L-8)/3,cx=i=>L+(i+.5)*cw;
+    let p=d.stage(0,19,'按 token 次序追加两类缓存');
+    text(p,8,42,'上游 h','start',12,'dim');H.forEach((v,i)=>text(p,cx(i),42,'('+v+')','middle',12));
+    text(p,8,84,'索引键','start',12,'dim');text(p,8,102,'潜变量','start',12,'dim');text(p,8,119,'位置键','start',12,'dim');
+    for(let i=0;i<3;i++){
+      const x=cx(i),box=rect(p,x-cw/2+1,51,cw-3,73,i===2?1:0);
+      d.grow(0,box,'x',{delay:.13*i,dur:.55});
+      [token[i]+' · 槽'+(i+1),'('+latent[i]+')','('+latent[i]+')','('+key[i]+')'].forEach((v,j)=>{
+        const el=text(p,x,[67,84,102,119][j],v,'middle',12);d.move(0,el,0,-9,{delay:.13*i,dur:.55});
+      });
+    }
+    p=d.stage(1,153,'当前查询先为每个槽位算索引分');
+    text(p,8,175,'qᴵ₁=(1,−1)，w₁=½；qᴵ₂=(0,1)，w₂=1。','start',13);
+    text(p,8,196,'Iⱼ=½ ReLU(qᴵ₁·kᴵⱼ)+ReLU(qᴵ₂·kᴵⱼ)','start',13);
+    text(p,8,221,'贡献','start',12,'dim');text(p,8,257,'I','start',12,'dim');
+    const scores=[.5,2,1];
+    scores.forEach((v,i)=>{
+      const bx=cx(i),h=v*16,bw=Math.min(43,cw*.63);
+      text(p,bx,221,['½+0','0+2','0+1'][i],'middle',13);
+      const bar=rect(p,bx-bw/2,268-h,bw,h,i?2:0);d.grow(1,bar,'y');
+      text(p,bx,286,fmt(v,1),'middle',13);
+    });
+    p=d.stage(2,317,'取 top-2 下标，从相同槽位读 KV');
+    const target=[w*.32,w*.75];
+    text(p,8,339,'排名 ② > ③ > ①　　保留 {2,3}','start',13);
+    for(let j=0;j<2;j++){
+      const i=j+1,x=target[j],ww=w*.40;
+      const e=rect(p,x-ww/2,350,ww,37,2);
+      const rail=w-5-j*4,way=[[cx(i),124],[cx(i),132+j*4],[rail,132+j*4],[rail,344+j*3],[x,344+j*3],[x,350]];
+      const link=p.path(way.map(([a,b],m)=>(m?'L':'M')+a+' '+b).join(' '),{fill:'none',stroke:'s2',sw:1,dash:'2 4'});
+      d.trace(2,link,{delay:.12*j,dur:.62});
+      d.travel(2,way,{tone:'s2',delay:.12*j,dur:.62});
+      const c=text(p,x,365,'槽'+(i+1)+'　c=('+latent[i]+')','middle',12);
+      const k=text(p,x,382,'kᴿ=('+key[i]+')','middle',12);
+      d.change(2,t=>{
+        const unfold=Math.min(1,Math.max(0,(t-.33-.09*j)/.50)),width=ww*(.14+.86*unfold);
+        e.setAttribute('x',x-width/2);e.setAttribute('width',width);
+        [c,k].forEach(n=>n.setAttribute('visibility',unfold>.72?'visible':'hidden'));
+      });
+    }
+    text(p,8,404,'丙　qᶜ=√3，qᴿ_A=(−√3,0)，qᴿ_B=(0,0)','start',w<350?12:13);
+    return out(d,heads(d,433,true),true);
+  }
+  function v4(d,sparse){
+    const w=d.w,seq=[0,4,2,1,1,0],G=sparse?[[0,1],[0,1,2,3],[2,3,4,5]]:[[0,1,2],[3,4,5]],
+      wg=sparse?[1,2]:[1,1,2],letters=['A','B','C'],N=a=>[a,1].map(v=>v*Math.SQRT2/Math.hypot(a,1)),
+      L=24,outW=w<430?53:92,cw=(w-L-outW-12)/6,cx=j=>L+(j+.5)*cw,sx=L+6*cw+outW/2,
+      a=G.map(g=>g.reduce((n,j,i)=>n+seq[j]*wg[i%wg.length],0)/g.reduce((n,_,i)=>n+wg[i%wg.length],0)),
+      norms=a.map(N);
+    let p=d.stage(0,19,sparse?'重叠分组，合并输入':'不重叠分组，合并输入');
+    text(p,8,40,'h=(x,1)　　w=eᵇ　　a=Σ(wx)/Σw','start',13);
+    text(p,6,77,'x','start',12,'dim');
+    seq.forEach((v,j)=>{text(p,cx(j),58,'t'+(j+1),'middle',12,'dim');rect(p,cx(j)-cw*.43,62,cw*.86,19,j>=4?2:0);text(p,cx(j),76,v,'middle',12);});
+    text(p,sx,58,'摘要 a','middle',12,'dim');
+    G.forEach((g,gi)=>{
+      const y=92+gi*35;
+      text(p,6,y+17,letters[gi],'start',13);
+      g.forEach((j,ii)=>{
+        const wt=wg[ii%wg.length],x=cx(j),tag=rect(p,x-cw*.44,y,cw*.88,23,1);
+        const number=text(p,x,y+16,seq[j]+'×'+wt,'middle',w<350?11:12);
+        d.move(0,tag,0,62-y,{dur:.26});d.move(0,number,0,62-y,{dur:.26});
+        d.travel(0,[[x,y+21],[x,y+25],[sx,y+25],[sx,y+15]],{tone:'s1',r:2.5,delay:.26+ii*.7/g.length,dur:.7/g.length});
+      });
+      const s=text(p,sx,y+16,fmt(a[gi]),'middle',13,'ink',500);
+      const denom=g.reduce((acc,_,j)=>acc+wg[j%wg.length],0);
+      d.change(0,t=>{
+        let mass=0;g.forEach((j,ii)=>{mass+=seq[j]*wg[ii%wg.length]*bound(bound((t-.26)/.70)*g.length-ii);});
+        s.textContent=fmt(mass/denom);
+      });
+      const e=arrow(p,cx(g.at(-1))+cw*.35,y+25,sx-7,y+25,'s1');d.trace(0,e);
+    });
+    let y=G.length*35+112;
+    p=d.stage(1,y,sparse?'索引选出最高分摘要':'写入摘要队列，全部读取');
+    text(p,8,y+20,'N(a)=√2·(a,1)/√(a²+1)','start',13);
+    text(p,8,y+39,sparse?'索引 qᴵ=(0,1) → I=ReLU(N₂)':'完整组 2 个 → 可见摘要 2 条','start',13);
+    const sx2=i=>(w-8)*(i+.5)/G.length+4,ww=(w-14)/G.length;
+    norms.forEach((n,i)=>{
+      const x=sx2(i),on=!sparse||i===2;
+      const br=rect(p,x-ww/2+1,y+48,ww-3,42,on?1:0);
+      const h=text(p,x,y+64,letters[i]+(sparse?(on?' · ✓ 取':' · 留存'):' · 读入'),'middle',12);
+      const coord=text(p,x,y+82,'('+fmt(n[0],2)+','+fmt(n[1],2)+')','middle',12);
+      if(sparse){
+        const sw=ww*.8,bar=rect(p,x-sw/2,y+97,sw*n[1]/1.5,7,on?1:0);d.grow(1,bar,'x');
+        text(p,x,y+120,'I='+fmt(n[1]),'middle',12);
+      }else [br,h,coord].forEach(node=>d.move(1,node,sx-x,-12));
+    });
+    y+=sparse?151:126;
+    p=d.stage(2,y,'摘要与局部 KV 共同归一化');
+    text(p,8,y+21,'q=(√2,0)　　z=q·KV/√2=KV₁','start',13);
+    const pool=sparse?[norms[2]]:[norms[0],norms[1]],v=[...pool,N(1),N(0),[0,0]],
+      labels=[...(sparse?['C']:['A','B']),'t₅','t₆','sink'],col=v.length,
+      lbl=43,dx=(w-12-lbl)/col,xc=i=>lbl+(i+.5)*dx,states=[];
+    const rail=w-3, localX=xc(pool.length);
+    const localPath=p.path('M '+cx(4)+' 48 H '+rail+' V '+(y+24)+' H '+localX+' V '+(y+28),{stroke:'s2',dash:'3 4',sw:1,fill:'none'});
+    d.trace(2,localPath);d.travel(2,[[cx(4),48],[rail,48],[rail,y+24],[localX,y+24],[localX,y+28]],{tone:'s2',r:3});
+    ['对象','KV₁=z','KV₂'].forEach((s,j)=>text(p,7,y+44+j*22,s,'start',12,'dim'));
+    v.forEach((vec,i)=>{
+      const x=xc(i),special=i===col-1,color=i<pool.length?1:special?0:2;
+      const card=rect(p,x-dx*.45,y+29,dx*.9,20,color);
+      const label=text(p,x,y+44,labels[i],'middle',12);
+      if(!special){d.move(2,card,0,-13);d.move(2,label,0,-13);}
+      vec.forEach((n,j)=>text(p,x,y+66+22*j,fmt(n,3),'middle',12));
+    });
+    text(p,8,y+111,'联合 softmax　|　sink 分数为 0，值为 0','start',13);
+    const z=v.map(k=>k[0]),soft=t=>{const e=z.map(n=>Math.exp(n*t)),s=e.reduce((a,b)=>a+b,0);return e.map(a=>a/s);},weights=soft(1);
+    const usable=w-16;
+    let start=8;
+    weights.forEach((weight,i)=>{
+      const len=usable*weight,color=i<pool.length?1:i===col-1?0:2;
+      const bar=rect(p,start,y+119,len,24,color),mark=text(p,start+len/2,y+136,labels[i],'middle',11);
+      const percent=text(p,start+len/2,y+161,(100*weight).toFixed(1)+'%','middle',w<350?11:12);
+      states.push([bar,mark,percent]);start+=len;
+    });
+    d.change(2,t=>{
+      const al=soft(t);let pos=8;
+      states.forEach(([bar,mark,percent],i)=>{const len=al[i]*usable;bar.setAttribute('x',pos);bar.setAttribute('width',len);mark.setAttribute('x',pos+len/2);percent.setAttribute('x',pos+len/2);percent.textContent=(100*al[i]).toFixed(1)+'%';pos+=len;});
+    });
+    y+=192;
+    p=d.stage(3,y,'取值，再做输出投影');
+    const o=[0,1].map(c=>v.reduce((acc,n,i)=>acc+weights[i]*n[c],0)),g=o[0]-o[1],
+      ox=25,oy=y+104,scale=Math.min(76,w*.25),right=Math.max(129,w*.45);
+    line(p,ox,oy,ox+scale+10,oy);line(p,ox,oy,ox,oy-scale-6);
+    text(p,ox,oy+16,'0','middle',11,'dim');text(p,ox+scale,oy+16,'o₁','middle',12,'dim');text(p,ox-2,oy-scale-9,'o₂','middle',12,'dim');
+    let xx=0,yy=0;
+    v.slice(0,-1).forEach((vv,i)=>{
+      const nextX=xx+vv[0]*weights[i],nextY=yy+vv[1]*weights[i],a1=ox+xx*scale,b1=oy-yy*scale,a2=ox+nextX*scale,b2=oy-nextY*scale;
+      const segment=arrow(p,a1,b1,a2,b2,i<pool.length?'s1':'s2');
+      const timing={delay:i/(col-1),dur:1/(col-1)}; d.trace(3,segment,timing); const dot=p.circle(a2,b2,2.6,{fill:i<pool.length?'s1':'s2',stroke:'none'});
+      d.move(3,dot,a1-a2,b1-b2,timing);xx=nextX;yy=nextY;
+    });
+    text(p,right,y+29,'o=Σ αⱼ KVⱼ','start',13);
+    const coord=text(p,right,y+51,'('+fmt(o[0],4)+', '+fmt(o[1],4)+')','start',12);
+    text(p,right,y+75,'g=o₁−o₂，y=(g,2g)','start',12);
+    const ret=text(p,right,y+98,'('+fmt(g,4)+', '+fmt(2*g,4)+')','start',12,'ink',500);
+    d.change(3,t=>{
+      const s=[0,0];v.slice(0,-1).forEach((vec,i)=>{const a=weights[i]*bound(t*(col-1)-i);s[0]+=a*vec[0];s[1]+=a*vec[1];});
+      coord.textContent='('+fmt(s[0],4)+', '+fmt(s[1],4)+')';
+      const now=s[0]-s[1];ret.textContent='('+fmt(now,4)+', '+fmt(2*now,4)+')';
+    });
+    text(p,8,y+141,'本例输出端　RoPE⁻¹ = I　→　残差分支','start',12,'dim');
+    const ax=[8,w*.40,w*.64,w*.86],rows=[
+      ['配置','压缩步长','摘要筛选','局部窗'],
+      ['图中算例',sparse?'2':'3',sparse?'top-1':'全读','2'],
+      ['V4-Flash',sparse?'4':'128',sparse?'top-512':'全读','128']
+    ];
+    rows.forEach((row,ri)=>row.forEach((value,j)=>text(p,ax[j],y+168+ri*20,value,j?'middle':'start',12,ri?'ink':'dim')));
+    d.lens(3,y-16,y+147);
+    return d.finish(y+218);
+  }
+  Object.assign(scenes,{mla,dsa,csa:d=>v4(d,true),hca:d=>v4(d,false)});
+})();
+
+    const groups=[
+    ['分块与分页',[['flash','FlashAttention · 分块计算'],['paged','PagedAttention · 分页寻址']]],
+    ['递推状态',[['ssm','SSM 混合架构'],['kda','KDA · Kimi Delta Attention']]],
+    ['DeepSeek',[['mla','MLA · 低维 KV 与 RoPE'],['dsa','DSA · 按 token 打分'],['csa','CSA · 合并后筛选'],['hca','HCA · 合并后全读']]],
+    ['头共享与历史窗口',[['base','普通因果注意力'],['mha','MHA · 多头'],['mqa','MQA · 共享 KV'],['gqa','GQA · 分组共享 KV'],['swa','SWA · 滑动窗口'],['streaming','StreamingLLM · 起始与近期'],['block','Block-Sparse · 块掩码']]]
+  ];
+  for(const [name,items] of groups){
+    const g=document.createElement('optgroup');g.label=name;
+    for(const [key,text] of items)g.append(new Option(text,key));modelSelect.append(g);
+  }
+  const refs={
+    flash:[['FlashAttention §3、算法 1','https://arxiv.org/abs/2205.14135']],
+    ssm:[['Jamba · 混合层架构','https://arxiv.org/abs/2403.19887'],['Mamba · 选择性状态空间模型','https://arxiv.org/abs/2312.00752']],
+    kda:[['Kimi Linear §3–4 · 递推与输出公式','https://arxiv.org/html/2510.26692v1']],
+    mla:[['DeepSeek-V2 §2.1 · MLA','https://arxiv.org/html/2405.04434v5#S2.SS1'],['RoFormer · 旋转位置编码','https://arxiv.org/abs/2104.09864']],
+    dsa:[['DeepSeek-V3.2 §2.1 · Lightning Indexer','https://arxiv.org/html/2512.02556v1#S2.SS1']],
+    csa:[['DeepSeek-V4 §2.3 · CSA / HCA','https://arxiv.org/html/2606.19348v1#S2.SS3'],['V4-Flash 配置','https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/config.json']],
+    base:[['Transformer §3.2','https://arxiv.org/abs/1706.03762']],
+    mqa:[['Multi-Query Attention','https://arxiv.org/abs/1911.02150']],gqa:[['Grouped-Query Attention','https://aclanthology.org/2023.emnlp-main.298/']],
+    swa:[['Mistral 7B · 滑动窗口','https://arxiv.org/abs/2310.06825']],streaming:[['StreamingLLM','https://hanlab.mit.edu/projects/streamingllm']],
+    block:[['BigBird · 块稀疏示例','https://arxiv.org/abs/2007.14062']],paged:[['PagedAttention','https://arxiv.org/abs/2309.06180']]
+  };refs.mha=refs.base;refs.hca=refs.csa;
+
+  const subs='₀₁₂₃₄₅₆₇₈₉',range=(n,fn)=>Array.from({length:n},(_,i)=>fn(i));
+  const heads=range(4,j=>'观察查询头 h'+subs[j]);
+  const query=range(8,j=>'当前查询 q'+subs[j+1]);
+  const parameters={mha:heads,mqa:heads,gqa:heads,paged:range(4,j=>'跟踪缓存地址 · '+['t₁','t₂','t₃','t₄'][j]),swa:query,streaming:query,block:range(8,j=>'当前查询 q'+subs[8-j])};
+  const defaults={paged:3,swa:7,streaming:7},reduce=matchMedia('(prefers-reduced-motion: reduce)');
+  const DURATION=1800,HOLD=550;
+  let id='paged',param=3,steps=[],index=-1,art=null,svg=null,auto=false,paused=false,elapsed=0,raf=0,last=0,detail=false,width=0;
+  function displayControls(){
+    const end=index===steps.length-1,s=steps[index];
+    el('next').disabled=end;el('prev').disabled=index<0;el('reset').disabled=index<0;
+    el('play').textContent=auto?'暂停':paused?'继续执行':end?'重新自动执行':'自动执行';
+    el('play').setAttribute('aria-pressed',String(auto));
+    el('step').textContent=s?'第 '+(index+1)+' / '+steps.length+' 步　'+s.label:'教学算例 · 全 '+steps.length+' 步';
+    el('result').textContent=s?'。'+s.value:'。点击执行下一步，或点图中某一步重播。';
+  }
+  function persist(){
+    window.openai?.setWidgetState?.({modelContent:{mechanism:id},privateContent:{platesVersion:3,param,stepIndex:index}})?.catch?.(()=>{});
+  }
+  function frameAt(t){
+    if(!art)return;
+    art.apply(index,t);svg.dataset.phase=String(t);
+  }
+  function cancelTick(){cancelAnimationFrame(raf);raf=0;last=0;}
+  function tick(now){
+    raf=0;
+    if(!last)last=now;
+    elapsed+=Math.max(0,now-last);last=now;
+    frameAt(reduce.matches?1:Math.min(1,elapsed/DURATION));
+    if(auto&&elapsed>=DURATION+HOLD){
+      if(index<steps.length-1){selectStep(index+1,true,true);return;}
+      auto=false;displayControls();persist();
+    }
+    if(auto||(!paused&&elapsed<DURATION))raf=requestAnimationFrame(tick);else last=0;
+  }
+  function startTick(){if(!raf&&!paused&&(auto||(!reduce.matches&&elapsed<DURATION)))raf=requestAnimationFrame(tick);}
+  function selectStep(i,animate,save){
+    cancelTick();
+    if(index>=0)art?.apply(index,1);
+    index=Math.max(-1,Math.min(steps.length-1,i));paused=false;
+    elapsed=index>=0&&animate&&(auto||!reduce.matches)?0:DURATION;
+    art?.focus(index);art?.inspect(index,detail);
+    frameAt(index<0||!animate||reduce.matches?1:0);
+    displayControls();if(index>=0)startTick();if(save)persist();
+  }
+  function manual(i,fromDiagram=false){
+    auto=false;
+    if(!fromDiagram)detail=i>=0;
+    selectStep(i,true,true);
+  }
+  el('next').onclick=()=>manual(index+1);el('prev').onclick=()=>manual(index-1);el('reset').onclick=()=>manual(-1);
+  el('play').onclick=()=>{
+    if(auto){auto=false;paused=true;cancelTick();displayControls();persist();return;}
+    auto=true;detail=true;
+    if(paused){paused=false;art.inspect(index,true);displayControls();startTick();return;}
+    if(index<0||index===steps.length-1){selectStep(0,true,true);return;}
+    if(elapsed>=DURATION){selectStep(index+1,true,true);return;}
+    art.inspect(index,true);displayControls();startTick();
+  };
+  function draw(){
+    const w=host.clientWidth;if(!w)return;
+    width=w;svg=S('svg',{class:'plate-svg',role:'img'});
+    svg.prepend(S('title',{},modelSelect.selectedOptions[0].textContent),S('desc',{},steps.map(s=>s.label+'。'+s.value).join(' ')));
+    host.replaceChildren(svg);art=diagram(svg,w,steps.length);scenes[id](art,param);art.ready();
+    art.focus(index);art.inspect(index,detail);frameAt(index<0||reduce.matches?1:Math.min(1,elapsed/DURATION));
+    art.activate(i=>manual(i,true));
+  }
+  function choose(name,n,idx=-1,save=true){
+    if(!Object.hasOwn(scenes,name))return;
+    cancelTick();auto=false;paused=false;detail=false;elapsed=DURATION;
+    id=name;const params=parameters[id];
+    param=params?Math.max(0,Math.min(params.length-1,Number.isInteger(n)?n:(defaults[id]||0))):0;
+    steps=runSteps[id](param);index=Math.min(steps.length-1,Math.max(-1,idx));
+    modelSelect.value=id;el('param').hidden=!params;
+    if(params){slider.max=params.length-1;slider.value=param;slider.setAttribute('aria-valuetext',params[param]);el('paramname').textContent=params[param];}
+    const sources=el('refs');sources.replaceChildren();
+    for(const [label,url] of refs[id]){const a=document.createElement('a');a.href=url;a.textContent=label;a.target='_blank';a.rel='noopener noreferrer';sources.append(a);}
+    displayControls();draw();if(save)persist();
+  }
+  function restore(state){
+    const name=state?.modelContent?.mechanism,p=state?.privateContent;
+    if(!Object.hasOwn(scenes,name))return;
+    const n=Number.isInteger(p?.param)?p.param:defaults[name]||0;
+    const i=[2,3].includes(p?.platesVersion)&&Number.isInteger(p.stepIndex)?p.stepIndex:-1;
+    if(id!==name||param!==n)choose(name,n,i,false);
+    else if(index!==i){auto=false;detail=false;selectStep(i,false,false);}
+  }
+  modelSelect.addEventListener('change',()=>choose(modelSelect.value));
+  slider.addEventListener('input',()=>choose(id,Number(slider.value)));
+  choose(id,param,-1,false);restore(window.openai?.widgetState);
+  window.addEventListener('openai:set_globals',e=>restore(e.detail?.globals?.widgetState));
+  new ResizeObserver(()=>{if(host.clientWidth!==width)draw();}).observe(host);
+  reduce.addEventListener('change',()=>{if(reduce.matches){elapsed=DURATION;frameAt(1);}});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden){cancelTick();}else if(index>=0)startTick();});
+  window.addEventListener('pagehide',()=>{cancelTick();auto=false;});
+})();
+</script>
