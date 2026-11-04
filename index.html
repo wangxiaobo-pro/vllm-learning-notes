@@ -98,6 +98,10 @@
           <details class="module" id="kv-cache" data-label="KV 缓存与传输" open>
             <summary><span class="module-number" aria-hidden="true">04</span><h2>KV 缓存与传输</h2><span class="module-description">缓存复用与跨实例协作</span><span class="module-count"></span></summary>
             <ul class="flow-list">
+              <li><a class="flow" href="kv-offloading/index.html" data-keywords="vLLM Ascend KV Offloading OffloadingConnector CPU NPU HBM DRAM D2H H2D 卸载 回载 前缀复用 块映射">
+                <span class="flow-copy"><span class="flow-title">KV Offloading 的设备结构</span><span class="flow-description">追踪同一段前缀的 KV 如何从两个 NPU 块写入主存，再回载到另一个请求的新块。</span></span>
+                <span class="flow-tag">设备结构图</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
               <li><a class="flow" href="pd-disaggregation/index.html" data-keywords="vLLM PD Prefill Decode 分离 V0 V1 Scheduler Worker Mooncake KV 缓存 匹配 传输 请求 恢复">
                 <span class="flow-copy"><span class="flow-title">vLLM PD 分离</span><span class="flow-description">对照 V0 / V1，观察 P、D 两侧的缓存匹配、KV 传输与请求恢复。</span></span>
                 <span class="flow-tag">交互动画</span><span class="flow-arrow" aria-hidden="true">↗</span>

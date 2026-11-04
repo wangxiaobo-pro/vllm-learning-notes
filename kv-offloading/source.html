@@ -1,0 +1,227 @@
+<section id="km-map" lang="zh-CN" aria-labelledby="km-title">
+  <header>
+    <h2 id="km-title">KV Offloading 的设备结构</h2>
+    <p class="text-small text-muted">单 NPU · CPU 单层缓存 · A 与 B 共享前 256 个 token，B 另有 4 个新 token</p>
+  </header>
+  <div class="viz-controls" aria-label="查看设备结构">
+    <button class="btn" type="button" id="km-all" aria-pressed="true">全局关系</button>
+    <button class="btn" type="button" id="km-prev" disabled>上一步</button>
+    <button class="btn" type="button" id="km-next">下一步</button>
+    <button class="btn btn-primary" type="button" id="km-play">播放流程</button>
+  </div>
+  <div id="km-status" aria-live="polite"></div>
+  <div class="km-drawing"><svg id="km-svg" role="img" aria-labelledby="km-svg-title km-svg-desc"></svg></div>
+  <div class="km-key text-small"><span><i class="km-local"></i>本地计算</span><span><i class="km-value"></i>KV 副本</span><span><i class="km-copy"></i>跨设备复制</span><span><i class="km-ctrl"></i>调度元数据</span></div>
+  <p class="text-small text-muted" id="km-sample">K 和 V 两列取每块首 token 在同一个 head 上的一个 BF16 分量。表中数字为教学示例，实际搬运覆盖整块 KV。</p>
+  <details id="km-record">
+    <summary class="cursor-interaction">块映射与源码</summary>
+    <ol id="km-list"></ol>
+    <p class="text-small text-muted">普通全注意力 · 128 token / NPU 块 · 2 块 / CPU chunk · 假设 A 结束后旧设备块已被复用。全局图并列展示 A 写出和 B 回载时的块位置。数值与块号为教学示例，流程按本地源码静态核对。</p>
+  </details>
+</section>
+<style>
+  #km-map { display:grid; gap:calc(var(--font-size-base) * .68); min-width:0; }
+  #km-map header p { margin-top:calc(var(--font-size-base) * .25); }
+  #km-map .km-drawing,#km-map #km-svg { width:100%; min-width:0; display:block; }
+  #km-map .km-key { display:flex; flex-wrap:wrap; gap:calc(var(--font-size-base) * .8); }
+  #km-map .km-key span { display:inline-flex; align-items:center; gap:5px; }
+  #km-map .km-key i { width:18px; border-top:2px solid; }
+  #km-map .km-key .km-local { border-color:var(--viz-series-1); }
+  #km-map .km-key .km-copy { border-color:var(--viz-series-2); }
+  #km-map .km-key .km-value { border-color:var(--viz-series-3); }
+  #km-map .km-key .km-ctrl { border-color:var(--muted-foreground); border-top-style:dashed; }
+  #km-map #km-status { min-width:0; overflow-wrap:anywhere; }
+  #km-map ol { padding-inline-start:calc(var(--font-size-base)*1.8); margin-block:calc(var(--font-size-base)*.65); }
+  #km-map li { margin-bottom:calc(var(--font-size-base)*.45); overflow-wrap:anywhere; }
+  #km-map summary { width:fit-content; }
+</style>
+<script>
+(() => {
+  const root=document.getElementById('km-map');
+  const get=id=>root.querySelector('#km-'+id);
+  const svg=get('svg'), ns='http://www.w3.org/2000/svg';
+  const upstream='https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/';
+  const ascend='https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/';
+  const native=ascend+'distributed/kv_transfer/kv_pool/kv_offload/native/cpu_npu.py';
+  const jobs=upstream+'distributed/kv_transfer/kv_connector/v1/offloading/';
+  const steps=[
+    ['A 生成两块 KV','前 128 个 token 写入 D7，后 128 个写入 D11。调度器已为写出作业预留 H3，前向结束时 Worker 将作业排队。','prepare_store_kv',jobs+'worker.py#L259-L271'],
+    ['D7、D11 写入 H3','Worker 通常在下一轮开头提交写出作业。D2H 等模型流写完，将两块 KV 依次复制到 H3 的两个子块。A 的设备副本仍然可用。','submit_store / swap_blocks_batch',native+'#L192-L221'],
+    ['H3 成为可复用副本','Worker 查询到写出结束事件并上报。调度器调用 complete_store，前缀键现在可以命中 H3。','complete_store',upstream+'v1/kv_offload/cpu/manager.py#L365-L381'],
+    ['B 命中 CPU，预留 D4、D9','设 D7、D11 已被其他数据复用。B 在设备缓存命中 0 个 token，CPU 命中 256 个。调度器引用 H3、分配新块并下发 load 作业，B 等待 KV。','update_state_after_alloc / prepare_load',jobs+'scheduler.py#L1243-L1274'],
+    ['H3 回载到 D4、D9','Worker 提交 H2D。H3 的子块 0 写入 D4，子块 1 写入 D9。K 与 V 分别复制，块号改变，每个 token 的 K/V 数值保持一致。','submit_load / transfer_async',native+'#L359-L376'],
+    ['B 收到 KV','回载事件完成后，Worker 上报 completed_jobs 和 finished_recving(B)。调度器解除 H3 的读引用，并记录 B 可以在后续调度中恢复。','get_finished',jobs+'worker.py#L273-L308'],
+    ['B 用历史 KV 计算 4 个新 token','B 获调度时，注意力读取 D4、D9 中的 256-token 前缀，只对第 257–260 个 token 做新的 prefill。','_update_waiting_for_remote_kv',upstream+'v1/core/sched/scheduler.py#L3133-L3200']
+  ];
+  const c={fg:'var(--foreground)',muted:'var(--muted-foreground)',bg:'var(--background)',border:'var(--border)',soft:'var(--muted)',local:'var(--viz-series-1)',copy:'var(--viz-series-2)',value:'var(--viz-series-3)',ctrl:'var(--muted-foreground)'};
+  const restored=s=>{
+    const p=s?.privateContent;
+    return p?.rev===2 && Number.isInteger(p.step) && p.step>=0 && p.step<=7 ? p.step : 0;
+  };
+  let step=restored(window.openai?.widgetState), timer=null, widthLast=0;
+  function item(tag,attrs={},value,owner=svg) {
+    const e=document.createElementNS(ns,tag);
+    for (const [k,v] of Object.entries(attrs)) e.setAttribute(k,v);
+    if(value!==undefined) e.textContent=value;
+    owner.append(e); return e;
+  }
+  const smallText={class:'text-small'};
+  function txt(x,y,str,attrs={}) { return item('text',{x,y,fill:c.fg,'text-anchor':'middle',...attrs},str); }
+  function box(x,y,w,h,attrs={}) {return item('rect',{x,y,width:w,height:h,rx:6,...attrs});}
+  function number(x,y,n,col) {
+    item('circle',{cx:x,cy:y,r:8.5,fill:c.bg,stroke:col,'stroke-width':1.25});
+    txt(x,y+4,String(n),smallText);
+  }
+  function paint(type,seq) { return !step || seq.includes(step) ? c[type] : c.border; }
+  function frame(x,y,w,h,title,footer=false) {
+    box(x,y,w,h,{rx:11,fill:'none',stroke:c.muted,'stroke-width':1.2,'stroke-dasharray':'6 5'});
+    txt(x+w/2,footer?y+h-10:y+21,title,{'font-weight':500});
+  }
+  function card(b,type,seq) {
+    box(b.x,b.y,b.w,b.h,{fill:c.bg,stroke:paint(type,seq),'stroke-width':step && seq.includes(step)?2:1.4});
+  }
+  function addrTable(b,kind,compact) {
+    const isA=kind==='a',isH=kind==='h', owners=isA?[1,2]:isH?[2,3,4,5]:[4,5,6,7];
+    card(b,isA?'local':'value',owners);
+    const x=b.x+b.w/2, y=b.y;
+    if(isA||isH) number(b.x+8,y+(compact?-6:2),isA?1:3,paint(isA?'local':'value',isA?[1]:[3]));
+    txt(x,y+23,isA?'A 的源块':isH?'H3 · CPU chunk':'B 的目标块',{'font-weight':500});
+    const valid=!step||(isA?step<4:isH?step>=3:step>=6);
+    const reserved=!step||isA||isH||step>=4;
+    const seq=step===0?(isA?'A 写出时':isH?'同一个 CPU 槽':'B 回载后'):
+      isA?(step>=4?'原块已被复用':'前缀 KV 已写入'):
+      isH?(step===1?'槽位已预留':step===2?'写入中':step===4||step===5?'读引用已持有':'前缀已就绪'):
+      step<4?'尚未分配':step===4?'目标块已预留':step===5?'回载中':'前缀可读取';
+    txt(x,y+42,seq,{...smallText,fill:c.muted});
+    const inset=compact?5:10, left=b.x+inset,w=b.w-inset*2;
+    const col=(compact?[.21,.56,.85]:[.19,.53,.74,.91]).map(f=>left+w*f);
+    const labels=isA?['D7','D11']:isH?['H3[0]','H3[1]']:['D4','D9'];
+    const ty=y+53;
+    box(left,ty,w,62,{rx:3,stroke:c.border,fill:'none'});
+    item('path',{d:'M '+left+' '+(ty+20)+' h '+w+' M '+left+' '+(ty+41)+' h '+w,stroke:c.border,fill:'none'});
+    (compact?['位置','K','V']:['token','位置','K','V']).forEach((v,i)=>txt(col[i],ty+14,v,{...smallText,fill:c.muted}));
+    for(let r=0;r<2;r++){
+      const row=[reserved?labels[r]:'·',valid?1+r*2:'·',valid?2+r*2:'·'];
+      if(!compact) row.unshift(r?'129–256':'1–128');
+      row.forEach((v,i)=>txt(col[i],ty+36+r*20,String(v),{...smallText,'font-family':'ui-monospace,Consolas,monospace'}));
+    }
+  }
+  function scheduler(b,compact) {
+    card(b,'ctrl',[3,4,6]);
+    const x=b.x+b.w/2, y=b.y;
+    txt(x,y+22,'EngineCore',{'font-weight':500});
+    txt(x,y+42,'调度器 · 前缀索引',smallText);
+    txt(x,y+66,!step||step>=3?'前缀键 → H3':'前缀键 · 待写完',smallText);
+    txt(x,y+86,step && step<4?'B 尚未到达':step===4||step===5?'B 等待回载':step>=6?'B 已收到 KV':'B 命中 256 token',{...smallText,fill:c.muted});
+    if(!compact) txt(x,y+107,'索引中保存块号', {...smallText,fill:c.muted});
+  }
+  function compute(b,compact) {
+    card(b,'local',[7]);
+    number(b.x+8,b.y+(compact?-6:2),7,paint('local',[7]));
+    const x=b.x+b.w/2;
+    txt(x,b.y+(compact?18:22),'B 的注意力计算',{'font-weight':500});
+    txt(x,b.y+(compact?37:43),!step||step===7?'读取 256 · 新算 4':'等待前缀 KV',smallText);
+  }
+  function edge(points,type,n,caption,badgeAt,animate) {
+    const ink=paint(type,[n]), path=points.map((p,i)=>(i?'L':'M')+' '+p[0]+' '+p[1]).join(' ');
+    const p=item('path',{d:path,fill:'none',stroke:ink,'stroke-width':type==='copy'?2:1.5,'stroke-linejoin':'round','stroke-dasharray':type==='ctrl'?'4 3':'none','data-edge':n});
+    const [x,y]=points.at(-1), [px,py]=points.at(-2);
+    const dx=Math.sign(x-px),dy=Math.sign(y-py);
+    item('path',{d:'M '+(x-7*dx+4*dy)+' '+(y-7*dy-4*dx)+' L '+x+' '+y+' L '+(x-7*dx-4*dy)+' '+(y-7*dy+4*dx),fill:'none',stroke:ink,'stroke-width':2});
+    if(badgeAt) {
+      const [bx,by]=badgeAt;
+      const text=txt(bx+10,by+4,caption,smallText);
+      const tw=text.getComputedTextLength(), w=tw+25;
+      const plate=box(bx-w/2-2,by-11,w+4,22,{rx:4,fill:c.bg,stroke:ink});
+      svg.insertBefore(plate,text);
+      number(bx-w/2+10,by,n,ink);
+    }
+    if(animate && step===n && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const packet=item('circle',{r:type==='copy'?4.5:3.2,fill:ink,'aria-hidden':true});
+      const motion=item('animateMotion',{path:p.getAttribute('d'),dur:'900ms',begin:'indefinite',fill:'freeze'},undefined,packet);
+      motion.beginElement(); motion.addEventListener('endEvent',()=>packet.remove(),{once:true});
+    }
+  }
+  function draw(animate=false) {
+    const W=svg.parentElement.clientWidth;
+    if(!W)return;
+    const narrow=W<520;
+    const H=narrow?521:481;
+    svg.replaceChildren(); svg.setAttribute('viewBox','0 0 '+W+' '+H); svg.style.height=H+'px';
+    item('title',{id:'km-svg-title'},'KV 块的设备结构及复制方向');
+    item('desc',{id:'km-svg-desc'},step?steps[step-1].join('。').split('https:')[0]:'NPU 中 A 的设备块 D7 和 D11 经 D2H 进入一个主存槽 H3，H3 的两个子块再经 H2D 回载到 NPU 中 B 的新设备块 D4 和 D9。');
+    let A,B,C,S,F;
+    const rect=(x,y,w,h)=>({x,y,w,h});
+    const gap=W>=650?122:94;
+    if(!narrow) {
+      const pane=(W-gap-12)/2, w=pane-22;
+      frame(4,4,pane,471,'NPU · Worker / HBM');
+      frame(W-pane-4,4,pane,384,'主机 · CPU / DRAM');
+      A=rect(15,49,w,124); B=rect(15,256,w,124); F=rect(15,409,w,53);
+      C=rect(W-pane+7,49,w,124); S=rect(C.x,256,w,124);
+    } else {
+      frame(3,3,W-6,258,'NPU · Worker / HBM');
+      frame(3,342,W-6,174,'主机 · CPU / DRAM',true);
+      const w=(W-34)/2, l=12, r=W-12-w;
+      A=rect(l,119,w,124); B=rect(r,119,w,124); F=rect(r,44,w,45);
+      C=rect(l,354,w,124); S=rect(r,354,w,124);
+      txt(A.x+A.w/2,62,'A 写出 / B 回载',{...smallText,fill:c.muted});
+      txt(A.x+A.w/2,81,'两次请求的块位置',{...smallText,fill:c.muted});
+    }
+    addrTable(A,'a',narrow); addrTable(B,'b',narrow); addrTable(C,'h',narrow); scheduler(S,narrow); compute(F,narrow);
+    if(!narrow) {
+      const l=A.x+A.w, r=C.x, m=(l+r)/2;
+      edge([[l,88],[r,88]],'copy',2,'D2H 写出',[m,88],animate);
+      edge([[r,148],[m,148],[m,281],[l,281]],'copy',5,'H2D 回载',[m,211],animate);
+      edge([[r,321],[l,321]],'ctrl',4,'回载计划',[m,321],animate);
+      edge([[l,360],[r,360]],'ctrl',6,'接收完成',[m,360],animate);
+      const cx=B.x+B.w/2;
+      edge([[cx,380],[cx,408]],'local',7,'',null,animate);
+    } else {
+      const left=A.x+A.w*.38, turn=C.x+C.w*.86, dest=B.x+B.w*.14;
+      const alloc=B.x+B.w*.5, done=B.x+B.w*.84;
+      edge([[left,243],[left,C.y-1]],'copy',2,'D2H',[left,292],animate);
+      edge([[turn,C.y],[turn,316],[dest,316],[dest,244]],'copy',5,'H2D',[(turn+dest)/2,316],animate);
+      edge([[alloc,S.y],[alloc,244]],'ctrl',4,'分配',[alloc,278],animate);
+      edge([[done,243],[done,S.y-1]],'ctrl',6,'完成',[done,313],animate);
+      edge([[B.x+B.w/2,119],[B.x+B.w/2,90]],'local',7,'',null,animate);
+    }
+  }
+  function stop() { if(timer!==null) clearTimeout(timer); timer=null; get('play').textContent='播放流程'; }
+  function show(next,animate=false,persist=false) {
+    step=next;
+    get('all').setAttribute('aria-pressed',String(!step));
+    get('prev').disabled=step<=1; get('next').disabled=step===7;
+    get('status').textContent=step?step+' / 7 · '+steps[step-1][0]:'全局关系 · 同一段 KV 在 A、主存和 B 中的块映射';
+    get('caption').textContent=step?steps[step-1][1]:'表中第一行对应 token 1–128，第二行对应 token 129–256。';
+    draw(animate);
+    if(persist) window.openai?.setWidgetState?.({modelContent:{visual:'KV 块的设备结构',step,title:step?steps[step-1][0]:'全局关系'},privateContent:{rev:2,step}})?.catch(()=>{});
+  }
+  function move(next){stop();show(next,true,true);}
+  function tick(){
+    show(step>=7?1:step+1,true,true);
+    if(step===7){stop();return;}
+    timer=setTimeout(tick,2000);
+  }
+  const caption=document.createElement('p'); caption.id='km-caption'; caption.className='text-small';
+  get('sample').before(caption);
+  for (const [title,detail,name,url] of steps) {
+    const li=document.createElement('li'), link=document.createElement('a');
+    link.href=url; link.target='_blank'; link.rel='noopener noreferrer'; link.textContent=name;
+    li.append(title+'。'+detail+' ',link); get('list').append(li);
+  }
+  get('all').addEventListener('click',()=>move(0));
+  get('prev').addEventListener('click',()=>move(Math.max(1,step-1)));
+  get('next').addEventListener('click',()=>move(Math.min(7,step+1)));
+  get('play').addEventListener('click',()=>{if(timer!==null){stop();return;}get('play').textContent='暂停播放';tick();});
+  window.addEventListener('openai:set_globals',e=>{
+    if(e.detail?.globals && Object.hasOwn(e.detail.globals,'widgetState')) {
+      const next=restored(e.detail.globals.widgetState);
+      if(next!==step){stop();show(next);}
+    }
+  });
+  show(step);
+  widthLast=svg.parentElement.clientWidth;
+  new ResizeObserver(entries=>{const w=entries[0].contentRect.width;if(Math.abs(widthLast-w)>.5){widthLast=w;draw();}}).observe(svg.parentElement);
+})();
+</script>
