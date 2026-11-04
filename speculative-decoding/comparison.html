@@ -61,13 +61,22 @@
     #draft-compare .slot { background: transparent; outline: 1px dashed var(--muted-foreground); outline-offset: -1px; }
     #draft-compare .routes { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1.4em; }
     #draft-compare .route { min-width: 0; padding-top: .65em; border-top: 2px solid var(--border); }
-    #draft-compare .sketch { margin: .9em 0 .6em; }
-    #draft-compare .chain { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: .5em; }
-    #draft-compare .chain-node { display: grid; justify-items: center; gap: .3em; position: relative; }
-    #draft-compare .chain-node + .chain-node::before { content: '→'; position: absolute; inset-inline-start: -.75em; top: .28em; color: var(--muted-foreground); }
-    #draft-compare .block { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: .22em .4em; justify-items: center; align-items: center; }
-    #draft-compare .block-op { grid-column: 2 / 5; width: 100%; display: flex; align-items: center; gap: .4em; color: var(--muted-foreground); }
-    #draft-compare .block-op::before, #draft-compare .block-op::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
+    #draft-compare .circuit { display: grid; position: relative; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px 18px; margin: 1em 0 .65em; }
+    #draft-compare .chip { z-index: 1; min-width: 0; padding: .42em .52em; text-align: center; display: grid;
+      align-content: center; justify-items: center; line-height: 1.4; border-radius: 6px; overflow-wrap: anywhere;
+      color: var(--foreground); background: var(--background); border: 1px solid var(--border); }
+    #draft-compare .chip .which { font-size: 12px; color: var(--muted-foreground); }
+    #draft-compare .chip.target-chip { border-color: var(--viz-series-1); }
+    #draft-compare .chip.draft-chip { border-color: var(--viz-series-2); }
+    #draft-compare .chip.target-chip .which { color: var(--viz-series-1); }
+    #draft-compare .chip.draft-chip .which { color: var(--viz-series-2); }
+    #draft-compare .wide { grid-column: 1 / -1; }
+    #draft-compare .tap { grid-column: 1; padding-block: .2em; }
+    #draft-compare .tap-bank { grid-column: 2; grid-row: 1 / span 5; align-items: center; }
+    #draft-compare .parallel-circuit { row-gap: 14px; }
+    #draft-compare .tap-bank b { margin-block: .4em; }
+    #draft-compare .tap-bank .pipeline { color: var(--viz-series-2); }
+    #draft-compare .detail-link { display: inline-block; margin-top: .4em; }
     #draft-compare .method-note { margin-top: .65em; color: var(--muted-foreground); }
     #draft-compare .map { position: relative; padding: 0 26px 0 12px; }
     #draft-compare .wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -120,32 +129,42 @@
   <section id="origin-model" class="stage" aria-labelledby="input-heading">
     <div class="section-title"><span class="ordinal text-small">① 上游</span><h2 id="input-heading">目标模型读原文，选出起点</h2></div>
     <div class="port"><span class="port-label text-small">输入</span>原文 <b class="known">今天</b></div>
-    <div class="port"><span class="port-label text-small">输出 → ②</span><span>所选草稿模型需要的上下文特征 <b>H</b>，以及刚选出的词 <b class="known">想</b></span></div>
+    <div class="port"><span class="port-label text-small">输出 → ②</span><span>目标模型选出 <b class="known">想</b>。草稿端还会读取目标网络的层输出，两条路径取的位置见下图。</span></div>
     <div class="port"><span class="port-label text-small">保留 → ③</span><span>目标模型自己算好的「今天」的 KV 缓存，以及已确认的「想」</span></div>
   </section>
   <div class="routes">
     <section id="serial" class="route stage" aria-labelledby="serial-heading">
       <div class="option-title"><span class="ordinal text-small">②A</span><h3 id="serial-heading">串行投机</h3><span class="minor text-small">DeepSeek MTP</span></div>
-      <div class="port"><span class="port-label text-small">① → 输入</span><span class="payload">H ＋ 想</span></div>
-      <div class="sketch chain" role="img" aria-label="从想出发，第一次草稿前向猜吃。把吃喂回，第二次猜火。再把火喂回，第三次猜锅。">
-        <div class="chain-node"><span class="known">想</span><span class="minor text-small">已确认</span></div>
-        <div class="chain-node"><span class="guess">吃</span><span class="minor text-small">第 1 次</span></div>
-        <div class="chain-node"><span class="guess">火</span><span class="minor text-small">第 2 次</span></div>
-        <div class="chain-node"><span class="guess">锅</span><span class="minor text-small">第 3 次</span></div>
+      <p class="method-note text-small">普通 DeepSeek MTP 使用末层特征和刚选出的词。两路输入在草稿模型内汇合。</p>
+      <div class="circuit" id="mtp-circuit" role="group" aria-label="普通 DeepSeek 目标网络至 MTP 的输入连线">
+        <svg class="wires local-wires" aria-hidden="true"></svg>
+        <div class="chip target-chip wide" id="mtp-final"><span class="which">目标 · 末层 Block → 最终 RMSNorm</span><b>读完「今天」的隐藏状态 H</b></div>
+        <div class="chip target-chip" id="mtp-word" style="grid-column:2;grid-row:2"><span class="which">目标 · LM Head</span><b>从 H 选出「想」</b></div>
+        <div class="chip draft-chip" id="mtp-hidden" style="grid-column:1;grid-row:3"><span class="which">草稿 · 状态输入</span><b>hnorm(H)</b></div>
+        <div class="chip draft-chip" id="mtp-embed" style="grid-column:2;grid-row:3"><span class="which">草稿 · token 输入</span><b>「想」的词向量</b><span class="text-small">经 enorm</span></div>
+        <div class="chip draft-chip wide" id="mtp-model"><span class="which">草稿 · MTP</span><b>拼接 → 线性投影 → MTP 层</b><span class="text-small">输出头选出「吃」</span></div>
       </div>
-      <p class="method-note text-small">三次草稿前向。第一次用 H 和「想」猜「吃」，第二次用更新的隐藏态和「吃」猜「火」，再用「火」猜「锅」。</p>
+      <p class="method-note text-small">下一次喂入「吃」及上一次的 MTP 状态，选出「火」。再以「火」和更新后的状态选出「锅」。</p>
       <div class="port"><span class="port-label text-small">输出 → ③、④</span><span class="payload">候选 [吃, 火, 锅]</span></div>
+      <a class="detail-link text-small" href="index.html#mtp">查看 MTP 的逐步执行 →</a>
     </section>
     <section id="parallel" class="route stage" aria-labelledby="parallel-heading">
       <div class="option-title"><span class="ordinal text-small">②B</span><h3 id="parallel-heading">并行投机</h3><span class="minor text-small">DFlash</span></div>
-      <div class="port"><span class="port-label text-small">① → 输入</span><span class="payload">H ＋ 想 ＋ 三个占位符</span></div>
-      <div class="sketch block" role="img" aria-label="草稿模型的输入是想和三个占位符。一次前向同时从三个占位符的位置读出吃、火、锅。">
-        <span class="known">想</span><span class="slot">□</span><span class="slot">□</span><span class="slot">□</span>
-        <span class="block-op text-small">一次草稿前向</span>
-        <span class="minor text-small">已确认</span><span class="guess">吃</span><span class="guess">火</span><span class="guess">锅</span>
+      <p class="method-note text-small">Qwen3-8B 配套草稿 Qwen3-8B-DFlash-b16 读取五个目标 Block 的输出。图中层号从 1 数起。</p>
+      <div class="circuit parallel-circuit" id="dflash-circuit" role="group" aria-label="Qwen3 五层输出并入草稿上下文 K/V，查询来自锚点和三个占位符">
+        <svg class="wires local-wires" aria-hidden="true"></svg>
+        <div class="chip target-chip tap" id="tap2"><span class="which">目标 Block 2</span></div>
+        <div class="chip target-chip tap" id="tap10"><span class="which">目标 Block 10</span></div>
+        <div class="chip target-chip tap" id="tap18"><span class="which">目标 Block 18</span></div>
+        <div class="chip target-chip tap" id="tap26"><span class="which">目标 Block 26</span></div>
+        <div class="chip target-chip tap" id="tap34"><span class="which">目标 Block 34</span></div>
+        <div class="chip draft-chip tap-bank" id="tap-bank"><span class="which">草稿 · 上下文输入</span><b>按特征维拼接</b><span class="pipeline" aria-hidden="true">↓</span><b>线性投影</b><span class="pipeline" aria-hidden="true">↓</span><b>草稿上下文 K/V</b></div>
+        <div class="chip draft-chip" id="dflash-query"><span class="which">草稿 · 查询输入</span><b>想 + [MASK] × 3</b><span class="text-small">「想」来自目标词头</span></div>
+        <div class="chip draft-chip wide" id="dflash-model"><span class="which">草稿 · DFlash</span><b>查询块读取上下文 K/V</b><span class="text-small">一次前向从三个 [MASK] 位置选词</span></div>
       </div>
-      <p class="method-note text-small">□ 是待预测的位置。模型同时给三个位置选词，猜「锅」时无需先拿到「火」的 token。</p>
+      <p class="method-note text-small">三个占位一次给出「吃」「火」「锅」。选「锅」的计算无需等待第二个位置选出「火」。</p>
       <div class="port"><span class="port-label text-small">输出 → ③、④</span><span class="payload">候选 [吃, 火, 锅]</span></div>
+      <a class="detail-link text-small" href="index.html#dflash">查看 DFlash 的逐步执行 →</a>
     </section>
   </div>
   <section class="stage" id="target">
@@ -194,7 +213,42 @@
   };
   const selector = get('scenario');
 
+  function drawLocalConnections(id, edges) {
+    const circuit = get(id);
+    const svg = circuit.querySelector('.local-wires');
+    const origin = circuit.getBoundingClientRect();
+    const relative = nodeId => {
+      const box = get(nodeId).getBoundingClientRect();
+      return {left: box.left - origin.left, top: box.top - origin.top, right: box.right - origin.left,
+        bottom: box.bottom - origin.top, x: (box.left + box.right) / 2 - origin.left,
+        y: (box.top + box.bottom) / 2 - origin.top, width: box.width};
+    };
+    svg.replaceChildren();
+    for (const [from, to, side] of edges) {
+      const source = relative(from), dest = relative(to);
+      // Wide nodes have a dedicated port above or below each narrower input.
+      const x1 = source.width > dest.width + 4 ? dest.x : source.x;
+      const x2 = dest.width > source.width + 4 ? source.x : dest.x;
+      const mid = (source.bottom + dest.top) / 2;
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', side ? 'M '+source.right+' '+source.y+' H '+(dest.left - 1)
+        : 'M '+x1+' '+source.bottom+' V '+mid+' H '+x2+' V '+(dest.top - 1));
+      path.setAttribute('stroke', 'var(--viz-series-2)');
+      path.setAttribute('stroke-width', '1.7');
+      path.setAttribute('fill', 'none');
+      path.setAttribute('marker-end', 'url(#dc-normal)');
+      path.dataset.from = from;
+      path.dataset.to = to;
+      svg.append(path);
+    }
+  }
   function drawConnections() {
+    drawLocalConnections('mtp-circuit', [['mtp-final','mtp-hidden'], ['mtp-final','mtp-word'],
+      ['mtp-word','mtp-embed'], ['mtp-hidden','mtp-model'], ['mtp-embed','mtp-model']]);
+    drawLocalConnections('dflash-circuit', [
+      ...['tap2','tap10','tap18','tap26','tap34'].map(id => [id, 'tap-bank', true]),
+      ['tap-bank','dflash-model'], ['dflash-query','dflash-model']
+    ]);
     const map = get('flow-map').getBoundingClientRect();
     const rect = (id) => {
       const box = get(id).getBoundingClientRect();
@@ -236,10 +290,11 @@
       const outputLine = stacked
         ? [[branch.r,branch.b - 24],[candidateRail,branch.b - 24],[candidateRail,merge],[target.x,merge],[target.x,target.t - 1]]
         : [[branch.x,branch.b],[branch.x,merge],[target.x,merge],[target.x,target.t - 1]];
-      wire('origin-model',id,inputLine,'隐藏态 H 和已确认词 想');
+      const signal = id === 'serial' ? '末层 H ＋ 想' : '五层输出 ＋ 想';
+      wire('origin-model',id,inputLine,signal);
       wire(id,'target',outputLine,'三个候选 吃 火 锅');
       if (!stacked) {
-        edgeLabel((origin.x + branch.x) / 2, split - 3, 'H ＋ 想');
+        edgeLabel((origin.x + branch.x) / 2, split - 3, signal);
         edgeLabel((target.x + branch.x) / 2, merge - 3, '吃 · 火 · 锅');
       }
     }
@@ -304,7 +359,7 @@
 })();
 </script>
 <!-- END FLOW -->
-  <footer class="page-footer"><span>vLLM-Ascend · 教学词例 · 未运行 NPU 推理</span><a href="README.md">源码定位与示例条件 ↗</a></footer>
+  <footer class="page-footer"><span>vLLM-Ascend · 教学词例 · 未运行 NPU 推理</span><a href="https://huggingface.co/z-lab/Qwen3-8B-DFlash-b16/blob/9b41424b7109f9c5413454f481b09a82b85333f4/config.json">DFlash 五层配置 ↗</a><a href="README.md">源码定位与示例条件 ↗</a></footer>
 </main>
 </body>
 </html>

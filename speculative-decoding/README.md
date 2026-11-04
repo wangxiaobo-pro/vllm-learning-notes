@@ -5,6 +5,13 @@
 - **逐步看七种算法**。选一种起草方法，从输入走到候选验证。页面显示每一步交给谁、已经得到几个候选，以及本轮新增的正式 token。[逐步流程图](index.html)
 - **并排比较串行和并行**。跟着同一个例子，看 DeepSeek MTP 怎样逐词喂回、DFlash 怎样一次填三个位置，再切换首位猜错、第二位猜错和全部猜中。[MTP 与 DFlash 并排图](comparison.html)
 
+## 怎样读目标层与草稿输入之间的线？
+
+从目标模型的 Block 或词表头出发，沿箭头找到草稿端的输入。多条线汇合表示草稿同时读取几份输入，一条线分叉表示同一份数据有多个消费者。Medusa 把「今天」末位的同一行隐藏态送给三个并列预测头，各头分别猜「吃」「火」「锅」。独立草稿模型和 N-gram 只需读取已有 token 的 ID，前者自己算隐藏态，后者直接查本请求的历史 token。
+
+- **EAGLE-3** 的图例采用 32 层 Llama。这份配套草稿配置省略了采集层，按 vLLM 默认值读取第 **2、16、29** 个目标 Block 在同一位置的输出，拼接后投影给草稿。图中所有层号均从 1 数起。[EAGLE-3 草稿配置](https://huggingface.co/yuhuili/EAGLE3-LLaMA3.1-Instruct-8B/blob/ada412b672e293d682423de84a095447bf38a637/config.json) · [默认取层规则](https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/interfaces.py#L1691-L1712)
+- **DFlash** 的 Qwen3-8B-DFlash-b16 配置显式列出零基索引 `[1, 9, 17, 25, 33]`。图中的第 **2、10、18、26、34** 个目标 Block 分别接到草稿的上下文输入，共同生成草稿 K/V。「想」和三个 `[MASK]` 走另一条查询输入。换用其他 checkpoint 时，应读取其配套配置和目标模型的取层规则。[DFlash 草稿配置](https://huggingface.co/z-lab/Qwen3-8B-DFlash-b16/blob/9b41424b7109f9c5413454f481b09a82b85333f4/config.json)
+
 ## 谁读取 token，谁读取目标模型的隐藏态？
 
 用 `H_t` 表示目标模型**处理完位置 t** 时的隐藏态。这里 t 是「今天」所在的位置，目标 LM head 从这一行预测出下一个 token「想」。此时已经知道「想」的 ID，目标模型要等下一次把「想」作为输入才会算出 `H_想`。以下固定三个候选，词块是教学 token，N-gram 另加一段可匹配的历史。

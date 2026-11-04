@@ -55,30 +55,24 @@
     #spec-method-guide .selection, #spec-method-guide .controlbar, #spec-method-guide .buttons { display:flex; flex-wrap:wrap; gap:.45em .7em; align-items:center }
     #spec-method-guide .selection { margin-bottom:.65em }
     #spec-method-guide .selection label { display:inline-flex; align-items:center; flex-wrap:wrap; gap:.45em }
-    #spec-method-guide .controlbar { justify-content:space-between; padding:.75em 0; border-top:1px solid var(--line) }
+    #spec-method-guide .controlbar { justify-content:space-between; padding:.55em 0; border-top:1px solid var(--line) }
     #spec-method-guide .signal { display:grid; grid-template-columns:auto minmax(0,1fr); column-gap:.8em; row-gap:.18em; margin:.4em 0 .8em }
     #spec-method-guide dt { color:var(--muted-foreground); margin:0 }
     #spec-method-guide dd { margin:0; overflow-wrap:anywhere }
     #spec-method-guide .position {font-variant-numeric:tabular-nums}
-    #spec-method-guide .current { border-inline-start:3px solid var(--viz-series-1); padding:.2em 0 .2em .8em; margin:0 0 .8em }
+    #spec-method-guide .current { border-inline-start:3px solid var(--viz-series-1); padding:.2em 0 .2em .8em; margin:.25em 0 .6em }
+    #spec-method-guide .current summary { cursor:pointer; color:var(--muted-foreground); font-size:13px }
     #spec-method-guide .current dl { margin:.35em 0 0 }
     #spec-method-guide .jumpbar { display:flex; flex-wrap:wrap; align-items:center; gap:.32em; margin:.45em 0 .85em }
-    #spec-method-guide .graph { position:relative; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr);
-      grid-template-areas:"source source" "draft target" "compare compare" "out out"; row-gap:31px; column-gap:48px; padding:0 14px; }
-    #spec-method-guide .wire { position:absolute; inset:0; height:100%; width:100%; pointer-events:none }
-    #spec-method-guide .node { border:1px dashed var(--muted-foreground); border-radius:7px; padding:.65em .85em; position:relative; background:var(--background); min-width:0; }
-    #spec-method-guide .wire text {fill:var(--muted-foreground);font:inherit;font-size:calc(var(--font-size-base) * .82)}
+    #spec-method-guide .graph { position:relative; display:grid; grid-template-columns:minmax(0,1fr); row-gap:34px; }
+    #spec-method-guide #port-graph { position:relative; display:block; width:100%; min-width:0; overflow:visible; background:transparent; }
+    #spec-method-guide .wire { position:absolute; inset:0; height:100%; width:100%; pointer-events:none; overflow:visible; }
+    #spec-method-guide .graph > .node { border:1px dashed var(--muted-foreground); border-radius:7px; padding:.65em .85em; position:relative; background:var(--background); min-width:0; margin-inline:12px 21px; }
     #spec-method-guide .node[data-current="true"] { border:2px solid var(--viz-series-1); padding:calc(.65em - 1px) calc(.85em - 1px); }
     #spec-method-guide .node[data-current="true"] .active-tag::after { content:"执行中"; margin-left:.55em; color:var(--foreground); background:color-mix(in srgb,var(--viz-series-1) 16%,transparent); padding:.03em .35em; }
     #spec-method-guide .node h3 { margin:.14em 0 .28em }
     #spec-method-guide .node p { margin-top:.24em; overflow-wrap:anywhere; }
-    #spec-method-guide .word, #spec-method-guide .slot { display:inline-grid; place-items:center; min-width:2em; padding:.15em .4em; border-radius:.25em; background:color-mix(in srgb,var(--viz-series-2) 14%,transparent); color:var(--foreground); }
-    #spec-method-guide .slot { background:var(--muted); }
-    #spec-method-guide .draft-shape { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.3em; margin:.5em 0; }
-    #spec-method-guide .draft-shape > div { text-align:center; min-width:0; }
-    #spec-method-guide .draft-shape small { display:block; color:var(--muted-foreground); margin-bottom:.17em }
-    #spec-method-guide .draft-shape.chain > div + div { position:relative; }
-    #spec-method-guide .draft-shape.chain > div + div::before { content:"→"; position:absolute; inset-inline-start:-.63em; bottom:.15em; color:var(--muted-foreground) }
+    #spec-method-guide .word { display:inline-grid; place-items:center; min-width:2em; padding:.15em .4em; border-radius:.25em; background:color-mix(in srgb,var(--viz-series-2) 14%,transparent); color:var(--foreground); }
     #spec-method-guide .feed { color:var(--muted-foreground); }
     #spec-method-guide .ledger { table-layout:fixed; border-collapse:collapse; width:100%; margin:.3em 0; font-variant-numeric:tabular-nums }
     #spec-method-guide .ledger th, #spec-method-guide .ledger td { text-align:center; padding:.29em .12em; font-weight:400; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
@@ -88,8 +82,9 @@
     #spec-method-guide .fix { background:color-mix(in srgb,var(--viz-series-3) 20%,transparent) }
     #spec-method-guide .extra { background:color-mix(in srgb,var(--viz-series-2) 18%,transparent) }
     #spec-method-guide .graph-title { display:flex; align-items:baseline; flex-wrap:wrap; justify-content:space-between; gap:.25em .6em; margin:.85em 0 .55em }
-    #spec-method-guide #source-node {grid-area:source} #spec-method-guide #draft-node {grid-area:draft}
-    #spec-method-guide #target-node {grid-area:target} #spec-method-guide #compare-node {grid-area:compare} #spec-method-guide #out-node {grid-area:out}
+    #spec-method-guide .wire-key { display:flex; flex-wrap:wrap; gap:.2em 1em; }
+    #spec-method-guide .wire-key span::before { content:""; display:inline-block; width:1.25em; margin-right:.35em; border-top:2px solid var(--wire-color); vertical-align:middle; }
+    #spec-method-guide #port-caption { margin:0 0 .55em; }
     #spec-method-guide .notes { margin:1em 0 .5em; border-top:1px solid var(--line); padding-top:.55em }
     #spec-method-guide .notes summary { cursor:pointer; font-weight:500 }
     #spec-method-guide .notes p, #spec-method-guide .notes pre {margin:.4em 0}
@@ -98,7 +93,8 @@
     #spec-method-guide #step-list li { padding:0 0 .35em .2em; overflow-wrap:anywhere; }
     #spec-method-guide .sources { display:flex; flex-wrap:wrap; gap:.25em 1em; }
     @container (max-width:590px) {
-      #spec-method-guide .graph {grid-template-columns:minmax(0,1fr);grid-template-areas:"source" "draft" "target" "compare" "out";row-gap:24px;padding:0 15px;}
+      #spec-method-guide .graph {row-gap:27px;}
+      #spec-method-guide .graph > .node {margin-inline:2px 14px;}
       #spec-method-guide .controlbar {align-items:flex-start;}
     }
   </style>
@@ -112,26 +108,23 @@
     </select></label>
     <label class="form-label">验证情形 <select class="form-select" id="scenario"><option value="middle">第 2 位猜错</option><option value="all">全部猜中</option><option value="first">第 1 位猜错</option></select></label>
   </div>
-  <dl class="signal text-small"><dt>部署时加载</dt><dd id="deployment"></dd><dt>运行时 token</dt><dd id="token-port"></dd><dt>运行时隐藏态</dt><dd id="hidden-port"></dd></dl>
   <div class="controlbar"><div class="buttons">
     <button class="btn" id="global" type="button">全局关系</button><button class="btn" id="prev" type="button">上一步</button>
     <button class="btn btn-primary" id="next" type="button">下一步</button></div><span id="position" class="position" role="status"></span></div>
-  <div class="current" aria-live="polite"><h2 id="current-title"></h2><dl class="signal text-small">
+  <div class="current" aria-live="polite"><h2 id="current-title"></h2><details open><summary>本步的输入、计算与输出</summary><dl class="signal text-small">
     <dt>输入</dt><dd id="current-input"></dd><dt>计算</dt><dd id="current-action"></dd><dt>输出</dt><dd id="current-output"></dd>
-  </dl></div>
+  </dl></details></div>
   <div class="jumpbar" id="jumps" aria-label="直接跳到执行步骤"></div>
-  <div class="graph-title"><h2>本轮数据流</h2><span class="text-small muted">实线传入数据　虚线复用目标 KV　· 表示尚未产生</span></div>
+  <div class="graph-title"><h2 id="graph-title">本轮数据流</h2><div class="wire-key text-small" aria-label="输入与候选的连线">
+    <span style="--wire-color:var(--viz-series-2)">隐藏态</span><span style="--wire-color:var(--viz-series-3)">token ID</span><span style="--wire-color:var(--viz-series-1)">草稿输出</span>
+  </div></div>
+  <p class="text-small" id="port-caption"></p>
   <div id="data-map" class="graph">
     <svg class="wire" aria-hidden="true"><defs>
-      <marker id="sm-data" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M1,1 L7,4 L1,7" fill="none" stroke="var(--viz-series-2)" stroke-width="1.6"/></marker>
-      <marker id="sm-live" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M1,1 L7,4 L1,7" fill="none" stroke="var(--viz-series-1)" stroke-width="2"/></marker>
+      <marker id="sm-data" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M1,1 L7,4 L1,7" fill="none" stroke="var(--muted-foreground)" stroke-width="1.6"/></marker>
+      <marker id="sm-candidate" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M1,1 L7,4 L1,7" fill="none" stroke="var(--viz-series-1)" stroke-width="2"/></marker>
     </defs><g id="edge-layer"></g></svg>
-    <section class="node" id="source-node"><span class="active-tag muted text-small" id="source-tag"></span><h3>目标模型读上下文</h3>
-      <p>模型读到「<span id="context"></span>」，主输出头选出 <b class="slot">想</b>。</p>
-      <p class="text-small feed" id="first-edge"></p></section>
-    <section class="node" id="draft-node"><span class="active-tag muted text-small" id="draft-tag"></span><h3 id="draft-heading"></h3>
-      <p class="text-small" id="draft-feed"></p><div id="draft-shape" class="draft-shape"></div>
-      <p class="text-small feed" id="draft-exit"></p></section>
+    <svg id="port-graph" role="img" aria-label="目标模型层、起草输入及各步输出"></svg>
     <section class="node" id="target-node"><span class="active-tag muted text-small" id="target-tag"></span><h3>目标模型一次前向</h3>
       <p class="text-small" id="target-feed"></p><p>输入 <strong id="verify-input"></strong></p><p>预测 <strong id="predictions"></strong></p>
       <p class="text-small feed">每行预测下一词。最后一行供全部命中时使用。</p></section>
@@ -142,7 +135,8 @@
       <p>本轮新增 <b class="word" id="formal-output"></b>　原文接成 <strong id="joined"></strong></p><p class="text-small feed" id="resume"></p></section>
   </div>
   <details class="notes" id="all-notes"><summary>本算法的完整执行步骤</summary><ol id="step-list"></ol></details>
-  <details class="notes"><summary>部署参数与源码</summary>
+  <details class="notes"><summary>部署参数、运行时输入与源码</summary>
+    <dl class="signal text-small"><dt>部署时加载</dt><dd id="deployment"></dd><dt>运行时 token</dt><dd id="token-port"></dd><dt>运行时隐藏态</dt><dd id="hidden-port"></dd></dl>
     <p class="text-small muted">示例使用贪心采样，把「吃」「火」「锅」各当作一个 token。以下是 speculative_config 参数示例。对于需要额外权重的方法，应将路径替换为与目标模型匹配的 checkpoint。</p>
     <pre id="config-example"></pre><div id="source-links" class="sources text-small"></div>
   </details>
@@ -155,13 +149,14 @@
   const methods = {};
   methods.eagle = {
   name: 'EAGLE',
+  sourceTitle: '末层输出 Hₜ，主输出头选出「想」',
+  caption: '32 层 Llama 示例。跟着末层 RMSNorm 的输出线和主输出头的 token 线，可以看到草稿怎样凑齐第一对输入。',
   group: '串行起草',
   deploy: '加载目标模型，以及与它配套训练的 EAGLE 草稿权重。下面的草稿路径是占位符，使用时替换为实际路径。',
   config: '{"method":"eagle","model":"/path/to/compatible-eagle-draft","draft_tensor_parallel_size":1,"num_speculative_tokens":3}',
   token: '目标模型刚选出的「想」。Runner 把每个位置的目标特征与它后面的词对齐，在请求末位补入「想」。',
   hidden: '目标模型读完「今天」时的最终隐藏向量 H_t。第二、三次起草使用草稿模型在上一步返回的隐藏向量。',
   firstInput: 'H_t ＋「想」',
-  pattern: 'chain',
   stages: [
     {
       title: '第 1 次草稿前向，猜「吃」',
@@ -186,6 +181,7 @@
     }
   ],
   sources: [
+    ['Llama 3.1 8B 的 EAGLE 草稿配置', 'https://huggingface.co/yuhuili/EAGLE-LLaMA3.1-Instruct-8B/blob/d0e4a2087339ece9fc619b7773846e329e995768/config.json'],
     ['EAGLE 配置示例与草稿权重', 'https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/docs/source/user_guide/feature_guide/speculative_decoding.md#L97-L154'],
     ['首轮的词与特征如何对齐', 'https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/spec_decode/llm_base_proposer.py#L1793-L1838'],
     ['Llama 草稿如何合并特征和词嵌入', 'https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/llama_eagle.py#L110-L139'],
@@ -195,13 +191,14 @@
 
 methods.eagle3 = {
   name: 'EAGLE-3',
+  sourceTitle: '保留三个 block 的输出，同时选出「想」',
+  caption: '32 层 Llama 的默认取层示例。第 2、16、29 个 block 在同一位置各给出一份向量，三条线在草稿侧汇合。图中层号从 1 起，中间省略的 block 仍照常执行。',
   group: '串行起草',
   deploy: '加载目标模型，以及与它的特征层和词表匹配的 EAGLE-3 草稿权重。下面的路径是占位符。此处采用启用辅助层的普通链式 Llama 草稿。',
   config: '{"method":"eagle3","model":"/path/to/compatible-eagle3-draft","draft_tensor_parallel_size":1,"num_speculative_tokens":3}',
   token: '目标模型刚选出的「想」。首轮仍把这个词与前一位置的目标特征配对。',
   hidden: '取目标模型在「今天」末位的多层特征。采集层可由草稿配置指定。以 32 层 Llama 使用通用默认值为例，取执行完第 2、16、29 层的特征。部分草稿配置关闭辅助层，直接使用单路目标特征。',
   firstInput: '多层 H_t ＋「想」',
-  pattern: 'chain',
   stages: [
     {
       title: '融合目标模型的多层特征',
@@ -233,6 +230,7 @@ methods.eagle3 = {
     }
   ],
   sources: [
+    ['Llama 3.1 8B 的 EAGLE-3 草稿配置', 'https://huggingface.co/yuhuili/EAGLE3-LLaMA3.1-Instruct-8B/blob/ada412b672e293d682423de84a095447bf38a637/config.json'],
     ['Ascend 加载草稿及设置目标采集层', 'https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/worker/model_runner_v1.py#L4504-L4527'],
     ['目标辅助层的通用默认位置', 'https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/interfaces.py#L1691-L1712'],
     ['Llama 实际采集层输出的位置', 'https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/llama.py#L427-L441'],
@@ -243,13 +241,14 @@ methods.eagle3 = {
 };
 methods.mtp = {
   name: "DeepSeek MTP",
+  sourceTitle: '准备末层归一化状态和刚选出的「想」',
+  caption: 'DeepSeek-V3.2-Exp 有 61 个目标 block 和 1 个 MTP 层。首步接末层归一化后的状态和新 token，接下来复用同一 MTP 层，输入换成上一步的草稿状态和候选。',
   group: "串行起草",
   deploy: "普通 DeepSeek MTP 需要与目标模型兼容的 MTP 层权重。省略 model 时从目标 checkpoint 加载这些层。也可以用 model 指定兼容的权重路径。",
   config: '{"method":"mtp","num_speculative_tokens":3}',
   token: "最新确定的 token「想」，后续依次使用刚选出的候选。",
   hidden: "首步取目标模型读完「今天」时的隐藏状态，后续使用 MTP 上一步的隐藏状态。",
   firstInput: "「想」的 token ID + 目标模型读完「今天」时的隐藏状态",
-  pattern: "chain",
   stages: [
     {
       title: "对齐前一位置的状态和后一位置的词",
@@ -281,6 +280,7 @@ methods.mtp = {
     }
   ],
   sources: [
+    ["DeepSeek-V3.2-Exp 的目标层与 MTP 层数", "https://huggingface.co/deepseek-ai/DeepSeek-V3.2-Exp/blob/194c67e12b1b0d6df0ef373ddcf215bc84027409/config.json"],
     ["MTP 权重默认来源", "https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/config/speculative.py#L1140-L1156"],
     ["token 左移与 hidden 对齐", "https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/spec_decode/llm_base_proposer.py#L1795-L1838"],
     ["词向量与状态融合", "https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/deepseek_mtp.py#L113-L144"],
@@ -290,13 +290,14 @@ methods.mtp = {
 
 methods.dflash = {
   name: "DFlash",
+  sourceTitle: '保留五层上下文，确定查询锚点「想」',
+  caption: 'Qwen3-8B 搭配 DFlash-b16。36 个目标 block 中，第 2、10、18、26、34 个的输出进入草稿侧。层号从 1 起。锚点和占位符走单独的查询输入。',
   group: "并行起草",
   deploy: "为目标模型配置与其匹配的 DFlash 草稿 checkpoint。例如 Qwen/Qwen3-8B 搭配 z-lab/Qwen3-8B-DFlash-b16。所需目标层由草稿配置决定。",
   config: '{"method":"dflash","model":"z-lab/Qwen3-8B-DFlash-b16","num_speculative_tokens":3}',
   token: "已确定的锚点「想」和三个 [MASK] 占位 token，四个位置组成同一查询块。",
   hidden: "收集目标模型指定层的上下文隐藏状态，融合后由草稿模型投影为上下文 K/V。",
   firstInput: "查询块「想 [MASK] [MASK] [MASK]」+ 来自目标隐藏状态的上下文",
-  pattern: "mask",
   stages: [
     {
       title: "取得「今天」的目标层特征",
@@ -328,6 +329,7 @@ methods.dflash = {
     }
   ],
   sources: [
+    ["Qwen3-8B-DFlash-b16 的五个采集层与草稿层数", "https://huggingface.co/z-lab/Qwen3-8B-DFlash-b16/blob/9b41424b7109f9c5413454f481b09a82b85333f4/config.json"],
     ["目标与草稿权重的部署示例", "https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/docs/source/user_guide/feature_guide/speculative_decoding.md#L260-L270"],
     ["选择目标隐藏层", "https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/worker/gpu_model_runner.py#L5435-L5455"],
     ["融合目标层特征", "https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/qwen3_dflash.py#L864-L884"],
@@ -344,13 +346,14 @@ methods.dflash = {
 
   methods.medusa = {
     name: "Medusa",
+    sourceTitle: '保留预测出「想」的那一行，供三个头共用',
+    caption: '以 Llama 架构和三个头为例，L 表示最后一层。读完「今天」所得的同一行 Hₜ 分别接到三个头，每个头独立预测「想」之后的一个位置。',
     group: "并行起草",
     deploy: "在目标模型之外加载与它配套的 Medusa 预测头权重。本例固定使用三个头，每个头负责一个未来位置。",
     config: '{"method":"medusa","model":"/models/compatible-medusa-heads","num_speculative_tokens":3}',
     token: "目标模型从 H今天 选出「想」。Runner 将有效输出 ID 列表交给提议器用于选行，预测头的前向只接收选中的隐藏态。",
     hidden: "取目标模型产生本轮最后一个有效输出时用的那一行。首轮是 H今天。如果后续验证输出「吃、面」，则取 H吃，这行对应目标预测「面」的位置。",
     firstInput: "同一行 H今天 分别送给三个 Medusa 预测头。",
-    pattern: "heads",
     stages: [
       {title: "选出目标隐藏态", input: "目标模型读完「今天」时的 H今天", action: "首轮每个请求只留一行用于采样。后续若本轮验证了三个候选，提议器用本请求起点加有效输出数减一选行。", output: "三个头共用 H今天", ready: 0},
       {title: "各头独立预测一个位置", input: "头 1、头 2、头 3 均接收 H今天", action: "每个头用自身的残差块计算词表分数并取最高分。三个头各猜「想」后的一个位置，无需前一个头先选词。", output: "依头序排成一条候选序列 [吃, 火, 锅]", ready: 3}
@@ -367,13 +370,14 @@ methods.dflash = {
 
   methods.draft = {
     name: "独立草稿模型",
+    sourceTitle: '给小模型准备前缀 ID 和新词「想」',
+    caption: '沿两条 token 线读：原请求的前缀与最新确认的 ID 一起送入小模型。小模型用自己的词嵌入和 KV 继续起草。',
     group: "串行起草",
     deploy: "另加载一个与目标模型兼容的小型自回归模型。本例让两者使用同一套 token ID，草稿模型用自己的权重和 KV 计算前缀。",
     config: '{"method":"draft_model","model":"/models/compatible-draft-llm","num_speculative_tokens":3}',
     token: "Runner 提供目标模型本轮的输入 ID 和最新确认的「想」。首轮草稿模型处理「今天、想」，随后依次喂回它自己选出的词。",
     hidden: "草稿模型前向不接收目标隐藏态。它通过自己的词嵌入、模型层和缓存表示上下文。",
     firstInput: "草稿模型的初始 token 序列 [今天, 想]。",
-    pattern: "chain",
     stages: [
       {title: "小模型读「今天想」", input: "首轮 [今天, 想]", action: "草稿模型自己计算前缀，从「想」这一行的词表分数选出第一个候选。", output: "[吃]", ready: 1},
       {title: "喂回第一个候选", input: "「吃」＋ 草稿模型已有的 KV", action: "再运行一次草稿前向，预测「今天想吃」后面的词。", output: "[吃, 火]", ready: 2},
@@ -391,13 +395,14 @@ methods.dflash = {
 
   methods.ngram = {
     name: "N-gram",
+    sourceTitle: '把新词「想」接回本请求的 token 历史',
+    caption: '两条 token 线汇入同一请求的历史缓冲。CPU 用最后一个「想」找出较早的「想」，把它后面已有的「吃、火、锅」作为候选。',
     group: "历史查找",
     deploy: "使用 CPU 上的历史 token 查找，无需草稿模型权重。匹配长度固定为一个 token，每次最多复用匹配处之后的三个 token。",
     config: '{"method":"ngram","num_speculative_tokens":3,"prompt_lookup_min":1,"prompt_lookup_max":1}',
     token: "从该请求的 CPU token 缓冲区读取有效历史，包括原文「昨天想吃火锅，今天」和刚确认的「想」。",
     hidden: "不接收目标隐藏态。查找和复制都在同一请求的 token ID 序列中进行。",
     firstInput: "历史 [昨天, 想, 吃, 火, 锅, ，, 今天, 想]，查找键是末尾的「想」。",
-    pattern: "lookup",
     stages: [
       {title: "在较早的历史中匹配后缀", input: "末尾的「想」与它之前的 token ID", action: "查找先前出现的同一个 token。此例命中紧跟在「昨天」后面的「想」。若历史里没有匹配，直接返回空候选。", output: "找到旧「想」的位置。已知候选 0 个", ready: 0},
       {title: "复制旧位置的后续 token", input: "旧「想」右侧是「吃、火、锅、，、今天、想」", action: "从命中位置之后开始复制，达到三个即停止。后续长度不足时只取可用部分。", output: "[吃, 火, 锅]", ready: 3}
@@ -419,7 +424,7 @@ methods.dflash = {
     all:'三个候选全部匹配，第四行的前缀也成立，追加目标模型自己选出的「。」。'
   };
   const storage = 'vllm-speculative-method-guide-v1';
-  let method = 'eagle', scenario = 'middle', step = 1;
+  let method = 'eagle3', scenario = 'middle', step = 1;
   function context() { return method === 'ngram' ? '昨天想吃火锅，今天' : '今天'; }
   function confirmed() {
     const ids = cases[scenario], mismatch = words.findIndex((w,i)=>w !== ids[i]);
@@ -428,7 +433,7 @@ methods.dflash = {
   }
   function stages() {
     const m = methods[method], out = confirmed(), predictions = cases[scenario].join('、');
-    const initial = {title:'目标模型先选出「想」', input:'当前请求的上下文「' + context() + '」。',
+    const initial = {title:m.sourceTitle, input:'当前请求的上下文「' + context() + '」。',
       action:'目标模型完成前向，主输出头从末位置的 logits 选出「想」，并保存已计算上下文的 KV。',
       output:'正式前缀为「' + context() + '想」。给提议器的数据是 ' + m.firstInput.replace(/。$/,'') + '。', node:'source',ready:0};
     return [initial, ...m.stages.map(s=>({...s,node:'draft'})),
@@ -443,40 +448,261 @@ methods.dflash = {
   }
   const set = (id,value) => { get(id).textContent = value; };
   function drawEdges(list) {
-    const map = get('data-map').getBoundingClientRect();
-    const bounds = name => {const r=get(name + '-node').getBoundingClientRect(); return {
-      l:r.left-map.left,r:r.right-map.left,t:r.top-map.top,b:r.bottom-map.top,x:r.x+r.width/2-map.left,y:r.y+r.height/2-map.top};};
-    const [a,b,c,d,e] = ['source','draft','target','compare','out'].map(bounds);
-    const single = c.t > b.b, group=get('edge-layer'), activeNode = list[step-1]?.node;
+    const svg=get('port-graph'), group=get('edge-layer');
+    const kv=svg.querySelector('rect[data-part="kv-out"]'), candidates=svg.querySelector('rect[data-part="candidates-out"]');
     group.replaceChildren();
+    if (!kv || !candidates) return;
+    const map = get('data-map').getBoundingClientRect(), activeNode = list[step-1]?.node;
+    const bounds = element => {
+      const r=element.getBoundingClientRect(); return {l:r.left-map.left,r:r.right-map.left,t:r.top-map.top,
+        b:r.bottom-map.top,x:r.left + r.width/2-map.left,y:r.top + r.height/2-map.top};
+    };
+    const a=bounds(kv), b=bounds(candidates), c=bounds(get('target-node')), d=bounds(get('compare-node')), e=bounds(get('out-node'));
     function path(from,to,pts,reuse=false) {
       const p=document.createElementNS('http://www.w3.org/2000/svg','path');
       const hot=activeNode===to;
-      const attr={d:pts.map(([x,y],i)=>(i?'L':'M')+x+' '+y).join(' '),fill:'none',stroke:hot?'var(--viz-series-1)':'var(--viz-series-2)',
-        'stroke-width':hot?2.3:1.5,'marker-end':'url(#sm-'+(hot?'live':'data')+')','data-from':from,'data-to':to};
+      const candidate=from==='candidates-out';
+      const attr={d:pts.map(([x,y],i)=>(i?'L':'M')+x+' '+y).join(' '),fill:'none',stroke:candidate?'var(--viz-series-1)':'var(--muted-foreground)',
+        'stroke-width':hot?2.3:1.5,'marker-end':'url(#sm-'+(candidate?'candidate':'data')+')','data-from':from,'data-to':to};
       for(const [k,v] of Object.entries(attr))p.setAttribute(k,v);
       if(reuse)p.setAttribute('stroke-dasharray','4 3');
       group.append(p);
     }
-    if(single){
-      path('source','draft',[[a.x,a.b],[b.x,b.t-1]]);
-      path('source','target',[[a.r,a.y],[map.width-3,a.y],[map.width-3,c.y],[c.r+1,c.y]],true);
-      path('draft','target',[[b.x,b.b],[c.x,c.t-1]]);
-      path('draft','compare',[[b.l,b.y],[3,b.y],[3,d.y],[d.l-1,d.y]]);
-      path('target','compare',[[c.x,c.b],[d.x,d.t-1]]);
-    }else{
-      path('source','draft',[[b.x,a.b],[b.x,b.t-1]]);
-      path('source','target',[[c.x,a.b],[c.x,c.t-1]],true);
-      path('draft','target',[[b.r,b.y],[c.l-1,c.y]]);
-      path('draft','compare',[[b.x,b.b],[b.x,d.t-1]]);
-      path('target','compare',[[c.x,c.b],[c.x,d.t-1]]);
-    }
+    const enter = x => Math.max(c.l + 8, Math.min(x,c.r - 8));
+    const splitY=(Math.max(a.b,b.b)+c.t)/2, sideX=map.width-3;
+    const compareY=d.t+Math.min(24,(d.b-d.t)/2);
+    path('kv-out','target',[[a.x,a.b],[a.x,splitY],[enter(a.x),splitY],[enter(a.x),c.t-1]],true);
+    path('candidates-out','target',[[b.x,b.b],[b.x,splitY],[enter(b.x),splitY],[enter(b.x),c.t-1]]);
+    path('candidates-out','compare',[[b.x,b.b],[b.x,splitY],[sideX,splitY],[sideX,compareY],[d.r+1,compareY]]);
+    path('target','compare',[[c.x,c.b],[d.x,d.t-1]]);
     path('compare','out',[[d.x,d.b],[e.x,e.t-1]]);
-    if(!single){
-      const edgeLabel=(x,y,txt)=>{const t=document.createElementNS('http://www.w3.org/2000/svg','text');t.setAttribute('x',x+6);t.setAttribute('y',y);t.textContent=txt;group.append(t);};
-      edgeLabel(b.x,(a.b+b.t)/2+4,'起草输入');edgeLabel(c.x,(a.b+c.t)/2+4,'历史 KV ＋ 想');
-      edgeLabel(b.x,(b.b+d.t)/2+4,'原始候选');edgeLabel(c.x,(c.b+d.t)/2+4,'目标预测');
+  }
+  // Rows keep each tap on the same horizontal as the draft input it feeds.
+  function drawSpecPorts(svg, {method, step, all, ready}) {
+    const width = svg.getBoundingClientRect().width;
+    if (width < 50) return;
+    const compact = width < 520, margin = 2, gap = compact ? 13 : 66;
+    const pad = compact ? 10 : 21, lane = (width - gap) / 2 - margin;
+    const boxW = lane - 2 * pad;
+    const left = margin + pad, right = width - margin - lane + pad;
+    const words = ['吃', '火', '锅'];
+    const out = words.map((t, i) => i < ready ? t : '·');
+    const parts = new Map(), edges = [];
+    const feature = 'feature', ids = 'token', local = 'local', state = 'state', picked = 'candidate';
+    const groupName = {eagle:'EAGLE 草稿',eagle3:'EAGLE-3 草稿',mtp:'DeepSeek MTP',
+      medusa:'Medusa 预测头',dflash:'DFlash 草稿',draft:'独立草稿模型',ngram:'CPU 历史查找'};
+    const number = (a,b) => Array.from({length:b-a+1},(_,i)=>a+i);
+    function part(id, col, row, title, sub, when, kind=local) {
+      parts.set(id,{id,col,row,end:row,title,sub,when,kind});
     }
+    function line(from,to,signal,when,route='down',tap) {
+      edges.push({from,to,signal,when,route,tap});
+    }
+    function inputs(id,start,end,title,labels,when) {
+      parts.set(id,{id,col:1,row:start,end,title,labels,kind:feature,when});
+    }
+    function backbone(taps,last) {
+      const labels=['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉'];
+      const subscript = n => String(n).split('').map(d=>labels[d]).join('');
+      taps.forEach((n,i)=>{
+        part('block-'+n,0,i,'Block '+n,'层输出 H'+subscript(n),[1],feature);
+        if(i)line('block-'+taps[i-1],'block-'+n,local,[1]);
+      });
+      const row=taps.length;
+      part('target-norm',0,row,'Block '+last,'最终 Norm → Hₜ',[1]);
+      if(taps.length)line('block-'+taps.at(-1),'target-norm',local,[1]);
+      part('sample-id',0,row+1,'主输出头 + 选词','已确认 ID「想」',[1],ids);
+      line('target-norm','sample-id',local,[1]);
+      return row+1;
+    }
+    function finish(lastRow,source,candidateFrom,complete) {
+      part('kv-out',0,lastRow,'目标验证输入','目标各层 KV ＋ 想',[complete+1],'kv');
+      part('candidates-out',1,lastRow,'候选 ID',out.join('　'),[complete,complete+1,complete+2],picked);
+      if(source)line(source,'kv-out',ids,[complete+1]);
+      if(candidateFrom)line(candidateFrom,'candidates-out',picked,[complete,complete+1]);
+    }
+    function recurrentStage(row, id, first, last, ownKV=false) {
+      const index=step-first;
+      let payload=ownKV?'新词 ID，保留草稿 KV':'新词 ID ＋ 草稿 h′';
+      if(!all && index>=0 && step<=last){
+        payload='「'+words[index]+'」＋ '+(ownKV?'草稿 KV':'h'+['₁','₂','₃'][index]);
+      }
+      part('feedback',1,row,'本次草稿输出',payload,number(first,last),state);
+      line(id,'feedback',local,number(first,last));
+      line('feedback',id,ownKV?ids:state,number(first+1,last),'return');
+    }
+    if (method==='eagle3' || method==='dflash') {
+      const flash=method==='dflash', taps=flash?[2,10,18,26,34]:[2,16,29];
+      const tokenRow=backbone(taps,flash?36:32);
+      inputs('draft-fusion',0,taps.length-1,'拼接 → 线性投影',
+        taps.map(n=>'第 '+n+' 层特征'),[2]);
+      taps.forEach((n,i)=>line('block-'+n,'draft-fusion',feature,[2],'across',i));
+      if(flash) {
+        part('draft-kv',1,tokenRow-1,'Draft K/V 投影','生成上下文 K/V',[4],'kv');
+        line('draft-fusion','draft-kv','hidden',[4]);
+        part('query-block',1,tokenRow,'查询块','想 ＋ □ □ □',[3,5],ids);
+        line('sample-id','query-block',ids,[3,5],'across');
+        part('flash-network',1,tokenRow+1,'5 层草稿网络','三个 □ 同时选词',[5]);
+        line('query-block','flash-network',ids,[5]);
+        line('draft-kv','flash-network','kv',[5],'right-bypass');
+        finish(tokenRow+2,'sample-id','flash-network',5);
+      }else{
+        part('fused',1,tokenRow-1,'融合状态 zₜ','三层 → 一个向量',[2],'hidden');
+        line('draft-fusion','fused','hidden',[2]);
+        const pair=step===4?'「吃」嵌入 ＋ h₁':step===5?'「火」嵌入 ＋ h₂':'「想」嵌入 ＋ zₜ';
+        part('draft-layer',1,tokenRow,'草稿解码层',all?'词嵌入 ＋ 特征':pair,[3,4,5]);
+        line('fused','draft-layer','hidden',[3]);
+        line('sample-id','draft-layer',ids,[3],'across');
+        recurrentStage(tokenRow+1,'draft-layer',3,5);
+        finish(tokenRow+2,'sample-id','feedback',5);
+      }
+    }else if(method==='eagle'||method==='mtp'){
+      const mtp=method==='mtp', first=mtp?3:2;
+      part('first-block',0,0,'Block 1','目标模型',[1]);
+      part('last-block',0,1,mtp?'Block 61':'Block 32','最后一层输出',[1]);
+      part('target-norm',0,2,'最终 RMSNorm','末位置状态 Hₜ',[1],feature);
+      part('sample-id',0,3,'主输出头 + 选词','已确认 ID「想」',[1],ids);
+      line('first-block','last-block',local,[1]);line('last-block','target-norm',local,[1]);line('target-norm','sample-id',local,[1]);
+      inputs('draft-inputs',2,3,mtp?'MTP 的两个输入':'EAGLE 的两个输入',
+        [mtp?'Hₜ → 隐态归一化':'Hₜ → 特征输入',mtp?'词嵌入 → 归一化':'想 → 词嵌入'],number(2,first));
+      line('target-norm','draft-inputs',feature,number(2,first),'across',0);
+      line('sample-id','draft-inputs',ids,number(2,first),'across',1);
+      part('draft-layer',1,4,mtp?'投影 → MTP 层':'FC → 草稿层',mtp?'拼接两路后投影':'拼接特征与词嵌入',number(first,first+2));
+      line('draft-inputs','draft-layer','hidden',[first]);
+      recurrentStage(5,'draft-layer',first,first+2);
+      finish(6,'sample-id','feedback',first+2);
+    }else if(method==='medusa'){
+      part('first-block',0,0,'Block 1','目标模型',[1]);
+      part('last-block',0,1,'Block L','最后一层输出',[1]);
+      part('target-norm',0,2,'最终 RMSNorm','选中一行 Hₜ',[1,2],feature);
+      part('sample-id',0,3,'主输出头 + 选词','已确认 ID「想」',[1],ids);
+      line('first-block','last-block',local,[1]);line('last-block','target-norm',local,[1]);line('target-norm','sample-id',local,[1]);
+      for(let i=0;i<3;i++){
+        const head='head-'+(i+1);
+        part(head,1,i,'Medusa 头 '+(i+1),'Hₜ → '+out[i],[3],feature);
+        line('target-norm',head,feature,[2,3],'fan');
+      }
+      finish(4,'sample-id',null,3);
+      for(let i=1;i<=3;i++)line('head-'+i,'candidates-out',picked,[3],'right-bypass');
+    }else{
+      const lookup=method==='ngram';
+      part('prompt-ids',0,0,'请求 token 历史',lookup?'昨天想吃火锅…今天':'原文 ID「今天」',[1],ids);
+      part('sample-id',0,1,'目标模型选词','新 ID「想」',[1],ids);
+      inputs('id-buffer',0,1,lookup?'正式 token 缓冲':'草稿 ID 输入',['已有 token 序列','追加最新 ID「想」'],[2]);
+      parts.get('id-buffer').kind=ids;
+      line('prompt-ids','id-buffer',ids,[2],'across',0);line('sample-id','id-buffer',ids,[2],'across',1);
+      if(lookup){
+        part('match',1,2,'匹配后缀「想」','找到旧位置',[2],ids);line('id-buffer','match',ids,[2]);
+        part('copy',1,3,'复制旧词后继','最多取 3 个 ID',[3],ids);line('match','copy','local',[3]);
+        finish(4,'sample-id','copy',3);
+      }else{
+        part('small-model',1,2,'Embedding → 小模型','使用自己的 KV',[2,3,4]);
+        line('id-buffer','small-model',ids,[2]);recurrentStage(3,'small-model',2,4,true);
+        finish(4,'sample-id','feedback',4);
+      }
+    }
+    const ns='http://www.w3.org/2000/svg';
+    svg.replaceChildren();
+    function el(tag,attrs,parent=svg,text) {
+      const element=document.createElementNS(ns,tag);
+      for(const [k,v] of Object.entries(attrs))element.setAttribute(k,String(v));
+      if(text!==undefined)element.textContent=text;
+      parent.append(element);return element;
+    }
+    const css=getComputedStyle(svg), family=css.fontFamily;
+    const base=Number.parseFloat(css.fontSize)||15, fs=Math.max(12,Math.min(compact?13:15,base)), small=fs-1;
+    const meas=document.createElement('canvas').getContext('2d');
+    function wrap(value,size,weight=400) {
+      meas.font=weight+' '+size+'px '+family;
+      const lines=[];let pending='';
+      for(const ch of value){
+        if(pending && meas.measureText(pending+ch).width>boxW-12){lines.push(pending.trim());pending='';}
+        pending+=ch;
+      }
+      if(pending)lines.push(pending.trim());return lines;
+    }
+    const leading=fs+3;
+    let h=44;
+    for(const p of parts.values()){
+      p.titleLines=wrap(p.title,fs,500); p.subLines=p.sub?wrap(p.sub,small):[];
+      const lines=p.labels?p.titleLines.length+Math.max(...p.labels.map(v=>wrap(v,small).length)):p.titleLines.length+p.subLines.length;
+      h=Math.max(h,lines*leading+10);
+    }
+    const stride=h+(compact?13:17), y0=42;
+    const last=Math.max(...Array.from(parts.values(),p=>p.end)), height=y0+last*stride+h+3;
+    svg.style.height=height+'px';svg.setAttribute('viewBox','0 0 '+width+' '+height);
+    svg.setAttribute('role','img');
+    const aria=groupName[method]+'的输入和输出。'+edges.filter(e=>e.signal===feature||e.signal===ids).map(e=>parts.get(e.from).title+' 到 '+parts.get(e.to).title).join('。');
+    svg.setAttribute('aria-label',aria);
+    const colors={feature:'var(--viz-series-2)',token:'var(--viz-series-3)',state:'var(--viz-series-1)',hidden:'var(--viz-series-2)',kv:'var(--muted-foreground)',candidate:'var(--viz-series-1)',local:'var(--muted-foreground)'};
+    const defs=el('defs',{});
+    for(const [key,c] of Object.entries(colors)){
+      const marker=el('marker',{id:'sp-tip-'+key,refX:7,refY:4,orient:'auto',markerWidth:8,markerHeight:8,markerUnits:'userSpaceOnUse'},defs);
+      el('path',{d:'M1 1 L7 4 L1 7',stroke:c,'stroke-width':1.6,fill:'none'},marker);
+    }
+    const textLine=(x,y,txt,size=fs,color='var(--foreground)',weight=400,g=svg)=>{
+      return el('text',{x,y,'text-anchor':'middle','dominant-baseline':'central',fill:color,
+        'font-family':family,'font-size':size,'font-weight':weight},g,txt);
+    };
+    for(const [col,title] of [method==='draft'||method==='ngram'?'请求 / ID 来源':'目标模型',groupName[method]].entries()){
+      const x=col===0?margin:width-margin-lane;
+      el('rect',{x,y:2,width:lane,height:height-3,rx:6,fill:'none',stroke:'var(--border)','stroke-dasharray':'4 4'});
+      textLine(x+lane/2,21,title,fs,'var(--foreground)',500);
+    }
+    for(const p of parts.values()){
+      p.x=p.col?right:left;p.y=y0+p.row*stride;p.height=(p.end-p.row)*stride+h;
+      p.cy=p.y+p.height/2;p.cx=p.x+boxW/2;p.r=p.x+boxW;p.b=p.y+p.height;
+    }
+    const gLines=el('g',{}),gNodes=el('g',{});
+    for(const e of edges){
+      const a=parts.get(e.from),b=parts.get(e.to),y=e.tap===undefined?b.cy:b.y+e.tap*stride+h/2;
+      const active=all||e.when.includes(step);
+      let pts;
+      if(e.route==='across')pts=[[a.r,a.cy],[b.x-1,y]];
+      else if(e.route==='fan'){const mid=(a.r+b.x)/2;pts=[[a.r,a.cy],[mid,a.cy],[mid,y],[b.x-1,y]];}
+      else if(e.route==='return'||e.route==='right-bypass'){
+        const rail=a.r+pad*.62;
+        // A return edge starts at the lower output, then re-enters the compute block.
+        pts=[[a.r,a.cy],[rail,a.cy],[rail,b.cy],[b.r+1,b.cy]];
+      }else pts=[[a.cx,a.b],[b.cx,b.y-1]];
+      const wire=el('path',{d:pts.map(([x,y],i)=>(i?'L':'M')+x+' '+y).join(' '),fill:'none',stroke:colors[e.signal],
+        'stroke-width':active?2.4:1.4,'stroke-linejoin':'round','stroke-dasharray':e.signal==='state'||e.signal==='kv'?'4 3':'none',
+        'marker-end':'url(#sp-tip-'+e.signal+')','data-from':e.from,'data-to':e.to,'data-signal':e.signal,'data-live':active},gLines);
+      el('title',{},wire,'步骤 '+e.when.join('、')+' · '+a.title+' → '+b.title);
+      if(active && (e.route==='across'||e.route==='fan')){
+        const atX=a.r+(b.x-a.r)*(e.route==='fan'?.73:.54);
+        const sequence=(all?e.when:[step]).map(n=>'①②③④⑤⑥⑦⑧⑨'[n-1]).join('');
+        textLine(atX,y-9,sequence,small,'var(--muted-foreground)',400,gLines);
+      }
+      if(e.signal===feature||e.route==='across')el('circle',{cx:a.r,cy:a.cy,r:active?3.1:2.3,fill:colors[e.signal]},gLines);
+    }
+    for(const p of parts.values()){
+      const active=all||p.when.includes(step),paint=colors[p.kind];
+      const g=el('g',{},gNodes);
+      el('rect',{'data-part':p.id,x:p.x,y:p.y,width:boxW,height:p.height,rx:4,
+        fill:'color-mix(in srgb,'+paint+' '+(active?12:5)+'%,var(--background))',
+        stroke:active?paint:'var(--border)','stroke-width':active?1.5:1},g);
+      if(p.labels){
+        p.titleLines.forEach((line,i)=>textLine(p.cx,p.y+10+i*leading,line,fs,'var(--foreground)',500,g));
+        p.labels.forEach((label,i)=>{
+          const lp=wrap(label,small),y=p.y+i*stride+h/2;
+          const offset=i===0?Math.max(5,p.titleLines.length*leading+6-h/2+small/2):0;
+          lp.forEach((str,j)=>textLine(p.cx,y+offset+(j-(lp.length-1)/2)*leading,str,small,'var(--foreground)',400,g));
+          el('circle',{cx:p.x+1,cy:y,r:2.5,fill:colors[p.kind===ids?ids:(p.id==='draft-inputs'&&i===1?ids:feature)]},g);
+        });
+      }else{
+        const allLines=[...p.titleLines,...p.subLines];
+        allLines.forEach((str,i)=>textLine(p.cx,p.cy+(i-(allLines.length-1)/2)*leading,str,i<p.titleLines.length?fs:small,
+          i<p.titleLines.length?'var(--foreground)':'var(--muted-foreground)',i<p.titleLines.length?500:400,g));
+      }
+    }
+  }
+  let drawnWidth = -1;
+  function renderMap() {
+    const list=stages(), current=list[step-1], all=step===0, svg=get('port-graph');
+    drawnWidth = svg.getBoundingClientRect().width;
+    drawSpecPorts(svg,{method,step,all,ready:all?3:current.ready});
+    drawEdges(list);
   }
   function show() {
     const m=methods[method], list=stages(), total=list.length, targetStep=total-2, checkStep=total-1;
@@ -496,21 +722,13 @@ methods.dflash = {
       button.textContent=String(i+1);button.setAttribute('aria-label','第 '+(i+1)+' 步，'+s.title);button.setAttribute('aria-pressed',String(step===i+1));
       jumps.append(button);});
     if(lastFocus) jumps.querySelector('[data-jump="'+lastFocus+'"]')?.focus({preventScroll:true});
-    for(const node of ['source','draft','target','compare','out']) {
+    for(const node of ['target','compare','out']) {
       const indices=list.map((s,i)=>s.node===node?i+1:0).filter(Boolean);
       const label=indices.length>1?indices[0]+'–'+indices[indices.length-1]:indices[0];
       set(node+'-tag','步骤 '+label);get(node+'-node').dataset.node=node;get(node+'-node').dataset.current=String(current?.node===node);
     }
-    set('context',context());set('first-edge','给草稿 → '+m.firstInput.replace(/。$/,'')+'。给目标验证 → 原上下文的 KV 和「想」。');
-    set('draft-heading',m.name+' · '+m.group);
-    const sketches={
-      chain:['第 1 次','第 2 次','第 3 次'],heads:['头 1 ↓','头 2 ↓','头 3 ↓'],
-      mask:['□ 位置 1 ↓','□ 位置 2 ↓','□ 位置 3 ↓'],lookup:['后继 1','后继 2','后继 3']};
-    const sketchLabels=sketches[m.pattern]; const shape=get('draft-shape');shape.className='draft-shape '+m.pattern;shape.replaceChildren();
-    sketchLabels.forEach((label,i)=>{const box=document.createElement('div'),cap=document.createElement('small'),word=document.createElement('b');
-      cap.textContent=label;word.className='word';word.textContent=i<ready?words[i]:empty;box.append(cap,word);shape.append(box);});
-    set('draft-feed',({heads:'同一行 H 同时进入三个预测头，各自选一个词。',mask:'输入「想」与三个 MASK，在一次草稿前向中填三个位置。',chain:'上一位输出的 token 回到草稿，作为下一位的输入。',lookup:'从历史中找到相同后缀，复制匹配位置后面的词。'})[m.pattern]);
-    set('draft-exit',ready===3?'送给目标模型及验证器 → '+fmt(words):'已得到 '+ready+' / 3 个候选。');
+    set('graph-title',m.name+' · 本轮数据流');
+    set('port-caption',m.caption);
     set('target-feed','来自上游的历史 KV ＋ 已确认的「想」＋ 草稿候选。');
     set('verify-input',ready===3?fmt(['想',...words]):'待草稿就绪');set('predictions',seenTarget?fmt(predicted):'· · · ·');
     const tbody=get('rows');tbody.replaceChildren();
@@ -530,7 +748,7 @@ methods.dflash = {
     set('config-example',"--speculative-config '"+m.config+"'");
     const links=get('source-links');links.replaceChildren();
     m.sources.forEach(([label,url])=>{const a=document.createElement('a');a.textContent=label;a.href=url;a.target='_blank';a.rel='noopener noreferrer';links.append(a);});
-    drawEdges(list);
+    renderMap();
   }
   function storeState() {
     const state={method,scenario,step};
@@ -540,15 +758,33 @@ methods.dflash = {
   function selectStep(value){step=Math.min(stages().length,Math.max(0,value));get('all-notes').open=step===0;show();storeState();}
   function restore(s){if(!s||!Object.hasOwn(methods,s.method)||!Object.hasOwn(cases,s.scenario))return;
     method=s.method;scenario=s.scenario;step=Number.isInteger(s.step)&&s.step>=0&&s.step<=stages().length?s.step:1;get('all-notes').open=step===0;}
-  get('method').addEventListener('change',e=>{method=e.target.value;selectStep(1);});
+  function followHash() {
+    const requested=window.location.hash.slice(1);
+    if(!Object.hasOwn(methods,requested)) return false;
+    if(method!==requested){method=requested;step=1;get('all-notes').open=false;}
+    return true;
+  }
+  get('method').addEventListener('change',e=>{
+    method=e.target.value;
+    if(Object.hasOwn(methods,window.location.hash.slice(1))) {
+      try {window.history.replaceState(null,'','#'+method);} catch {}
+    }
+    selectStep(1);
+  });
   get('scenario').addEventListener('change',e=>{scenario=e.target.value;show();storeState();});
   get('prev').addEventListener('click',()=>selectStep(step-1));get('next').addEventListener('click',()=>selectStep(step+1));
   get('global').addEventListener('click',()=>selectStep(0));
   get('jumps').addEventListener('click',e=>{const b=e.target.closest('button[data-jump]');if(b)selectStep(Number(b.dataset.jump));});
   try{restore(window.openai?window.openai.widgetState?.modelContent:JSON.parse(localStorage.getItem(storage)));}catch{}
-  window.addEventListener('openai:set_globals',e=>{const s=e.detail?.globals?.widgetState?.modelContent;if(s){restore(s);show();}});
+  followHash();
+  window.addEventListener('hashchange',()=>{if(followHash()){show();storeState();}});
+  window.addEventListener('openai:set_globals',e=>{const s=e.detail?.globals?.widgetState?.modelContent;if(s){restore(s);followHash();show();}});
   show();
-  const observer=new ResizeObserver(()=>drawEdges(stages()));observer.observe(get('data-map'));
+  const observer=new ResizeObserver(()=>{
+    if(get('port-graph').getBoundingClientRect().width!==drawnWidth)renderMap();
+    else drawEdges(stages());
+  });
+  observer.observe(get('data-map'));
 })();
 </script>
 <!-- END FLOW -->
