@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>投机解码 · vLLM 学习笔记</title>
+  <meta name="description" content="跟随一个请求走过两轮投机解码，对齐 MTP 候选、目标预测、有效输出与下一轮位置。">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --background: #fbfcfa; --foreground: #182b2a; --muted-foreground: #536662;
+      --muted: #eaf0ed; --border: #d0dcd6; --primary: #205a52; --primary-foreground: #fff;
+      --viz-series-1: #197361; --viz-series-2: #526cb2; --viz-series-3: #a55d14;
+      --font-size-base: 15px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --background: #14201f; --foreground: #edf5ef; --muted-foreground: #b3c8c1;
+        --muted: #223330; --border: #40534e; --primary: #a1dbca; --primary-foreground: #152723;
+        --viz-series-1: #79d6b9; --viz-series-2: #aabff7; --viz-series-3: #efb36f;
+      }
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; padding: 22px 16px 40px; background: var(--background); color: var(--foreground);
+      font: var(--font-size-base)/1.55 system-ui, "Microsoft YaHei", sans-serif; }
+    .flow-page { width: 100%; max-width: 920px; margin-inline: auto; min-width: 0; }
+    .page-nav, .page-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+      gap: 8px 18px; padding-block: 9px 14px; color: var(--muted-foreground); font-size: 13px; }
+    .page-nav { border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+    .page-footer { border-top: 1px solid var(--border); margin-top: 26px; padding-top: 16px; }
+    a { color: var(--primary); text-underline-offset: .22em; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(27px, 4vw, 38px); line-height: 1.2; letter-spacing: -.045em; }
+    h2 { font-size: 18px; } h3 { font-size: 16px; }
+    .text-small { font-size: 13px; }
+    .btn, .form-select { font: inherit; color: var(--foreground); border: 1px solid var(--border); border-radius: 6px;
+      background: var(--background); padding: 6px 11px; min-height: 36px; cursor: pointer; }
+    .btn-primary, .btn[aria-pressed=true] { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+    .btn:disabled { opacity: .45; cursor: default; }
+    :focus-visible { outline: 2px solid var(--viz-series-1); outline-offset: 3px; }
+    @media (pointer: coarse) { .btn, .form-select { min-height: 44px; } }
+  </style>
+</head>
+<body>
+<main class="flow-page">
+  <nav class="page-nav" aria-label="学习笔记导航"><a href="../index.html">← 学习笔记</a><span>性能优化 / 推理执行</span></nav>
+<!-- BEGIN FLOW -->
+<div id="spec-flow">
+  <style>
+    #spec-flow { color: var(--foreground); width: 100%; min-width: 0; container-type: inline-size; }
+    #spec-flow .sf-kicker { color: var(--muted-foreground); margin-bottom: .45em; font-variant-numeric: tabular-nums; letter-spacing: .075em; }
+    #spec-flow .sf-lead { margin-top: .55em; }
+    #spec-flow .sf-scope { color: var(--muted-foreground); margin-top: .4em; }
+    #spec-flow .sf-controls { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 10px 16px; margin: 18px 0 14px; }
+    #spec-flow .sf-controls label { display: grid; gap: 3px; }
+    #spec-flow .sf-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    #spec-flow .sf-position { min-width: 4em; text-align: center; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+    #spec-flow .sf-heading { display: flex; flex-wrap: wrap; gap: 5px 16px; justify-content: space-between; align-items: baseline; margin: 18px 0 7px; }
+    #spec-flow .sf-heading span { color: var(--muted-foreground); }
+    #spec-flow .sf-diagram { display: block; width: 100%; }
+    #spec-flow .sf-diagram text { font-family: inherit; fill: var(--foreground); font-size: var(--font-size-base); }
+    #spec-flow .sf-diagram .sf-minor { fill: var(--muted-foreground); font-size: calc(var(--font-size-base) * .86); }
+    #spec-flow .sf-diagram .sf-seq { font-variant-numeric: tabular-nums; font-size: calc(var(--font-size-base) * .84); }
+    #spec-flow .sf-route { fill: none; stroke-width: 1.6; }
+    #spec-flow .sf-compact { display: none; }
+    #spec-flow .sf-compact ol, #spec-flow .sf-notes { margin: 0; padding: 0; list-style: none; }
+    #spec-flow .sf-compact li, #spec-flow .sf-notes li { display: grid; grid-template-columns: 2.3em minmax(0,1fr); column-gap: .6em; padding: .36em 0; }
+    #spec-flow .sf-no { color: var(--muted-foreground); font-variant-numeric: tabular-nums; align-self: baseline; text-align: center; }
+    #spec-flow .sf-action { display: block; color: var(--muted-foreground); }
+    #spec-flow .sf-active { background: color-mix(in srgb,var(--viz-series-1) 12%,transparent); }
+    #spec-flow .sf-detail { margin: 10px 0 16px; padding-left: .9em; border-inline-start: 3px solid var(--viz-series-1); overflow-wrap: anywhere; }
+    #spec-flow .sf-detail p { margin-top: .25em; }
+    #spec-flow .sf-ledger { width: 100%; border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
+    #spec-flow .sf-ledger th, #spec-flow .sf-ledger td { font-weight: 400; text-align: center; padding: .45em .15em; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+    #spec-flow .sf-ledger thead { background: var(--muted); }
+    #spec-flow .sf-ledger th:first-child { width: 22%; }
+    #spec-flow .sf-ledger tr > :last-child { width: 28%; }
+    #spec-flow .sf-verdict { display: inline-block; padding: .05em .45em; }
+    #spec-flow .sf-accept { background: color-mix(in srgb,var(--viz-series-1) 18%,transparent); }
+    #spec-flow .sf-recover { background: color-mix(in srgb,var(--viz-series-3) 23%,transparent); }
+    #spec-flow .sf-bonus { background: color-mix(in srgb,var(--viz-series-2) 21%,transparent); }
+    #spec-flow .sf-unused { color: var(--muted-foreground); }
+    #spec-flow .sf-outcome { margin: .75em 0; font-variant-numeric: tabular-nums; }
+    #spec-flow .sf-notes { column-count: 2; column-gap: 22px; }
+    #spec-flow .sf-notes li { break-inside: avoid; }
+    #spec-flow .sf-notes li:nth-child(5) { break-before: column; }
+    @container (max-width: 589px) {
+      #spec-flow .sf-diagram { display: none; }
+      #spec-flow .sf-compact { display: block; }
+      #spec-flow .sf-compact li { border-inline-start: 2px solid var(--border); }
+      #spec-flow .sf-compact .sf-active { border-color: var(--viz-series-1); }
+      #spec-flow .sf-notes { column-count: 1; }
+      #spec-flow .sf-notes li:nth-child(5) { break-before: auto; }
+    }
+  </style>
+  <header>
+    <div class="sf-kicker text-small">vLLM V1　/　Ascend MRV1</div>
+    <h1>投机解码</h1>
+    <p class="sf-lead">草稿模型先猜三个 token，目标模型用一次前向验证，决定本轮能向前走几步。</p>
+    <p class="sf-scope text-small">单请求 R · 同步调度 · DeepSeek 链式 MTP · 贪心采样 · K = 3 · 教学 token ID</p>
+  </header>
+  <div class="sf-controls">
+    <label class="form-label" for="scenario"><span class="text-small">验证结果</span>
+      <select class="form-select" id="scenario">
+        <option value="middle">第 2 个候选不匹配</option>
+        <option value="all">全部接受</option>
+        <option value="first">第 1 个候选不匹配</option>
+      </select>
+    </label>
+    <div class="sf-actions" aria-label="流程导航">
+      <button class="btn" type="button" id="global-view">全局关系</button>
+      <button class="btn" type="button" id="prev">上一步</button>
+      <button class="btn btn-primary" type="button" id="next">下一步</button>
+      <span id="position" class="sf-position text-small" aria-live="polite"></span>
+    </div>
+  </div>
+  <div class="sf-heading"><h2>两轮执行时序</h2><span class="text-small">实线传数据 · 虚线发计划 · 节点内执行计算</span></div>
+  <svg class="sf-diagram" id="sequence" role="img" aria-label="EngineCore、目标模型与 MTP 的八步时序，文字顺序见步骤明细"></svg>
+  <div class="sf-compact"><ol id="compact-list" aria-label="执行时序"></ol></div>
+  <section class="sf-detail" aria-live="polite">
+    <h3 id="detail-title"></h3><p id="detail-body"></p>
+  </section>
+  <section id="verification">
+    <div class="sf-heading"><h2>四个输入位置预测什么？</h2><span class="text-small">第二轮 · 位置从 0 编号</span></div>
+    <table class="sf-ledger" aria-label="输入 token 与下一位置的候选、目标预测及验证结果">
+      <thead><tr><th scope="col">输入位置</th><th scope="col">输入 ID</th><th scope="col">候选 ID</th><th scope="col">目标预测</th><th scope="col">验证结果</th></tr></thead>
+      <tbody id="ledger-rows"></tbody>
+    </table>
+    <p class="sf-outcome" id="outcome"></p>
+  </section>
+  <section id="overview">
+    <div class="sf-heading"><h2>完整流程</h2><span class="text-small">01–04 首轮预填充　/　05–08 第二轮验证</span></div>
+    <ol id="step-list" class="sf-notes"></ol>
+  </section>
+</div>
+<script>
+(() => {
+  'use strict';
+  const root = document.getElementById('spec-flow');
+  const get = (id) => root.querySelector('#' + id);
+  const draft = [21, 22, 23];
+  const seed = 20;
+  const inputs = [seed, ...draft];
+  const promptLength = 4;
+  const targets = { middle: [21, 29, 23, 24], all: [21, 22, 23, 24], first: [28, 22, 23, 24] };
+  const laneNames = ['调度器', '目标模型 / 验证器', 'MTP 提案器'];
+  const fmt = (ids) => '[' + ids.join(', ') + ']';
+  const number = (n) => String(n).padStart(2, '0');
+  const stateKey = 'vllm-notes-spec-flow-v1';
+  let scenario = 'middle', step = 0;
+
+  function result() {
+    const target = targets[scenario];
+    const mismatch = draft.findIndex((id, i) => id !== target[i]);
+    const accepted = mismatch === -1 ? draft.length : mismatch;
+    const rejected = draft.length - accepted;
+    const emitted = [...draft.slice(0, accepted), target[accepted]];
+    const optimistic = promptLength + inputs.length;
+    return { target, accepted, rejected, emitted, optimistic, computed: optimistic - rejected, last: target[accepted] };
+  }
+
+  function buildSteps(r) {
+    const pick = r.rejected ? '第 ' + (r.accepted + 1) + ' 位改用 ' + r.last : '全部命中，追加 ' + r.last;
+    return [
+      { title: '调度首轮 prefill', from: 0, to: 1, kind: 'plan', label: '首轮计划 · 4 个位置',
+        text: '请求 R 的 prompt 是 [10, 11, 12, 13]。Scheduler 为它安排 4 个位置，Worker 按计划构造输入。' },
+      { title: '目标模型给出首 token', from: 1, to: 1, label: '采样首 token 20',
+        text: '目标模型处理这 4 个输入。Runner 取最后一个位置的 logits，普通 sampler 选出 20，同时保留供 MTP 使用的目标隐藏态。' },
+      { title: 'MTP 连续提案', from: 1, to: 2, label: '隐藏态 + 首 token',
+        text: 'Runner 把目标隐藏态、位置和最新 token 20 交给 MTP。提案器先生成 21，再沿草稿前缀生成 22、23，得到候选 ' + fmt(draft) + '。' },
+      { title: '分别回写输出和候选', from: 1, to: 0, label: '正式输出 [20]',
+        extra: { from: 2, to: 0, label: '候选 ' + fmt(draft) },
+        text: 'EngineCore 先用 ModelRunnerOutput 把 20 追加到请求。随后 post_step 从 Worker 取 DraftTokenIds，按 R 写入 spec_token_ids。此时正式长度为 5，已计算位置数为 4。' },
+      { title: '调度第二轮的四个位置', from: 0, to: 1, kind: 'plan', label: '验证计划 · 4 个位置',
+        text: 'Scheduler 按 5 + 3 − 4 = 4 安排输入位置，把 3 个候选放入 scheduled_spec_decode_tokens，清空请求的临时候选，并将 num_computed_tokens 从 4 预记为 8。' },
+      { title: '目标模型一次前向验证', from: 1, to: 1, label: '一次前向 · 4 行 logits',
+        text: 'Worker 在原 prompt 之后输入 ' + fmt(inputs) + '。因果注意力使每个位置只看到自己的前缀。4 行 logits 中，前 3 行分别验证下一位置的候选，最后一行供 bonus 采样。' },
+      { title: '保留连续命中的前缀', from: 1, to: 1, label: pick,
+        text: '贪心验证逐位置比较候选与目标 argmax。' + (r.rejected ? pick + '，其后各行以已经出错的草稿为条件，本轮全部跳过。' : '3 个候选全部匹配，再从最后一行取 bonus 24。') + ' 本轮有效输出为 ' + fmt(r.emitted) + '。' },
+      { title: '回写请求并确定下轮起点', from: 1, to: 0, label: '有效输出 ' + fmt(r.emitted),
+        text: 'Scheduler 追加 ' + fmt(r.emitted) + '，从预记的 8 个位置中扣除 ' + r.rejected + ' 个未接受候选，得到 ' + r.computed + '。下轮从位置 ' + r.computed + ' 喂入 ' + r.last + '，继续验证新草稿。' }
+    ];
+  }
+
+  function renderLedger(r) {
+    const body = get('ledger-rows');
+    body.replaceChildren();
+    for (const [i, input] of inputs.entries()) {
+      const row = body.insertRow();
+      const verdict = i < r.accepted ? ['接受', 'accept']
+        : i > r.accepted ? ['跳过', 'unused']
+        : i === draft.length ? ['追加 bonus', 'bonus'] : ['目标纠正', 'recover'];
+      const ready = step === 0 || step >= 7;
+      for (const value of [promptLength + i, input, draft[i] ?? '—', r.target[i]]) {
+        row.insertCell().textContent = value;
+      }
+      const badge = document.createElement('span');
+      badge.className = 'sf-verdict sf-' + (ready ? verdict[1] : 'unused');
+      badge.textContent = ready ? verdict[0] : '待验证';
+      row.insertCell().append(badge);
+    }
+    get('outcome').textContent = step === 6 ? '每行预测输入位置的下一个 token；第四行只有在三个候选全部命中时才会采用。'
+      : '本轮输出 ' + fmt(r.emitted) + '　·　接受 ' + r.accepted + ' / 3 个候选　·　下一轮从位置 ' + r.computed + ' 输入 ' + r.last + '。';
+  }
+
+  // In each row the horizontal direction is the data/plan direction.
+  // Local operations stay on their owner's lifeline.
+  function drawDiagram(steps) {
+    const svg = get('sequence');
+    const width = svg.clientWidth;
+    if (!width) return;
+    const xs = [width * .16, width * .53, width * .85];
+    const ys = [93, 132, 170, 208, 303, 342, 381, 420];
+    svg.replaceChildren();
+    svg.setAttribute('viewBox', '0 0 ' + width + ' 434');
+    const put = (tag, attrs, value, parent = svg) => {
+      const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+      for (const [key, val] of Object.entries(attrs)) el.setAttribute(key, val);
+      if (value !== undefined) el.textContent = value;
+      parent.append(el);
+      return el;
+    };
+    function label(x, y, value, style = '', anchor = 'middle') {
+      return put('text', { x, y, 'text-anchor': anchor, class: style }, value);
+    }
+    const colors = { plan: 'var(--viz-series-2)', data: 'var(--viz-series-1)' };
+    const defs = put('defs', {});
+    for (const [kind, color] of Object.entries(colors)) {
+      const marker = put('marker', { id: 'sf-arrow-' + kind, markerWidth: 8, markerHeight: 8, refX: 7, refY: 4, orient: 'auto', markerUnits: 'userSpaceOnUse' }, undefined, defs);
+      put('path', { d: 'M1 1 L7 4 L1 7', fill: 'none', stroke: color, 'stroke-width': 1.6 }, undefined, marker);
+    }
+    const owner = (center, begin, end, caption) => {
+      label(center, 14, caption, 'sf-minor');
+      put('line', { x1: begin, x2: end, y1: 22, y2: 22, stroke: 'var(--border)' });
+    };
+    owner(xs[0], 8, xs[0] * 2 - 8, 'EngineCore');
+    owner((xs[1] + xs[2]) / 2, xs[0] * 2 + 8, width - 8, '同一 Ascend Worker');
+    const current = steps[step - 1];
+    xs.forEach((x, i) => {
+      const involved = current && (current.from === i || current.to === i || current.extra?.from === i);
+      const name = label(x, 45, laneNames[i]);
+      if (involved) {
+        const box = name.getBBox();
+        const mark = put('rect', { x: box.x - 7, y: box.y - 2, width: box.width + 14, height: box.height + 4,
+          rx: 4, fill: 'color-mix(in srgb,var(--viz-series-1) 15%,var(--background))' });
+        svg.insertBefore(mark, name);
+      }
+      put('line', { x1: x, x2: x, y1: 51, y2: 432, stroke: 'var(--border)' });
+    });
+    [[67, '首轮 / PREFILL'], [277, '第二轮 / VERIFY']].forEach(([y, name]) => {
+      put('rect', { x: 0, y: y - 13, width, height: 17, fill: 'var(--muted)' });
+      label(8, y, name, 'sf-minor', 'start');
+    });
+    function drawAction(action, index, y) {
+      const n = index + 1, from = xs[action.from], to = xs[action.to];
+      const kind = action.kind ?? 'data';
+      const color = colors[kind];
+      const local = from === to;
+      const center = (from + to) / 2;
+      const title = (step === 0 || step === n ? number(n) + '  ' : '') + action.label;
+      if (!local) {
+        const sign = Math.sign(to - from);
+        put('path', { d: 'M' + (from + sign * 4) + ' ' + y + ' H' + (to - sign * 4), class: 'sf-route',
+          stroke: color, 'stroke-dasharray': kind === 'plan' ? '5 3' : 'none', 'marker-end': 'url(#sf-arrow-' + kind + ')' });
+        put('circle', { cx: from, cy: y, r: 3, fill: color });
+      }
+      const tag = label(center, local ? y + 4 : y - 6, title, 'sf-seq');
+      const box = tag.getBBox();
+      const background = put('rect', { x: box.x - 5, y: box.y - 2, width: box.width + 10, height: box.height + 4, rx: 4,
+        fill: local ? 'var(--muted)' : 'var(--background)', stroke: local && step === n ? color : 'none' });
+      svg.insertBefore(background, tag);
+    }
+    steps.forEach((action, i) => {
+      const y = ys[i];
+      if (step === i + 1) {
+        put('rect', { x: 0, y: y - 24, width, height: action.extra ? 62 : 35,
+          fill: 'color-mix(in srgb,var(--viz-series-1) 9%,transparent)' });
+        put('rect', { x: 0, y: y - 24, width: 4, height: action.extra ? 62 : 35, fill: 'var(--viz-series-1)' });
+      }
+      drawAction(action, i, y);
+      if (action.extra) drawAction(action.extra, i, y + 32);
+    });
+  }
+
+  function listItem(list, i, name, caption, active) {
+    const li = document.createElement('li');
+    if (active) { li.className = 'sf-active'; li.setAttribute('aria-current', 'step'); }
+    const index = document.createElement('span'), block = document.createElement('span'), sub = document.createElement('span');
+    index.className = 'sf-no text-small';
+    index.textContent = number(i + 1);
+    block.textContent = name;
+    sub.className = 'sf-action text-small';
+    sub.textContent = caption;
+    block.append(sub);
+    li.append(index, block);
+    list.append(li);
+  }
+  function render() {
+    const r = result(), steps = buildSteps(r), current = steps[step - 1];
+    get('scenario').value = scenario;
+    get('global-view').setAttribute('aria-pressed', String(step === 0));
+    get('position').textContent = step ? step + ' / ' + steps.length : '全局关系';
+    get('prev').disabled = step <= 1;
+    get('next').disabled = step === steps.length;
+    get('detail-title').textContent = current ? number(step) + '　' + current.title : '为什么从 20 开始验证？';
+    get('detail-body').textContent = current ? current.text : '首轮目标模型已经选出 20。第二轮将 20 和三个候选一起送入模型，从 20 后面的位置开始比较。下表把每个输入与它预测的下一 token 对齐。';
+    get('overview').hidden = step !== 0;
+    get('verification').hidden = step > 0 && step < 6;
+    const compact = get('compact-list'), notes = get('step-list');
+    compact.replaceChildren(); notes.replaceChildren();
+    for (const [i, s] of steps.entries()) {
+      const route = s.from === s.to ? laneNames[s.from] + ' · 本地计算' : laneNames[s.from] + ' → ' + laneNames[s.to];
+      listItem(compact, i, s.title, route + ' · ' + s.label + (s.extra ? '。提案器 → 调度器 · ' + s.extra.label : ''), step === i + 1);
+      listItem(notes, i, s.title, s.text, false);
+    }
+    renderLedger(r);
+    drawDiagram(steps);
+  }
+  function restore(saved) {
+    if (!saved || !Object.hasOwn(targets, saved.scenario) || !Number.isInteger(saved.step) || saved.step < 0 || saved.step > 8) return;
+    scenario = saved.scenario;
+    step = saved.step;
+  }
+  function change(nextStep, nextScenario = scenario) {
+    step = nextStep; scenario = nextScenario;
+    const saved = { step, scenario };
+    if (window.openai?.setWidgetState) window.openai.setWidgetState({ modelContent: saved, privateContent: null }).catch(() => {});
+    else { try { localStorage.setItem(stateKey, JSON.stringify(saved)); } catch {} }
+    render();
+  }
+  if (window.openai) restore(window.openai.widgetState?.modelContent);
+  else { try { restore(JSON.parse(localStorage.getItem(stateKey))); } catch {} }
+  window.addEventListener('openai:set_globals', (e) => { restore(e.detail?.globals?.widgetState?.modelContent); render(); });
+  get('global-view').addEventListener('click', () => change(0));
+  get('prev').addEventListener('click', () => change(Math.max(1, step - 1)));
+  get('next').addEventListener('click', () => change(Math.min(8, step + 1)));
+  get('scenario').addEventListener('change', (e) => change(step, e.target.value));
+  render();
+  let lastWidth = 0;
+  new ResizeObserver(([entry]) => {
+    if (lastWidth !== entry.contentRect.width) {
+      lastWidth = entry.contentRect.width;
+      drawDiagram(buildSteps(result()));
+    }
+  }).observe(root);
+})();
+</script>
+<!-- END FLOW -->
+  <footer class="page-footer"><span>固定版本源码走读 · 示例 token 为教学数据 · 未运行 NPU 推理</span><a href="README.md">源码定位与示例条件 ↗</a></footer>
+</main>
+</body>
+</html>
