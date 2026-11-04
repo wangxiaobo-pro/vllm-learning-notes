@@ -14,6 +14,7 @@
 | 静态批处理与连续批处理 | 同一组请求的组批、排队、Prefill / Decode、退出与 KV 释放，附逐轮对比 | [batching](batching/README.md) | [batching/index.html](batching/index.html) |
 | vLLM 请求完整生命周期 | V1 单卡流式请求的 20 步流程、Prefill / Decode、KV 块与结束清理 | [request-lifecycle](request-lifecycle/README.md) | [request-lifecycle/index.html](request-lifecycle/index.html) |
 | Scheduler.schedule() 调度流程 | 四个本轮请求列表、两项 token 预算、KV 抢占回滚与恢复 | [scheduler](scheduler/README.md) | [scheduler/index.html](scheduler/index.html) |
+| PagedAttention 的上下游数据流 | 对照首次 Prefill 和跨页 Decode，逐步追踪块号、写槽与 Attention 的读取范围 | [paged-attention](paged-attention/README.md) | [paged-attention/index.html](paged-attention/index.html) |
 | KV Offloading 的设备结构 | 用同一组 K/V 数值对照 NPU 源块、CPU 槽位和回载目标块 | [kv-offloading](kv-offloading/README.md) | [kv-offloading/index.html](kv-offloading/index.html) |
 | vLLM PD 分离 | V0 / V1、P / D、Scheduler / Worker、Mooncake 缓存匹配与传输 | [pd-disaggregation](pd-disaggregation/README.md) | [pd-disaggregation/index.html](pd-disaggregation/index.html) |
 | Chunked prefill | 分块与整段 prefill 对照、四轮状态、CPU / GPU 调用、KV 与输出变化 | [chunked-prefill](chunked-prefill/README.md) | [chunked-prefill/index.html](chunked-prefill/index.html) |
@@ -37,6 +38,7 @@ vllm-learning-notes/
 ├── parallelism/                       # 单项与组合并行的计算、分片和通信
 ├── communication-primitives/          # 通信原语与 Ring Attention 数值演示
 ├── eplb-dplb/                         # 请求负载均衡与专家放置、权重迁移
+├── paged-attention/                   # Scheduler 分配块号与 Worker 按页读写 KV
 ├── kv-offloading/                     # NPU 与 CPU 之间的 KV 块映射
 ├── pd-disaggregation/                 # Prefill / Decode 分离与 KV 传输
 └── vllm-ascend-graph/                 # Ascend 图捕获、回放与底层调用

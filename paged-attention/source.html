@@ -1,0 +1,343 @@
+<section id="pa-flow" aria-label="PagedAttention 上下游数据流">
+  <header><h2>PagedAttention 的上下游数据流</h2>
+    <div class="text-small">Ascend V1 · 单卡 · 请求 R · 第 ℓ 层 · 每页 128 个位置</div></header>
+  <div class="viz-controls" role="group" aria-label="按步骤执行">
+    <button class="btn" type="button" data-overview>全局关系</button>
+    <button class="btn" type="button" data-prev>上一步</button>
+    <button class="btn btn-primary" type="button" data-next>下一步</button>
+    <button class="btn" type="button" data-play>播放流程</button>
+  </div>
+  <div class="viz-controls">
+    <button class="btn" type="button" data-mode="decode">跨页 Decode</button>
+    <button class="btn" type="button" data-mode="prefill">首次 Prefill</button>
+    <label class="form-label">查看依赖
+      <select class="form-select" data-focus><option value="all">完整连通图</option><option value="allocate">Scheduler 取块</option><option value="batch">Worker 接收块号</option><option value="scatter">写入 K/V</option><option value="attn">Attention 取数</option></select>
+    </label>
+  </div>
+  <div class="pa-legend text-small"><span><i class="pa-plan"></i>调度元数据</span><span><i class="pa-live"></i>本轮张量 / 索引</span><span><i class="pa-store"></i>常驻 K/V</span></div>
+  <div aria-live="polite" aria-atomic="true"><h3 data-step-title></h3><div data-caption></div></div>
+  <svg data-graph role="img" aria-label="按 Scheduler、Worker 和 NPU 归属展示的数据依赖图"></svg>
+  <details><summary>源码入口与示例条件</summary><div class="pa-source">
+    <span>本地静态源码 · vLLM 295c062db8 · vLLM-Ascend 94e3e25f8。块号 #7 和 #3 是教学取值。单 KV 组、普通 full attention、NHD、无前缀缓存、无投机解码。</span>
+    <span>Decode 选择支持专用 PA 的 A2 场景，头维度 128、无滑窗，FULL_DECODE_ONLY 且 pa_shape_list 含本批形状 1。图表示算子的数据依赖。未命中时，普通 Decode 的 FIA 也可依据块表和有效长度读缓存。</span>
+    <span>请求结束后，Scheduler 释放 R 的块引用，引用计数降为 0 的块回到空闲队列。本卡各层的缓存张量继续供后续请求复用。</span>
+    <div data-refs></div>
+  </div></details>
+</section>
+<style>
+ #pa-flow {display:grid;gap:calc(var(--font-size-base)*.7);min-width:0;overflow-wrap:anywhere}
+ #pa-flow header div {margin-top:.3em}
+ #pa-flow .pa-legend {display:flex;flex-wrap:wrap;gap:.4em 1.2em}
+ #pa-flow .pa-legend span {display:inline-flex;align-items:center;gap:.35em}
+ #pa-flow .pa-legend i {width:1.6em;height:0;border-top:2px solid}
+ #pa-flow .pa-legend .pa-plan {border-color:var(--muted-foreground);border-top-style:dashed}
+ #pa-flow .pa-legend .pa-live {border-color:var(--blue)}
+ #pa-flow .pa-legend .pa-store {border-color:var(--green)}
+ #pa-flow [data-graph] {display:block;width:100%;overflow:visible}
+ #pa-flow .pa-source {display:grid;gap:.5em;margin-top:.5em}
+ #pa-flow .pa-source a {display:block;width:fit-content}
+ #pa-flow summary {width:fit-content}
+</style>
+<script>
+(() => {
+  const root=document.getElementById('pa-flow'), svg=root.querySelector('[data-graph]');
+  const menu=root.querySelector('[data-focus]'), caption=root.querySelector('[data-caption]');
+  const svgNS='http://www.w3.org/2000/svg';
+  const palette={plan:'var(--muted-foreground)',live:'var(--blue)',store:'var(--green)',ink:'var(--foreground)',paper:'var(--background)'};
+  const example={size:128,first:7,next:3,p:128};
+  const {size,first,next,p}=example;
+  const row=[first,next], slot=row[Math.floor(p/size)]*size+p%size;
+  const format=nums=>'['+nums.join(', ')+']';
+  const control=name=>root.querySelector('[data-'+name+']');
+  const stages=[
+    {title:'Scheduler 从空闲队列取块',outputs:['allocate'],
+      decode:'R 原有块 #7，本轮需要第 2 页。allocate_slots 从 BlockPool 取出 #3，将 R 的块链扩为 [7, 3]。',
+      prefill:'R 的 128 个 prompt token 需要 1 页。allocate_slots 从 BlockPool 取出 #7，建立块链 [7]。'},
+    {title:'Worker 接收块号并更新本地表行',outputs:['batch'],
+      decode:'SchedulerOutput 只带新增块号 [3]。Worker 把它追加到旧行 [7]，得到完整行 [7, 3]。',
+      prefill:'SchedulerOutput 为新请求带来完整块号 [7]。Worker 建立 R 的本地表行。'},
+    {title:'Runner 提交块表并准备位置与长度',outputs:['meta'],
+      decode:'本轮在本卡使用表行 [7, 3]、位置 128 和有效长度 129。',
+      prefill:'本轮在本卡使用表行 [7]、位置 0…127 和有效长度 128。'},
+    {title:'根据逻辑位置算出写槽',outputs:['slot'],
+      decode:'位置 128 位于逻辑页 1 的偏移 0。查表得到 #3，写槽为 3 × 128 + 0 = 384。',
+      prefill:'位置 0…127 都落在逻辑页 0。查表得到 #7，本轮的 128 个写槽为 896…1023。'},
+    {title:'准备本层 Q/K/V，按层名取缓存引用',outputs:['cache','qkv'],
+      decode:'投影产生位置 128 的 q、k、v。Attention 通过 layer_name 找到启动时已绑定的 (Kℓ, Vℓ)。',
+      prefill:'投影产生 128 个位置的 Q、K、V。Attention 通过 layer_name 找到本层常驻的 (Kℓ, Vℓ)。'},
+    {title:'将当前 K/V 写入本层缓存',outputs:['scatter','pages'],
+      decode:'写槽 [384]、本轮 k/v 和缓存引用在 scatter 汇合。新 K/V 写到物理块 #3 的偏移 0。',
+      prefill:'scatter 把本轮的 128 行 K/V 依次写进 #7 的 128 个槽，留给后续 Decode 使用。'},
+    {title:'Attention 读取输入并计算',outputs:['attn'],
+      decode:'当前 Q、完整块表 [7, 3]、有效长度 129 和本层缓存进入 PA。读取 #7 的全部槽和 #3 的第 0 槽。',
+      prefill:'PrefillNoCache 的 FIA 直接接收本轮 Q、K、V 和序列边界，计算 causal attention。'},
+    {title:'本层输出进入输出投影',outputs:['out'],
+      decode:'一个新位置的 Attention 结果 O[1, Hq, D] 合并 head 维，交给 o_proj。',
+      prefill:'128 个位置的 Attention 结果 O[128, Hq, D] 合并 head 维，交给 o_proj。'}
+  ];
+  const ready=new Map(stages.flatMap((stage,i)=>stage.outputs.map(id=>[id,i+1])));
+  const playInterval=2800;
+  let mode='decode', focus='all', step=0, timer=null, lastWidth=0;
+  const svgEl=(tag,attrs={},body,parent=svg)=>{
+    const e=document.createElementNS(svgNS,tag);
+    for(const [k,v] of Object.entries(attrs)) e.setAttribute(k,String(v));
+    if(body!==undefined) e.textContent=body;
+    parent.append(e);return e;
+  };
+  function content(d){
+    return {
+      request:['请求 R','已计算 / 本轮调度',d?'128 / 1 个 token':'0 / 128 个 token',d?'已有块链 [7]':'已有块链 [ ]'],
+      pool:['BlockPool','空闲块队列',d?'队首 [3, …]':'队首 [7, …]'],
+      allocate:['KVCacheManager.allocate_slots',d?'需 2 页 − 已有 1 页 = 补 1 页':'需 1 页 − 已有 0 页 = 补 1 页',d?'get_new_blocks(1) → #3':'get_new_blocks(1) → #7',d?'R 的块链 [7, 3]':'R 的块链 [7]'],
+      batch:['Worker 更新请求行','_update_states',d?'旧行 [7] + 新增 [3]':'新建行 ← 完整块号 [7]'],
+      init:['Worker 启动时分配','initialize_kv_cache → bind_kv_cache','按 layer_name 绑定 Kℓ、Vℓ'],
+      meta:['Runner 本轮索引','block_table[R] = '+(d?format(row):format([first])),d?'p = 128':'p = 0…127',d?'seq_len = 129':'seq_len = 128'],
+      cache:['本层缓存引用','layer.kv_cache','(Kℓ, Vℓ)'],
+      qkv:['来自本层投影',d?'q₁₂₈, k₁₂₈, v₁₂₈':'Q、K、V 各 128 行',d?'1 个新位置':'位置 0…127'],
+      slot:['compute_slot_mapping',d?'128 // 128 → 页 1 → #3':'逻辑页 0 → #7',d?'3 × 128 + 0 = '+slot:'7 × 128 + [0…127]',d?'写槽 [384]':'写槽 [896, …, 1023]'],
+      scatter:['reshape_and_cache','scatter 当前 K、V',d?'Kℓ[3,0] ← k₁₂₈':'Kℓ[7,0…127] ← K',d?'Vℓ[3,0] ← v₁₂₈':'Vℓ[7,0…127] ← V'],
+      pages:['写后的本层 KV 缓存','逻辑页 0 → #7　有效偏移 0…127',d?'逻辑页 1 → #3　有效偏移 0':'供后续 Decode 使用'],
+      attn:d?['PagedAttention','softmax(qKᵀ / √D) V → o₁₂₈','查 #7 的 128 槽 + #3 的第 0 槽']:['PrefillNoCache · FIA','causal attention(Q, K, V)','本轮 K/V 直接参与计算'],
+      out:['本层 Attention 输出',d?'O[1, Hq, D]':'O[128, Hq, D]','合并 head 维 → 输出投影 o_proj']
+    };
+  }
+  function explain(d){
+    const text={
+      all:d?'沿两侧长箭头看读取端：完整块表和长度从左边进入 PA，当前 Q 从右边进入。中间的绿色箭头传入同一层写好的 K/V 缓存。':'首次 Prefill 有两条去向：新 K/V 写入块 #7，同时本轮 Q、K、V 直接进入 FIA。写好的缓存供下一轮读取。',
+      allocate:d?'输入是请求 R 的进度、已有块链 [7] 和空闲块池。allocate_slots 返回新增块 #3，schedule 把这个块号放进 SchedulerOutput。':'输入是待处理的 128 个位置和空闲块池。取出 #7 后，schedule 为新请求打包完整块号 [7]。',
+      batch:d?'Worker 把调度增量 [3] 追加到本地已有行 [7]。下游使用完整行 [7, 3] 生成本轮索引。':'Worker 用新请求的完整块号 [7] 建行。下游按这行把位置 0…127 映射到物理块 #7。',
+      scatter:d?'写算子有三个上游：写槽 [384]、本轮 k₁₂₈/v₁₂₈、启动时绑定的 (Kℓ,Vℓ)。它原地更新两个张量的 [3,0]。':'写算子收到 128 个新位置的 K/V、目标槽 896…1023 和本层缓存引用，将它们写入块 #7。',
+      attn:d?'读算子收到当前 Q、完整表 [7,3]、有效长度 129 和本层 K/V 缓存，产出一个位置的 Attention 输出。':'FIA 接收本轮 Q、K、V 和序列边界，产出 128 个位置的 Attention 输出。该分支的 block_table 为 None。'
+    };
+    return text[focus];
+  }
+  const ctx=document.createElement('canvas').getContext('2d');
+  function wrap(value,maxW,font){
+    ctx.font=font;
+    const lines=[];
+    let row='';
+    for(const c of value){
+      if(row && ctx.measureText(row+c).width>maxW){lines.push(row.trimEnd());row='';}
+      row+=c;
+    }
+    if(row) lines.push(row.trim());
+    return lines;
+  }
+  function draw(){
+    const W=Math.round(svg.getBoundingClientRect().width);
+    if(!W)return;
+    lastWidth=W;
+    const small=W<550, d=mode==='decode', txt=content(d);
+    const family=getComputedStyle(root).fontFamily || 'sans-serif';
+    const dims={},frames=[],edges=[];
+    const half=W/2,L=small?W*.26:W*.205,C=W*.50,R=small?W*.74:W*.795;
+    const narrow=small?W*.387:W*.268, medium=small?W*.42:W*.365, wide=small?W*.72:W*.52;
+    function place(id,cx,y,w,kind='live'){
+      const rows=txt[id].flatMap((v,i)=>{
+        const font=(i===0?'500 13px ':'400 12px ')+family;
+        if(small&&id==='slot'&&i===0){return ['compute_','slot_mapping'].map(s=>({s,title:true}));}
+        return wrap(v,w-14,font).map(s=>({s,title:i===0}));
+      });
+      const h=rows.length*17+15;
+      const n={id,cx,cy:y+h/2,x:cx-w/2,y,w,h,b:y+h,r:cx+w/2,rows,kind};
+      dims[id]=n;return n;
+    }
+    function edge(a,b,k,points,label,at,desc){
+      edges.push({a,b,k,points,label,at,desc:desc||label});
+    }
+    const mid=(a,b)=>(a+b)/2;
+    const gap=32, S0=3;
+    const rq=place('request',W*.265,S0+29,medium,'plan'), pool=place('pool',W*.735,rq.y,medium,'plan');
+    const al=place('allocate',half,Math.max(rq.b,pool.b)+gap,wide,'plan');
+    const leftIn=al.cx-al.w*.25, rightIn=al.cx+al.w*.25, bus=al.y-16;
+    edge('request','allocate','plan',[[rq.cx,rq.b],[rq.cx,bus],[leftIn,bus],[leftIn,al.y]]);
+    edge('pool','allocate','plan',[[pool.cx,pool.b],[pool.cx,bus],[rightIn,bus],[rightIn,al.y]]);
+    const S1=al.b+10;frames.push([S0,S1,'Scheduler · 主机块池']);
+    const H0=S1+46;
+    const b=place('batch',W*.265,H0+32,medium,'plan');
+    const init=place('init',W*.735,b.y,medium,'store');
+    const bline=S1+15;
+    edge('allocate','batch','plan',[[al.cx,al.b],[al.cx,bline],[b.cx,bline],[b.cx,b.y]],d?'SchedulerOutput · 新增 [3]':'SchedulerOutput · 完整 [7]',[mid(al.cx,b.cx),bline-5],'SchedulerOutput → '+(d?'scheduled_cached_reqs.new_block_ids':'scheduled_new_reqs[].block_ids'));
+    const H1=Math.max(b.b,init.b)+11;frames.push([H0,H1,small?'Worker':'Worker · ModelRunner']);
+    const N0=H1+43, top=N0+33;
+    const meta=place('meta',L,top,narrow), cache=place('cache',small?R:C,top,narrow,'store');
+    const topEnd=Math.max(meta.b,cache.b);
+    let proj,slots,sc;
+    if(small){
+      const yy=topEnd+gap;
+      slots=place('slot',L,yy,narrow);
+      proj=place('qkv',R,yy,narrow);
+      sc=place('scatter',C,Math.max(slots.b,proj.b)+57,wide*.88);
+    }else{
+      proj=place('qkv',R,top,narrow);
+      const yy=Math.max(topEnd,proj.b)+43;
+      slots=place('slot',L,yy,narrow);
+      sc=place('scatter',C,yy,narrow);
+    }
+    const pages=place('pages',C,sc.b+gap,wide,'store');
+    const attn=place('attn',C,pages.b+42,wide);
+    const out=place('out',C,attn.b+31,wide);
+    frames.push([N0,out.b+12,small?'NPU · 层 ℓ':'NPU · 第 ℓ 层']);
+    const fan=H1+20;
+    edge('batch','meta','live',[[b.cx,b.b],[b.cx,fan],[meta.cx,fan],[meta.cx,meta.y]],'提交块表',[b.cx,fan-5],'Runner 提交块表，并根据进度构造位置和长度');
+    edge('init','cache','store',[[init.cx,init.b],[init.cx,fan],[cache.cx,fan],[cache.cx,cache.y]],'按层名取引用',[init.cx,fan-5],'get_attention_context(layer_name) → layer.kv_cache');
+    edge('meta','slot','live',[[meta.cx,meta.b],[slots.cx,slots.y]],'p 和块表',[meta.cx,mid(meta.b,slots.y)+4]);
+    const lbus=13, rbus=W-13;
+    // A wider final inlet leaves room for port names on narrow screens.
+    const inlet=(left)=>small?(left?W*.17:W*.83):(left?lbus:rbus);
+    const portY=attn.y-16;
+    const bypass=(source,onLeft)=>{
+      const gutter=onLeft?lbus:rbus, targetX=onLeft?attn.x:attn.r;
+      if(!small)return [[source, onLeft?meta.cy:proj.cy],[gutter,onLeft?meta.cy:proj.cy],[gutter,attn.cy],[targetX,attn.cy]];
+      return [[source,onLeft?meta.cy:proj.cy],[gutter,onLeft?meta.cy:proj.cy],[gutter,portY],[inlet(onLeft),portY],[inlet(onLeft),attn.y]];
+    };
+    edge('meta','attn','live',bypass(meta.x,true),d?'表 + 长度':'序列边界',small?[W*.13,portY-5]:[mid(lbus,attn.x),attn.cy-6],d?'block_tables[R] = [7,3] 与 seq_lens = [129]':'实际序列长度 / 查询边界，block_table=None');
+    edge('qkv','attn','live',bypass(proj.r,false),d?'Q':'Q, K, V',small?[W*.87,portY-5]:[mid(rbus,attn.r),attn.cy-6],d?'当前 query':'本轮直接传入的 query、key、value');
+    if(small){
+      const yJoin=sc.y-23, move=sc.w*.29;
+      edge('cache','scatter','store',[[cache.x,cache.cy],[C,cache.cy],[C,sc.y]],'Kℓ, Vℓ',[C,sc.y-9]);
+      edge('slot','scatter','live',[[slots.cx,slots.b],[slots.cx,yJoin],[C-move,yJoin],[C-move,sc.y]],d?'槽 384':'槽 896…1023',[slots.cx-2,yJoin-5]);
+      edge('qkv','scatter','live',[[proj.cx,proj.b],[proj.cx,yJoin],[C+move,yJoin],[C+move,sc.y]],'K, V',[proj.cx+1,yJoin-5]);
+    }else{
+      edge('cache','scatter','store',[[cache.cx,cache.b],[sc.cx,sc.y]],'Kℓ, Vℓ',[C,mid(cache.b,sc.y)+4]);
+      const end=sc.y+sc.h*.58;
+      edge('slot','scatter','live',[[slots.r,slots.cy],[sc.x,slots.cy]],null,null,'slot_mapping');
+      edge('qkv','scatter','live',[[proj.cx,proj.b],[proj.cx,end],[sc.r,end]],'K, V',[mid(proj.cx,sc.r),end-6]);
+    }
+    edge('scatter','pages','store',[[sc.cx,sc.b],[pages.cx,pages.y]],'原地写入',[C,mid(sc.b,pages.y)+4]);
+    if(d)edge('pages','attn','store',[[pages.cx,pages.b],[attn.cx,attn.y]],'Kℓ, Vℓ',[C,mid(pages.b,attn.y)+4]);
+    edge('attn','out','live',[[attn.cx,attn.b],[out.cx,out.y]],'O',[C,mid(attn.b,out.y)+4]);
+    const H=out.b+16;
+    svg.replaceChildren();svg.unpauseAnimations?.();svg.setAttribute('viewBox','0 0 '+W+' '+H);
+    svg.setAttribute('height',H);
+    svgEl('title',{},d?'跨页 Decode 上下游':'首次 Prefill 上下游');
+    const stage=stages[step-1];
+    svgEl('desc',{},stage?stage[mode]:explain(d));
+    const defs=svgEl('defs');
+    for(const k of ['plan','live','store','muted']){
+      const m=svgEl('marker',{id:'kvdag-'+k,markerUnits:'userSpaceOnUse',viewBox:'0 0 8 8',refX:7,refY:4,markerWidth:8,markerHeight:8,orient:'auto'},undefined,defs);
+      svgEl('path',{d:'M1 1 L7 4 L1 7',fill:'none',stroke:k==='muted'?'var(--border)':palette[k],'stroke-width':1.6},undefined,m);
+    }
+    function svgText(s,x,y,attrs={},parent=svg){
+      return svgEl('text',{x,y,'text-anchor':'middle','font-family':family,'font-size':12,fill:palette.ink,...attrs},s,parent);
+    }
+    for(const [y,end,name] of frames){
+      svgEl('rect',{x:3,y,width:W-6,height:end-y,rx:9,fill:'none',stroke:palette.plan,'stroke-width':1.1,'stroke-dasharray':'6 5'});
+      // Left aligned owner names leave vertical ingress ports clear.
+      const ownerX=small?10:14;
+      svgText(name,ownerX,y+17,{'text-anchor':'start','font-weight':500,'paint-order':'stroke',stroke:palette.paper,'stroke-width':4});
+    }
+    const isActive=e=>stage?stage.outputs.includes(e.b):focus==='all'||e.a===focus||e.b===focus;
+    const relevant=id=>stage?.outputs.includes(id)||id===focus||edges.some(e=>isActive(e)&&(e.a===id||e.b===id));
+    const motion=stage&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const labels=[];
+    for(const e of edges){
+      const active=isActive(e), c=active?palette[e.k]:'var(--border)';
+      const route=e.points.map(([x,y],i)=>(i?'L':'M')+x+' '+y).join(' ');
+      const path=svgEl('path',{d:route,fill:'none',stroke:c,'stroke-width':active?(stage?2.4:1.65):1,'stroke-dasharray':e.k==='plan'?'5 4':'none','stroke-linejoin':'round','marker-end':'url(#kvdag-'+(active?e.k:'muted')+')','data-from':e.a,'data-to':e.b,'data-active':String(active)});
+      svgEl('title',{},e.desc||txt[e.a][0]+' → '+txt[e.b][0],path);
+      if(motion&&active){
+        const dot=svgEl('circle',{r:3.5,fill:c,opacity:0,'aria-hidden':'true'});
+        const move=svgEl('animateMotion',{path:route,begin:'indefinite',dur:'1.05s'},undefined,dot);
+        const fade=svgEl('animate',{attributeName:'opacity',values:'0;1;1;0',keyTimes:'0;0.08;0.9;1',begin:'indefinite',dur:'1.05s'},undefined,dot);
+        move.beginElement?.();fade.beginElement?.();
+      }
+      if(e.label)labels.push([e,active]);
+    }
+    for(const n of Object.values(dims)){
+      const active=relevant(n.id), g=svgEl('g',{'data-node':n.id,opacity:active?1:.47});
+      const highlighted=stage?stage.outputs.includes(n.id):focus===n.id;
+      svgEl('rect',{x:n.x,y:n.y,width:n.w,height:n.h,rx:4,fill:highlighted?'var(--accent)':palette.paper,stroke:active?palette[n.kind]:'var(--border)','stroke-width':highlighted?2.5:1.4},undefined,g);
+      let y=n.y+18;
+      const pending=step>0&&ready.get(n.id)>step;
+      let hasPlaceholder=false;
+      for(const line of n.rows){
+        if(!pending||line.title){
+          svgText(line.s,n.cx,y,{'font-size':line.title?13:12,'font-weight':line.title?500:400},g);
+        }else if(!hasPlaceholder){
+          svgText('·',n.cx,y,{},g);hasPlaceholder=true;
+        }
+        y+=17;
+      }
+    }
+    for(const [e,active] of labels){
+      const label=step&&ready.get(e.b)>step?'·':e.label;
+      svgText(label,e.at[0],e.at[1],{'data-edge-label':e.a+'-'+e.b,'paint-order':'stroke','stroke-linejoin':'round',stroke:palette.paper,'stroke-width':4,opacity:active?1:.47});
+    }
+  }
+  function apply(save=false){
+    root.dataset.scene=mode;
+    root.dataset.step=String(step);
+    control('prev').disabled=step===0;
+    control('next').disabled=step===stages.length;
+    control('overview').setAttribute('aria-pressed',String(step===0&&focus==='all'));
+    updatePlayButton();
+    root.querySelectorAll('button[data-mode]').forEach(btn=>btn.setAttribute('aria-pressed',String(btn.dataset.mode===mode)));
+    menu.value=focus;
+    const stage=stages[step-1];
+    control('step-title').textContent=stage?'第 '+step+' / '+stages.length+' 步 · '+stage.title:focus==='all'?'全局关系':'上下游依赖';
+    caption.textContent=stage?stage[mode]:explain(mode==='decode');
+    draw();
+    if(save)window.openai?.setWidgetState?.({modelContent:{visual:'PagedAttention 数据流',mode,focus,step},privateContent:{layoutVersion:3,mode,focus,step}})?.catch(()=>{});
+  }
+  function stop(){
+    if(timer!==null){clearInterval(timer);timer=null;}
+  }
+  function updatePlayButton(){
+    control('play').setAttribute('aria-pressed',String(timer!==null));
+    control('play').textContent=timer!==null?'暂停':step===stages.length?'重新播放':'播放流程';
+  }
+  function go(n){
+    stop();focus='all';step=n;apply(true);
+  }
+  function togglePlay(){
+    if(timer!==null){stop();svg.pauseAnimations?.();updatePlayButton();return;}
+    focus='all';
+    if(step===0||step===stages.length)step=1;
+    timer=setInterval(()=>{
+      step++;
+      if(step===stages.length)stop();
+      apply(true);
+    },playInterval);
+    apply(true);
+  }
+  function restore(state){
+    const s=state?.privateContent;
+    const known=s?.layoutVersion===2||s?.layoutVersion===3;
+    const m=known&&s.mode==='prefill'?'prefill':'decode';
+    const n=s?.layoutVersion===3&&Number.isInteger(s.step)&&s.step>=0&&s.step<=stages.length?s.step:0;
+    const f=known&&!n&&Array.from(menu.options).some(o=>o.value===s.focus)?s.focus:'all';
+    if(root.hasAttribute('data-step')&&mode===m&&step===n&&focus===f)return;
+    stop();mode=m;step=n;focus=f;
+    apply();
+  }
+  control('prev').addEventListener('click',()=>go(Math.max(0,step-1)));
+  control('next').addEventListener('click',()=>go(Math.min(stages.length,step+1)));
+  control('overview').addEventListener('click',()=>go(0));
+  control('play').addEventListener('click',togglePlay);
+  root.querySelectorAll('button[data-mode]').forEach(btn=>btn.addEventListener('click',()=>{mode=btn.dataset.mode;go(0);}));
+  menu.addEventListener('change',()=>{stop();step=0;focus=menu.value;apply(true);});
+  window.addEventListener('pagehide',stop);
+  new ResizeObserver(()=>{if(Math.round(svg.getBoundingClientRect().width)!==lastWidth)draw();}).observe(root);
+  window.addEventListener('openai:set_globals',event=>{if(event.detail?.globals&&'widgetState' in event.detail.globals)restore(event.detail.globals.widgetState);});
+  const sources=[
+    ['vllm','vllm/v1/core/single_type_kv_cache_manager.py',402,414,'按容量缺口从 BlockPool 取块'],
+    ['vllm','vllm/v1/core/sched/scheduler.py',1734,1748,'Scheduler 打包已有请求的增量块号'],
+    ['vllm','vllm/v1/worker/gpu_model_runner.py',1442,1474,'Worker 将新增块号追加到请求行'],
+    ['vllm-ascend','vllm_ascend/worker/model_runner_v1.py',4850,4856,'NPU Runner 创建本卡缓存'],
+    ['vllm-ascend','vllm_ascend/patch/worker/patch_bind_kv_cache.py',49,55,'将缓存绑定到各层'],
+    ['vllm','vllm/model_executor/layers/attention/attention.py',703,721,'Attention 按层名取本轮 metadata 和缓存引用'],
+    ['vllm-ascend','vllm_ascend/ops/triton/compute_slot_mapping.py',44,90,'页号、页内偏移和写槽'],
+    ['vllm-ascend','vllm_ascend/attention/attention_v1.py',1221,1235,'Scatter 的当前 K/V 与写槽'],
+    ['vllm-ascend','vllm_ascend/attention/attention_v1.py',1135,1155,'PA 接收 Q、K/V 缓存、块表和有效长度'],
+    ['vllm-ascend','vllm_ascend/attention/attention_v1.py',886,901,'FIA 对首次 Prefill 与 Decode 的不同取数路径'],
+    ['vllm-ascend','vllm_ascend/attention/utils.py',194,212,'专用 PA 的选择条件']
+  ];
+  for(const [repo,file,start,end,label] of sources){
+    const a=document.createElement('a'), sha=repo==='vllm'?'295c062db8a48ea73bbd05d1174cb37d24bf86f9':'94e3e25f836d79b5ee5c1aed257999ee61d10875';
+    a.href='https://github.com/vllm-project/'+repo+'/blob/'+sha+'/'+file+'#L'+start+'-L'+end;
+    a.target='_blank';a.rel='noopener noreferrer';a.textContent=label;root.querySelector('[data-refs]').append(a);
+  }
+  restore(window.openai?.widgetState);
+})();
+</script>
