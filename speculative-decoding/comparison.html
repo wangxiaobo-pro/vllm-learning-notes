@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>串行投机与并行投机 · vLLM 学习笔记</title>
+  <meta name="description" content="比较串行 MTP 和并行 DFlash 的输入与候选，沿箭头跟随目标预测、贪心验证与正式输出。">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --background: #fbfcfa; --foreground: #182b2a; --muted-foreground: #536662;
+      --muted: #eaf0ed; --border: #d0dcd6; --primary: #205a52; --primary-foreground: #fff;
+      --viz-series-1: #197361; --viz-series-2: #526cb2; --viz-series-3: #a55d14;
+      --font-size-base: 15px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --background: #14201f; --foreground: #edf5ef; --muted-foreground: #b3c8c1;
+        --muted: #223330; --border: #40534e; --primary: #a1dbca; --primary-foreground: #152723;
+        --viz-series-1: #79d6b9; --viz-series-2: #aabff7; --viz-series-3: #efb36f;
+      }
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; padding: 22px 16px 40px; background: var(--background); color: var(--foreground);
+      font: var(--font-size-base)/1.55 system-ui, "Microsoft YaHei", sans-serif; }
+    .flow-page { width: 100%; max-width: 920px; margin-inline: auto; min-width: 0; }
+    .page-nav, .page-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+      gap: 8px 18px; padding-block: 9px 14px; color: var(--muted-foreground); font-size: 13px; }
+    .page-nav { border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+    .page-footer { border-top: 1px solid var(--border); margin-top: 26px; padding-top: 16px; }
+    a { color: var(--primary); text-underline-offset: .22em; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(27px, 4vw, 38px); line-height: 1.2; letter-spacing: -.045em; }
+    h2 { font-size: 18px; } h3 { font-size: 16px; }
+    .text-small { font-size: 13px; }
+    .form-select { font: inherit; color: var(--foreground); border: 1px solid var(--border); border-radius: 6px;
+      background: var(--background); padding: 6px 11px; min-height: 36px; cursor: pointer; }
+    :focus-visible { outline: 2px solid var(--viz-series-1); outline-offset: 3px; }
+    @media (pointer: coarse) { .form-select { min-height: 44px; } }
+  </style>
+</head>
+<body>
+<main class="flow-page">
+  <nav class="page-nav" aria-label="学习笔记导航"><a href="../index.html">← 学习笔记</a><a href="index.html">各算法逐步执行 →</a></nav>
+<!-- BEGIN FLOW -->
+<div id="draft-compare">
+  <style>
+    #draft-compare { color: var(--foreground); container-type: inline-size; --gap: var(--font-size-base, 1rem); }
+    #draft-compare .minor { color: var(--muted-foreground); }
+    #draft-compare .eyebrow { color: var(--muted-foreground); letter-spacing: .09em; margin-bottom: .4em; }
+    #draft-compare .intro { margin: .5em 0 1.05em; }
+    #draft-compare .section-title, #draft-compare .option-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: .35em .65em; }
+    #draft-compare .section-title { margin: 1.1em 0 .55em; }
+    #draft-compare .ordinal { color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+    #draft-compare .known, #draft-compare .guess, #draft-compare .slot, #draft-compare .picked {
+      display: inline-grid; place-items: center; min-width: 2.4em; padding: .27em .72em; border-radius: .38em;
+      color: var(--foreground); font-weight: 500; }
+    #draft-compare .known { background: var(--muted); }
+    #draft-compare .guess { background: color-mix(in srgb,var(--viz-series-2) 16%,transparent); }
+    #draft-compare .slot { background: transparent; outline: 1px dashed var(--muted-foreground); outline-offset: -1px; }
+    #draft-compare .routes { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1.4em; }
+    #draft-compare .route { min-width: 0; padding-top: .65em; border-top: 2px solid var(--border); }
+    #draft-compare .sketch { margin: .9em 0 .6em; }
+    #draft-compare .chain { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: .5em; }
+    #draft-compare .chain-node { display: grid; justify-items: center; gap: .3em; position: relative; }
+    #draft-compare .chain-node + .chain-node::before { content: '→'; position: absolute; inset-inline-start: -.75em; top: .28em; color: var(--muted-foreground); }
+    #draft-compare .block { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: .22em .4em; justify-items: center; align-items: center; }
+    #draft-compare .block-op { grid-column: 2 / 5; width: 100%; display: flex; align-items: center; gap: .4em; color: var(--muted-foreground); }
+    #draft-compare .block-op::before, #draft-compare .block-op::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
+    #draft-compare .method-note { margin-top: .65em; color: var(--muted-foreground); }
+    #draft-compare .map { position: relative; padding: 0 26px 0 12px; }
+    #draft-compare .wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    #draft-compare .stage { position: relative; min-width: 0; background: var(--background); border: 1px dashed var(--muted-foreground); border-radius: 8px; padding: .7em .9em; }
+    #draft-compare .stage > .section-title { margin: 0 0 .3em; }
+    #draft-compare .map .routes { margin: 34px 0; }
+    #draft-compare .port { display: flex; flex-wrap: wrap; align-items: baseline; gap: .22em .65em; margin: .38em 0; }
+    #draft-compare .port-label { color: var(--muted-foreground); min-width: 3em; }
+    #draft-compare .payload { color: var(--foreground); background: color-mix(in srgb,var(--viz-series-2) 11%,transparent); padding: .22em .45em; border-radius: .3em; }
+    #draft-compare .compute { background: var(--muted); padding: .45em .6em; border-radius: .35em; margin: .4em 0; }
+    #draft-compare .map #verify, #draft-compare .map #sink { margin-top: 30px; }
+    #draft-compare .map .verify-head { margin-top: 0; }
+    #draft-compare .guide { display: flex; flex-wrap: wrap; align-items: center; gap: .35em 1.2em; margin: .5em 0 1em; }
+    #draft-compare [data-edge-label] { fill: var(--foreground); font-family: inherit; font-size: calc(var(--font-size-base) * .83); }
+    #draft-compare .key::before { content: ''; display: inline-block; width: 1.6em; vertical-align: middle; margin-right: .35em; border-top: 2px solid var(--viz-series-2); }
+    #draft-compare .key.reuse::before { border-top: 2px dashed var(--viz-series-1); }
+    #draft-compare .verify-head { display: flex; flex-wrap: wrap; gap: .5em 1em; justify-content: space-between; align-items: center; margin: 1.1em 0 .45em; }
+    #draft-compare .verify-head .section-title { margin: 0; }
+    #draft-compare .choose { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .4em; }
+    #draft-compare .compare { border-collapse: collapse; table-layout: fixed; width: 100%; margin-top: .7em; }
+    #draft-compare .compare th, #draft-compare .compare td { text-align: center; padding: .4em .2em; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; font-weight: 400; }
+    #draft-compare .compare th:first-child, #draft-compare .compare td:first-child { width: 32%; text-align: left; padding-inline-start: .6em; }
+    #draft-compare .compare thead { background: var(--muted); }
+    #draft-compare .compare .verdict { display: inline-block; padding: .12em .52em; border-radius: .25em; }
+    #draft-compare .accept, #draft-compare .picked { background: color-mix(in srgb,var(--viz-series-1) 16%,transparent); }
+    #draft-compare .correct { background: color-mix(in srgb,var(--viz-series-3) 22%,transparent); }
+    #draft-compare .bonus { background: color-mix(in srgb,var(--viz-series-2) 16%,transparent); }
+    #draft-compare tr.skipped { color: var(--muted-foreground); }
+    #draft-compare .outputs { display: flex; flex-wrap: wrap; align-items: center; gap: .45em 1.5em; margin: .8em 0 .4em; }
+    #draft-compare .outputs > span { display: inline-flex; gap: .55em; align-items: center; }
+    @container (max-width: 585px) {
+      #draft-compare .routes { grid-template-columns: minmax(0,1fr); gap: 1em; }
+      #draft-compare .map { padding: 0 24px 0 12px; }
+      #draft-compare .stage { padding: .6em; }
+      #draft-compare .map .routes { margin: 20px 0; }
+      #draft-compare .compare th:first-child, #draft-compare .compare td:first-child { width: 33%; }
+    }
+  </style>
+  <header>
+    <div class="eyebrow text-small">推理机制　/　投机解码</div>
+    <h1>串行投机与并行投机</h1>
+    <p class="intro">从「今天想」往后生成。沿 ②A 或 ②B 任选一条草稿路径，再看候选怎样变成正式输出。以下用词块代表 token，验证采用贪心采样。</p>
+  </header>
+  <div class="guide text-small"><span class="key">数据送往下游</span><span class="key reuse">验证时复用的上游输入</span><span class="minor">虚线框内为同一个处理环节</span></div>
+  <div class="map" id="flow-map">
+  <svg id="wires" class="wires" aria-hidden="true"><defs>
+    <marker id="dc-normal" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M1,1 L8,4.5 L1,8" fill="none" stroke="var(--viz-series-2)" stroke-width="1.7"/></marker>
+    <marker id="dc-reuse" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M1,1 L8,4.5 L1,8" fill="none" stroke="var(--viz-series-1)" stroke-width="1.7"/></marker>
+  </defs><g id="paths"></g></svg>
+  <section id="origin-model" class="stage" aria-labelledby="input-heading">
+    <div class="section-title"><span class="ordinal text-small">① 上游</span><h2 id="input-heading">目标模型读原文，选出起点</h2></div>
+    <div class="port"><span class="port-label text-small">输入</span>原文 <b class="known">今天</b></div>
+    <div class="port"><span class="port-label text-small">输出 → ②</span><span>所选草稿模型需要的上下文特征 <b>H</b>，以及刚选出的词 <b class="known">想</b></span></div>
+    <div class="port"><span class="port-label text-small">保留 → ③</span><span>目标模型自己算好的「今天」的 KV 缓存，以及已确认的「想」</span></div>
+  </section>
+  <div class="routes">
+    <section id="serial" class="route stage" aria-labelledby="serial-heading">
+      <div class="option-title"><span class="ordinal text-small">②A</span><h3 id="serial-heading">串行投机</h3><span class="minor text-small">DeepSeek MTP</span></div>
+      <div class="port"><span class="port-label text-small">① → 输入</span><span class="payload">H ＋ 想</span></div>
+      <div class="sketch chain" role="img" aria-label="从想出发，第一次草稿前向猜吃。把吃喂回，第二次猜火。再把火喂回，第三次猜锅。">
+        <div class="chain-node"><span class="known">想</span><span class="minor text-small">已确认</span></div>
+        <div class="chain-node"><span class="guess">吃</span><span class="minor text-small">第 1 次</span></div>
+        <div class="chain-node"><span class="guess">火</span><span class="minor text-small">第 2 次</span></div>
+        <div class="chain-node"><span class="guess">锅</span><span class="minor text-small">第 3 次</span></div>
+      </div>
+      <p class="method-note text-small">三次草稿前向。第一次用 H 和「想」猜「吃」，第二次用更新的隐藏态和「吃」猜「火」，再用「火」猜「锅」。</p>
+      <div class="port"><span class="port-label text-small">输出 → ③、④</span><span class="payload">候选 [吃, 火, 锅]</span></div>
+    </section>
+    <section id="parallel" class="route stage" aria-labelledby="parallel-heading">
+      <div class="option-title"><span class="ordinal text-small">②B</span><h3 id="parallel-heading">并行投机</h3><span class="minor text-small">DFlash</span></div>
+      <div class="port"><span class="port-label text-small">① → 输入</span><span class="payload">H ＋ 想 ＋ 三个占位符</span></div>
+      <div class="sketch block" role="img" aria-label="草稿模型的输入是想和三个占位符。一次前向同时从三个占位符的位置读出吃、火、锅。">
+        <span class="known">想</span><span class="slot">□</span><span class="slot">□</span><span class="slot">□</span>
+        <span class="block-op text-small">一次草稿前向</span>
+        <span class="minor text-small">已确认</span><span class="guess">吃</span><span class="guess">火</span><span class="guess">锅</span>
+      </div>
+      <p class="method-note text-small">□ 是待预测的位置。模型同时给三个位置选词，猜「锅」时无需先拿到「火」的 token。</p>
+      <div class="port"><span class="port-label text-small">输出 → ③、④</span><span class="payload">候选 [吃, 火, 锅]</span></div>
+    </section>
+  </div>
+  <section class="stage" id="target">
+    <div class="section-title"><span class="ordinal text-small">③</span><h2>目标模型一次预测四个位置</h2></div>
+    <div class="port" id="prior-port"><span class="port-label text-small">来自 ①</span><span>复用「今天」的 KV 缓存，从已确认的「想」开始。</span></div>
+    <div class="port"><span class="port-label text-small">来自 ②A 或 ②B</span><span>任选一种草稿。这里都假设给出 [吃, 火, 锅]。</span></div>
+    <div class="compute">本次输入 <strong>[想, 吃, 火, 锅]</strong> → 因果前向 → 每个位置预测下一个词</div>
+    <div class="port"><span class="port-label text-small">输出 → ④</span><span class="payload" id="target-output"></span></div>
+  </section>
+  <section id="verify" class="stage" aria-labelledby="verify-heading">
+    <div class="verify-head">
+      <div class="section-title"><span class="ordinal text-small">④</span><h2 id="verify-heading">贪心验证器从左到右比对</h2></div>
+      <label class="choose form-label" for="scenario"><span class="text-small">验证情形</span>
+        <select class="form-select" id="scenario"><option value="middle">第 2 个猜错</option><option value="all">三个全猜中</option><option value="first">第 1 个猜错</option></select>
+      </label>
+    </div>
+    <p class="minor text-small">对齐 ② 的草稿候选和 ③ 的目标预测。首个分歧处采用目标选词，后面的预测依赖已经舍弃的草稿。</p>
+    <table class="compare" aria-label="每个输入前缀对应的草稿候选、目标模型贪心预测和采用结果">
+      <thead><tr><th scope="col">目标看到的前缀</th><th scope="col">草稿候选</th><th scope="col">目标预测</th><th scope="col">取舍</th></tr></thead>
+      <tbody id="comparisons"></tbody>
+    </table>
+    <p class="minor method-note text-small" id="reason"></p>
+  </section>
+  <section class="stage" id="sink" aria-live="polite">
+    <div class="section-title"><span class="ordinal text-small">⑤ 下游</span><h2>把验证结果接回原文</h2></div>
+    <div class="outputs"><span>④ → 本轮新增 <b id="new-output" class="picked"></b></span><span>更新后 <strong id="prefix-output"></strong></span></div>
+    <p class="minor text-small">继续生成时，下一轮用末尾的「<span id="next-input"></span>」作为已确认的起点。</p>
+  </section>
+</div>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('draft-compare');
+  const get = (id) => root.querySelector('#' + id);
+  const prefix = '今天想';
+  const draft = ['吃', '火', '锅'];
+  const scenarios = {
+    middle: ['吃', '面', '锅', '。'],
+    all: ['吃', '火', '锅', '。'],
+    first: ['睡', '火', '锅', '。']
+  };
+  const notes = {
+    middle: '「吃」匹配，下一位目标选了「面」。后面的「锅」基于「今天想吃火」，不能接在「今天想吃面」后面。',
+    all: '三个候选都匹配，最后一行的前缀也成立。目标模型可以把自己预测的「。」一起输出。',
+    first: '第一位目标就选了「睡」。其余预测都以「吃」开头的草稿为条件，本轮只新增「睡」。'
+  };
+  const selector = get('scenario');
+
+  function drawConnections() {
+    const map = get('flow-map').getBoundingClientRect();
+    const rect = (id) => {
+      const box = get(id).getBoundingClientRect();
+      return { l: box.left - map.left, r: box.right - map.left, t: box.top - map.top, b: box.bottom - map.top,
+        x: (box.left + box.right) / 2 - map.left, y: (box.top + box.bottom) / 2 - map.top };
+    };
+    const [origin, serial, parallel, target, priorPort, verify, sink] =
+      ['origin-model','serial','parallel','target','prior-port','verify','sink'].map(rect);
+    const group = get('paths');
+    group.replaceChildren();
+    function wire(from, to, points, value, reuse = false) {
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+      const color = reuse ? 'var(--viz-series-1)' : 'var(--viz-series-2)';
+      const attrs = { d: points.map(([x,y], i) => (i ? 'L' : 'M') + x + ' ' + y).join(' '),
+        stroke: color, fill: 'none', 'stroke-width': 1.5, 'stroke-linejoin': 'round',
+        'marker-end': 'url(#dc-' + (reuse ? 'reuse' : 'normal') + ')',
+        'data-from': from, 'data-to': to, 'aria-label': value };
+      for (const [key,val] of Object.entries(attrs)) path.setAttribute(key,val);
+      if (reuse) path.setAttribute('stroke-dasharray','4 3');
+      group.append(path);
+    }
+    const split = (origin.b + serial.t) / 2;
+    const merge = (Math.max(serial.b, parallel.b) + target.t) / 2;
+    const stacked = parallel.t > serial.b;
+    const candidateRail = map.width - 14;
+    function edgeLabel(x, y, value) {
+      const label = document.createElementNS('http://www.w3.org/2000/svg','text');
+      label.setAttribute('x',x);
+      label.setAttribute('y',y);
+      label.setAttribute('text-anchor','middle');
+      label.setAttribute('data-edge-label','');
+      label.textContent = value;
+      group.append(label);
+    }
+    for (const [id, branch] of [['serial',serial],['parallel',parallel]]) {
+      const inputLine = stacked
+        ? [[origin.l,origin.y],[4,origin.y],[4,branch.t + 28],[branch.l - 1,branch.t + 28]]
+        : [[origin.x,origin.b],[origin.x,split],[branch.x,split],[branch.x,branch.t - 1]];
+      const outputLine = stacked
+        ? [[branch.r,branch.b - 24],[candidateRail,branch.b - 24],[candidateRail,merge],[target.x,merge],[target.x,target.t - 1]]
+        : [[branch.x,branch.b],[branch.x,merge],[target.x,merge],[target.x,target.t - 1]];
+      wire('origin-model',id,inputLine,'隐藏态 H 和已确认词 想');
+      wire(id,'target',outputLine,'三个候选 吃 火 锅');
+      if (!stacked) {
+        edgeLabel((origin.x + branch.x) / 2, split - 3, 'H ＋ 想');
+        edgeLabel((target.x + branch.x) / 2, merge - 3, '吃 · 火 · 锅');
+      }
+    }
+    wire('origin-model','target',[[origin.r,origin.y],[map.width - 4,origin.y],
+      [map.width - 4,priorPort.y],[target.r + 1,priorPort.y]],'复用目标模型的历史 KV 和已确认词 想',true);
+    const bypass = stacked
+      ? [[candidateRail,merge],[candidateRail,verify.t + 22],[verify.r + 1,verify.t + 22]]
+      : [[target.x,merge],[4,merge],[4,verify.t + 22],[verify.l - 1,verify.t + 22]];
+    wire('draft-output','verify',bypass,'同一份原始草稿候选');
+    wire('target','verify',[[target.x,target.b],[verify.x,verify.t - 1]],'四个目标预测');
+    wire('verify','sink',[[verify.x,verify.b],[sink.x,sink.t - 1]],'通过验证的本轮新增输出');
+  }
+  function show(key) {
+    if (!Object.hasOwn(scenarios, key)) return;
+    selector.value = key;
+    const target = scenarios[key];
+    const mismatch = draft.findIndex((token, i) => token !== target[i]);
+    const end = mismatch < 0 ? draft.length : mismatch;
+    const rows = get('comparisons');
+    rows.replaceChildren();
+    target.forEach((token, i) => {
+      const row = rows.insertRow();
+      const head = document.createElement('th');
+      head.scope = 'row';
+      head.textContent = prefix + draft.slice(0, i).join('');
+      row.append(head);
+      row.insertCell().textContent = draft[i] ?? '—';
+      row.insertCell().textContent = token;
+      const badge = document.createElement('span');
+      const [label, mark] = i > end ? ['跳过', ''] : i < end ? ['接受', 'accept']
+        : i === draft.length ? ['额外输出', 'bonus'] : ['纠正', 'correct'];
+      if (i > end) row.className = 'skipped';
+      badge.textContent = label;
+      badge.className = 'verdict ' + mark;
+      row.insertCell().append(badge);
+    });
+    const added = draft.slice(0, end).join('') + target[end];
+    get('new-output').textContent = added;
+    get('prefix-output').textContent = prefix + added;
+    get('next-input').textContent = target[end];
+    get('target-output').textContent = '目标预测 [' + target.join(', ') + ']';
+    get('reason').textContent = notes[key];
+  }
+  const storageKey = 'draft-compare-scenario-v2';
+  let initial = 'middle';
+  if (window.openai) initial = window.openai.widgetState?.modelContent?.scenario ?? initial;
+  else { try { initial = localStorage.getItem(storageKey) ?? initial; } catch {} }
+  show(Object.hasOwn(scenarios, initial) ? initial : 'middle');
+  drawConnections();
+  const layout = new ResizeObserver(drawConnections);
+  for (const id of ['flow-map','origin-model','serial','parallel','target','verify','sink']) layout.observe(get(id));
+  selector.addEventListener('change', () => {
+    const scenario = selector.value;
+    show(scenario);
+    if (window.openai?.setWidgetState) {
+      window.openai.setWidgetState({ modelContent: { scenario }, privateContent: null }).catch(() => {});
+    } else { try { localStorage.setItem(storageKey, scenario); } catch {} }
+  });
+  window.addEventListener('openai:set_globals', (event) => {
+    show(event.detail?.globals?.widgetState?.modelContent?.scenario);
+  });
+})();
+</script>
+<!-- END FLOW -->
+  <footer class="page-footer"><span>vLLM-Ascend · 教学词例 · 未运行 NPU 推理</span><a href="README.md">源码定位与示例条件 ↗</a></footer>
+</main>
+</body>
+</html>

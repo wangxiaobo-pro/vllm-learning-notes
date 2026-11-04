@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>串行投机与并行投机 · vLLM 学习笔记</title>
-  <meta name="description" content="比较串行 MTP 和并行 DFlash 的输入与候选，沿箭头跟随目标预测、贪心验证与正式输出。">
+  <title>逐步看懂投机解码 · vLLM 学习笔记</title>
+  <meta name="description" content="按步骤比较 EAGLE、EAGLE-3、Medusa、MTP、DFlash、独立草稿模型和 n-gram 的权重、运行时输入及候选验证。">
   <style>
     :root {
       color-scheme: light dark;
@@ -34,273 +34,521 @@
     h1 { font-size: clamp(27px, 4vw, 38px); line-height: 1.2; letter-spacing: -.045em; }
     h2 { font-size: 18px; } h3 { font-size: 16px; }
     .text-small { font-size: 13px; }
-    .form-select { font: inherit; color: var(--foreground); border: 1px solid var(--border); border-radius: 6px;
+    .btn, .form-select { font: inherit; color: var(--foreground); border: 1px solid var(--border); border-radius: 6px;
       background: var(--background); padding: 6px 11px; min-height: 36px; cursor: pointer; }
+    .btn-primary, .btn[aria-pressed=true] {background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}
+    .btn:disabled {opacity:.45;cursor:default}
     :focus-visible { outline: 2px solid var(--viz-series-1); outline-offset: 3px; }
-    @media (pointer: coarse) { .form-select { min-height: 44px; } }
+    @media (pointer: coarse) { .btn, .form-select { min-height: 44px; } }
   </style>
 </head>
 <body>
 <main class="flow-page">
-  <nav class="page-nav" aria-label="学习笔记导航"><a href="../index.html">← 学习笔记</a><span>性能优化 / 推理执行</span></nav>
+  <nav class="page-nav" aria-label="学习笔记导航"><a href="../index.html">← 学习笔记</a><a href="comparison.html">串行与并行并排对照 →</a></nav>
 <!-- BEGIN FLOW -->
-<div id="draft-compare">
+<div id="spec-method-guide">
   <style>
-    #draft-compare { color: var(--foreground); container-type: inline-size; --gap: var(--font-size-base, 1rem); }
-    #draft-compare .minor { color: var(--muted-foreground); }
-    #draft-compare .eyebrow { color: var(--muted-foreground); letter-spacing: .09em; margin-bottom: .4em; }
-    #draft-compare .intro { margin: .5em 0 1.05em; }
-    #draft-compare .section-title, #draft-compare .option-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: .35em .65em; }
-    #draft-compare .section-title { margin: 1.1em 0 .55em; }
-    #draft-compare .ordinal { color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
-    #draft-compare .known, #draft-compare .guess, #draft-compare .slot, #draft-compare .picked {
-      display: inline-grid; place-items: center; min-width: 2.4em; padding: .27em .72em; border-radius: .38em;
-      color: var(--foreground); font-weight: 500; }
-    #draft-compare .known { background: var(--muted); }
-    #draft-compare .guess { background: color-mix(in srgb,var(--viz-series-2) 16%,transparent); }
-    #draft-compare .slot { background: transparent; outline: 1px dashed var(--muted-foreground); outline-offset: -1px; }
-    #draft-compare .routes { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1.4em; }
-    #draft-compare .route { min-width: 0; padding-top: .65em; border-top: 2px solid var(--border); }
-    #draft-compare .sketch { margin: .9em 0 .6em; }
-    #draft-compare .chain { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: .5em; }
-    #draft-compare .chain-node { display: grid; justify-items: center; gap: .3em; position: relative; }
-    #draft-compare .chain-node + .chain-node::before { content: '→'; position: absolute; inset-inline-start: -.75em; top: .28em; color: var(--muted-foreground); }
-    #draft-compare .block { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: .22em .4em; justify-items: center; align-items: center; }
-    #draft-compare .block-op { grid-column: 2 / 5; width: 100%; display: flex; align-items: center; gap: .4em; color: var(--muted-foreground); }
-    #draft-compare .block-op::before, #draft-compare .block-op::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
-    #draft-compare .method-note { margin-top: .65em; color: var(--muted-foreground); }
-    #draft-compare .map { position: relative; padding: 0 26px 0 12px; }
-    #draft-compare .wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-    #draft-compare .stage { position: relative; min-width: 0; background: var(--background); border: 1px dashed var(--muted-foreground); border-radius: 8px; padding: .7em .9em; }
-    #draft-compare .stage > .section-title { margin: 0 0 .3em; }
-    #draft-compare .map .routes { margin: 34px 0; }
-    #draft-compare .port { display: flex; flex-wrap: wrap; align-items: baseline; gap: .22em .65em; margin: .38em 0; }
-    #draft-compare .port-label { color: var(--muted-foreground); min-width: 3em; }
-    #draft-compare .payload { color: var(--foreground); background: color-mix(in srgb,var(--viz-series-2) 11%,transparent); padding: .22em .45em; border-radius: .3em; }
-    #draft-compare .compute { background: var(--muted); padding: .45em .6em; border-radius: .35em; margin: .4em 0; }
-    #draft-compare .map #verify, #draft-compare .map #sink { margin-top: 30px; }
-    #draft-compare .map .verify-head { margin-top: 0; }
-    #draft-compare .guide { display: flex; flex-wrap: wrap; align-items: center; gap: .35em 1.2em; margin: .5em 0 1em; }
-    #draft-compare [data-edge-label] { fill: var(--foreground); font-family: inherit; font-size: calc(var(--font-size-base) * .83); }
-    #draft-compare .key::before { content: ''; display: inline-block; width: 1.6em; vertical-align: middle; margin-right: .35em; border-top: 2px solid var(--viz-series-2); }
-    #draft-compare .key.reuse::before { border-top: 2px dashed var(--viz-series-1); }
-    #draft-compare .verify-head { display: flex; flex-wrap: wrap; gap: .5em 1em; justify-content: space-between; align-items: center; margin: 1.1em 0 .45em; }
-    #draft-compare .verify-head .section-title { margin: 0; }
-    #draft-compare .choose { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .4em; }
-    #draft-compare .compare { border-collapse: collapse; table-layout: fixed; width: 100%; margin-top: .7em; }
-    #draft-compare .compare th, #draft-compare .compare td { text-align: center; padding: .4em .2em; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; font-weight: 400; }
-    #draft-compare .compare th:first-child, #draft-compare .compare td:first-child { width: 32%; text-align: left; padding-inline-start: .6em; }
-    #draft-compare .compare thead { background: var(--muted); }
-    #draft-compare .compare .verdict { display: inline-block; padding: .12em .52em; border-radius: .25em; }
-    #draft-compare .accept, #draft-compare .picked { background: color-mix(in srgb,var(--viz-series-1) 16%,transparent); }
-    #draft-compare .correct { background: color-mix(in srgb,var(--viz-series-3) 22%,transparent); }
-    #draft-compare .bonus { background: color-mix(in srgb,var(--viz-series-2) 16%,transparent); }
-    #draft-compare tr.skipped { color: var(--muted-foreground); }
-    #draft-compare .outputs { display: flex; flex-wrap: wrap; align-items: center; gap: .45em 1.5em; margin: .8em 0 .4em; }
-    #draft-compare .outputs > span { display: inline-flex; gap: .55em; align-items: center; }
-    @container (max-width: 585px) {
-      #draft-compare .routes { grid-template-columns: minmax(0,1fr); gap: 1em; }
-      #draft-compare .map { padding: 0 24px 0 12px; }
-      #draft-compare .stage { padding: .6em; }
-      #draft-compare .map .routes { margin: 20px 0; }
-      #draft-compare .compare th:first-child, #draft-compare .compare td:first-child { width: 33%; }
+    #spec-method-guide { color:var(--foreground); container-type:inline-size; min-width:0; --line:var(--border); }
+    #spec-method-guide .muted {color:var(--muted-foreground)}
+    #spec-method-guide .kicker { color:var(--muted-foreground); letter-spacing:.1em; margin-bottom:.35em }
+    #spec-method-guide .lead { margin:.45em 0 .9em }
+    #spec-method-guide .selection, #spec-method-guide .controlbar, #spec-method-guide .buttons { display:flex; flex-wrap:wrap; gap:.45em .7em; align-items:center }
+    #spec-method-guide .selection { margin-bottom:.65em }
+    #spec-method-guide .selection label { display:inline-flex; align-items:center; flex-wrap:wrap; gap:.45em }
+    #spec-method-guide .controlbar { justify-content:space-between; padding:.75em 0; border-top:1px solid var(--line) }
+    #spec-method-guide .signal { display:grid; grid-template-columns:auto minmax(0,1fr); column-gap:.8em; row-gap:.18em; margin:.4em 0 .8em }
+    #spec-method-guide dt { color:var(--muted-foreground); margin:0 }
+    #spec-method-guide dd { margin:0; overflow-wrap:anywhere }
+    #spec-method-guide .position {font-variant-numeric:tabular-nums}
+    #spec-method-guide .current { border-inline-start:3px solid var(--viz-series-1); padding:.2em 0 .2em .8em; margin:0 0 .8em }
+    #spec-method-guide .current dl { margin:.35em 0 0 }
+    #spec-method-guide .jumpbar { display:flex; flex-wrap:wrap; align-items:center; gap:.32em; margin:.45em 0 .85em }
+    #spec-method-guide .graph { position:relative; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+      grid-template-areas:"source source" "draft target" "compare compare" "out out"; row-gap:31px; column-gap:48px; padding:0 14px; }
+    #spec-method-guide .wire { position:absolute; inset:0; height:100%; width:100%; pointer-events:none }
+    #spec-method-guide .node { border:1px dashed var(--muted-foreground); border-radius:7px; padding:.65em .85em; position:relative; background:var(--background); min-width:0; }
+    #spec-method-guide .wire text {fill:var(--muted-foreground);font:inherit;font-size:calc(var(--font-size-base) * .82)}
+    #spec-method-guide .node[data-current="true"] { border:2px solid var(--viz-series-1); padding:calc(.65em - 1px) calc(.85em - 1px); }
+    #spec-method-guide .node[data-current="true"] .active-tag::after { content:"执行中"; margin-left:.55em; color:var(--foreground); background:color-mix(in srgb,var(--viz-series-1) 16%,transparent); padding:.03em .35em; }
+    #spec-method-guide .node h3 { margin:.14em 0 .28em }
+    #spec-method-guide .node p { margin-top:.24em; overflow-wrap:anywhere; }
+    #spec-method-guide .word, #spec-method-guide .slot { display:inline-grid; place-items:center; min-width:2em; padding:.15em .4em; border-radius:.25em; background:color-mix(in srgb,var(--viz-series-2) 14%,transparent); color:var(--foreground); }
+    #spec-method-guide .slot { background:var(--muted); }
+    #spec-method-guide .draft-shape { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.3em; margin:.5em 0; }
+    #spec-method-guide .draft-shape > div { text-align:center; min-width:0; }
+    #spec-method-guide .draft-shape small { display:block; color:var(--muted-foreground); margin-bottom:.17em }
+    #spec-method-guide .draft-shape.chain > div + div { position:relative; }
+    #spec-method-guide .draft-shape.chain > div + div::before { content:"→"; position:absolute; inset-inline-start:-.63em; bottom:.15em; color:var(--muted-foreground) }
+    #spec-method-guide .feed { color:var(--muted-foreground); }
+    #spec-method-guide .ledger { table-layout:fixed; border-collapse:collapse; width:100%; margin:.3em 0; font-variant-numeric:tabular-nums }
+    #spec-method-guide .ledger th, #spec-method-guide .ledger td { text-align:center; padding:.29em .12em; font-weight:400; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
+    #spec-method-guide .ledger td:first-child,#spec-method-guide .ledger th:first-child { text-align:left; width:29%; }
+    #spec-method-guide .badge {display:inline-block; padding:.04em .3em; }
+    #spec-method-guide .yes { background:color-mix(in srgb,var(--viz-series-1) 16%,transparent) }
+    #spec-method-guide .fix { background:color-mix(in srgb,var(--viz-series-3) 20%,transparent) }
+    #spec-method-guide .extra { background:color-mix(in srgb,var(--viz-series-2) 18%,transparent) }
+    #spec-method-guide .graph-title { display:flex; align-items:baseline; flex-wrap:wrap; justify-content:space-between; gap:.25em .6em; margin:.85em 0 .55em }
+    #spec-method-guide #source-node {grid-area:source} #spec-method-guide #draft-node {grid-area:draft}
+    #spec-method-guide #target-node {grid-area:target} #spec-method-guide #compare-node {grid-area:compare} #spec-method-guide #out-node {grid-area:out}
+    #spec-method-guide .notes { margin:1em 0 .5em; border-top:1px solid var(--line); padding-top:.55em }
+    #spec-method-guide .notes summary { cursor:pointer; font-weight:500 }
+    #spec-method-guide .notes p, #spec-method-guide .notes pre {margin:.4em 0}
+    #spec-method-guide pre { white-space:pre-wrap; overflow-wrap:anywhere; background:var(--muted); padding:.65em; color:var(--foreground); }
+    #spec-method-guide #step-list { padding-inline-start:1.8em; margin:.55em 0; }
+    #spec-method-guide #step-list li { padding:0 0 .35em .2em; overflow-wrap:anywhere; }
+    #spec-method-guide .sources { display:flex; flex-wrap:wrap; gap:.25em 1em; }
+    @container (max-width:590px) {
+      #spec-method-guide .graph {grid-template-columns:minmax(0,1fr);grid-template-areas:"source" "draft" "target" "compare" "out";row-gap:24px;padding:0 15px;}
+      #spec-method-guide .controlbar {align-items:flex-start;}
     }
   </style>
-  <header>
-    <div class="eyebrow text-small">推理机制　/　投机解码</div>
-    <h1>串行投机与并行投机</h1>
-    <p class="intro">从「今天想」往后生成。沿 ②A 或 ②B 任选一条草稿路径，再看候选怎样变成正式输出。以下用词块代表 token，验证采用贪心采样。</p>
-  </header>
-  <div class="guide text-small"><span class="key">数据送往下游</span><span class="key reuse">验证时复用的上游输入</span><span class="minor">虚线框内为同一个处理环节</span></div>
-  <div class="map" id="flow-map">
-  <svg id="wires" class="wires" aria-hidden="true"><defs>
-    <marker id="dc-normal" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M1,1 L8,4.5 L1,8" fill="none" stroke="var(--viz-series-2)" stroke-width="1.7"/></marker>
-    <marker id="dc-reuse" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M1,1 L8,4.5 L1,8" fill="none" stroke="var(--viz-series-1)" stroke-width="1.7"/></marker>
-  </defs><g id="paths"></g></svg>
-  <section id="origin-model" class="stage" aria-labelledby="input-heading">
-    <div class="section-title"><span class="ordinal text-small">① 上游</span><h2 id="input-heading">目标模型读原文，选出起点</h2></div>
-    <div class="port"><span class="port-label text-small">输入</span>原文 <b class="known">今天</b></div>
-    <div class="port"><span class="port-label text-small">输出 → ②</span><span>所选草稿模型需要的上下文特征 <b>H</b>，以及刚选出的词 <b class="known">想</b></span></div>
-    <div class="port"><span class="port-label text-small">保留 → ③</span><span>目标模型自己算好的「今天」的 KV 缓存，以及已确认的「想」</span></div>
-  </section>
-  <div class="routes">
-    <section id="serial" class="route stage" aria-labelledby="serial-heading">
-      <div class="option-title"><span class="ordinal text-small">②A</span><h3 id="serial-heading">串行投机</h3><span class="minor text-small">DeepSeek MTP</span></div>
-      <div class="port"><span class="port-label text-small">① → 输入</span><span class="payload">H ＋ 想</span></div>
-      <div class="sketch chain" role="img" aria-label="从想出发，第一次草稿前向猜吃。把吃喂回，第二次猜火。再把火喂回，第三次猜锅。">
-        <div class="chain-node"><span class="known">想</span><span class="minor text-small">已确认</span></div>
-        <div class="chain-node"><span class="guess">吃</span><span class="minor text-small">第 1 次</span></div>
-        <div class="chain-node"><span class="guess">火</span><span class="minor text-small">第 2 次</span></div>
-        <div class="chain-node"><span class="guess">锅</span><span class="minor text-small">第 3 次</span></div>
-      </div>
-      <p class="method-note text-small">三次草稿前向。第一次用 H 和「想」猜「吃」，第二次用更新的隐藏态和「吃」猜「火」，再用「火」猜「锅」。</p>
-      <div class="port"><span class="port-label text-small">输出 → ③、④</span><span class="payload">候选 [吃, 火, 锅]</span></div>
-    </section>
-    <section id="parallel" class="route stage" aria-labelledby="parallel-heading">
-      <div class="option-title"><span class="ordinal text-small">②B</span><h3 id="parallel-heading">并行投机</h3><span class="minor text-small">DFlash</span></div>
-      <div class="port"><span class="port-label text-small">① → 输入</span><span class="payload">H ＋ 想 ＋ 三个占位符</span></div>
-      <div class="sketch block" role="img" aria-label="草稿模型的输入是想和三个占位符。一次前向同时从三个占位符的位置读出吃、火、锅。">
-        <span class="known">想</span><span class="slot">□</span><span class="slot">□</span><span class="slot">□</span>
-        <span class="block-op text-small">一次草稿前向</span>
-        <span class="minor text-small">已确认</span><span class="guess">吃</span><span class="guess">火</span><span class="guess">锅</span>
-      </div>
-      <p class="method-note text-small">□ 是待预测的位置。模型同时给三个位置选词，猜「锅」时无需先拿到「火」的 token。</p>
-      <div class="port"><span class="port-label text-small">输出 → ③、④</span><span class="payload">候选 [吃, 火, 锅]</span></div>
-    </section>
+  <header><div class="kicker text-small">推理机制　/　投机解码</div><h1>逐步看懂投机解码</h1>
+    <p class="lead">请求提供文本或 token ID。目标模型前向时为每个位置算出一行浮点向量，这就是隐藏态。选择一种算法，看草稿取走哪些数据、每一步产生什么。</p></header>
+  <div class="selection">
+    <label class="form-label">起草算法 <select class="form-select" id="method" aria-label="起草算法">
+      <optgroup label="串行起草"><option value="eagle">EAGLE</option><option value="eagle3">EAGLE-3</option><option value="mtp">DeepSeek MTP</option><option value="draft">独立草稿模型</option></optgroup>
+      <optgroup label="并行起草"><option value="medusa">Medusa（美杜莎）</option><option value="dflash">DFlash</option></optgroup>
+      <optgroup label="历史查找"><option value="ngram">n-gram</option></optgroup>
+    </select></label>
+    <label class="form-label">验证情形 <select class="form-select" id="scenario"><option value="middle">第 2 位猜错</option><option value="all">全部猜中</option><option value="first">第 1 位猜错</option></select></label>
   </div>
-  <section class="stage" id="target">
-    <div class="section-title"><span class="ordinal text-small">③</span><h2>目标模型一次预测四个位置</h2></div>
-    <div class="port" id="prior-port"><span class="port-label text-small">来自 ①</span><span>复用「今天」的 KV 缓存，从已确认的「想」开始。</span></div>
-    <div class="port"><span class="port-label text-small">来自 ②A 或 ②B</span><span>任选一种草稿。这里都假设给出 [吃, 火, 锅]。</span></div>
-    <div class="compute">本次输入 <strong>[想, 吃, 火, 锅]</strong> → 因果前向 → 每个位置预测下一个词</div>
-    <div class="port"><span class="port-label text-small">输出 → ④</span><span class="payload" id="target-output"></span></div>
-  </section>
-  <section id="verify" class="stage" aria-labelledby="verify-heading">
-    <div class="verify-head">
-      <div class="section-title"><span class="ordinal text-small">④</span><h2 id="verify-heading">贪心验证器从左到右比对</h2></div>
-      <label class="choose form-label" for="scenario"><span class="text-small">验证情形</span>
-        <select class="form-select" id="scenario"><option value="middle">第 2 个猜错</option><option value="all">三个全猜中</option><option value="first">第 1 个猜错</option></select>
-      </label>
-    </div>
-    <p class="minor text-small">对齐 ② 的草稿候选和 ③ 的目标预测。首个分歧处采用目标选词，后面的预测依赖已经舍弃的草稿。</p>
-    <table class="compare" aria-label="每个输入前缀对应的草稿候选、目标模型贪心预测和采用结果">
-      <thead><tr><th scope="col">目标看到的前缀</th><th scope="col">草稿候选</th><th scope="col">目标预测</th><th scope="col">取舍</th></tr></thead>
-      <tbody id="comparisons"></tbody>
-    </table>
-    <p class="minor method-note text-small" id="reason"></p>
-  </section>
-  <section class="stage" id="sink" aria-live="polite">
-    <div class="section-title"><span class="ordinal text-small">⑤ 下游</span><h2>把验证结果接回原文</h2></div>
-    <div class="outputs"><span>④ → 本轮新增 <b id="new-output" class="picked"></b></span><span>更新后 <strong id="prefix-output"></strong></span></div>
-    <p class="minor text-small">继续生成时，下一轮用末尾的「<span id="next-input"></span>」作为已确认的起点。</p>
-  </section>
-</div>
+  <dl class="signal text-small"><dt>部署时加载</dt><dd id="deployment"></dd><dt>运行时 token</dt><dd id="token-port"></dd><dt>运行时隐藏态</dt><dd id="hidden-port"></dd></dl>
+  <div class="controlbar"><div class="buttons">
+    <button class="btn" id="global" type="button">全局关系</button><button class="btn" id="prev" type="button">上一步</button>
+    <button class="btn btn-primary" id="next" type="button">下一步</button></div><span id="position" class="position" role="status"></span></div>
+  <div class="current" aria-live="polite"><h2 id="current-title"></h2><dl class="signal text-small">
+    <dt>输入</dt><dd id="current-input"></dd><dt>计算</dt><dd id="current-action"></dd><dt>输出</dt><dd id="current-output"></dd>
+  </dl></div>
+  <div class="jumpbar" id="jumps" aria-label="直接跳到执行步骤"></div>
+  <div class="graph-title"><h2>本轮数据流</h2><span class="text-small muted">实线传入数据　虚线复用目标 KV　· 表示尚未产生</span></div>
+  <div id="data-map" class="graph">
+    <svg class="wire" aria-hidden="true"><defs>
+      <marker id="sm-data" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M1,1 L7,4 L1,7" fill="none" stroke="var(--viz-series-2)" stroke-width="1.6"/></marker>
+      <marker id="sm-live" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M1,1 L7,4 L1,7" fill="none" stroke="var(--viz-series-1)" stroke-width="2"/></marker>
+    </defs><g id="edge-layer"></g></svg>
+    <section class="node" id="source-node"><span class="active-tag muted text-small" id="source-tag"></span><h3>目标模型读上下文</h3>
+      <p>模型读到「<span id="context"></span>」，主输出头选出 <b class="slot">想</b>。</p>
+      <p class="text-small feed" id="first-edge"></p></section>
+    <section class="node" id="draft-node"><span class="active-tag muted text-small" id="draft-tag"></span><h3 id="draft-heading"></h3>
+      <p class="text-small" id="draft-feed"></p><div id="draft-shape" class="draft-shape"></div>
+      <p class="text-small feed" id="draft-exit"></p></section>
+    <section class="node" id="target-node"><span class="active-tag muted text-small" id="target-tag"></span><h3>目标模型一次前向</h3>
+      <p class="text-small" id="target-feed"></p><p>输入 <strong id="verify-input"></strong></p><p>预测 <strong id="predictions"></strong></p>
+      <p class="text-small feed">每行预测下一词。最后一行供全部命中时使用。</p></section>
+    <section class="node" id="compare-node"><span class="active-tag muted text-small" id="compare-tag"></span><h3>逐位比较候选和目标预测</h3>
+      <table class="ledger text-small"><thead><tr><th scope="col">目标输入尾词</th><th scope="col">候选</th><th scope="col">目标预测</th><th scope="col">取舍</th></tr></thead><tbody id="rows"></tbody></table>
+      <p class="text-small feed" id="verdict"></p></section>
+    <section class="node" id="out-node"><span class="active-tag muted text-small" id="out-tag"></span><h3>正式输出与下轮起点</h3>
+      <p>本轮新增 <b class="word" id="formal-output"></b>　原文接成 <strong id="joined"></strong></p><p class="text-small feed" id="resume"></p></section>
+  </div>
+  <details class="notes" id="all-notes"><summary>本算法的完整执行步骤</summary><ol id="step-list"></ol></details>
+  <details class="notes"><summary>部署参数与源码</summary>
+    <p class="text-small muted">示例使用贪心采样，把「吃」「火」「锅」各当作一个 token。以下是 speculative_config 参数示例。对于需要额外权重的方法，应将路径替换为与目标模型匹配的 checkpoint。</p>
+    <pre id="config-example"></pre><div id="source-links" class="sources text-small"></div>
+  </details>
 </div>
 <script>
 (() => {
-  const root = document.getElementById('draft-compare');
-  const get = (id) => root.querySelector('#' + id);
-  const prefix = '今天想';
-  const draft = ['吃', '火', '锅'];
-  const scenarios = {
-    middle: ['吃', '面', '锅', '。'],
-    all: ['吃', '火', '锅', '。'],
-    first: ['睡', '火', '锅', '。']
-  };
-  const notes = {
-    middle: '「吃」匹配，下一位目标选了「面」。后面的「锅」基于「今天想吃火」，不能接在「今天想吃面」后面。',
-    all: '三个候选都匹配，最后一行的前缀也成立。目标模型可以把自己预测的「。」一起输出。',
-    first: '第一位目标就选了「睡」。其余预测都以「吃」开头的草稿为条件，本轮只新增「睡」。'
-  };
-  const selector = get('scenario');
+  'use strict';
+  const root = document.getElementById('spec-method-guide');
+  const get = id => root.querySelector('#' + id);
+  const methods = {};
+  methods.eagle = {
+  name: 'EAGLE',
+  group: '串行起草',
+  deploy: '加载目标模型，以及与它配套训练的 EAGLE 草稿权重。下面的草稿路径是占位符，使用时替换为实际路径。',
+  config: '{"method":"eagle","model":"/path/to/compatible-eagle-draft","draft_tensor_parallel_size":1,"num_speculative_tokens":3}',
+  token: '目标模型刚选出的「想」。Runner 把每个位置的目标特征与它后面的词对齐，在请求末位补入「想」。',
+  hidden: '目标模型读完「今天」时的最终隐藏向量 H_t。第二、三次起草使用草稿模型在上一步返回的隐藏向量。',
+  firstInput: 'H_t ＋「想」',
+  pattern: 'chain',
+  stages: [
+    {
+      title: '第 1 次草稿前向，猜「吃」',
+      input: '目标特征 H_t 和已确定的「想」。',
+      action: '以 Llama 草稿为例，取「想」的词嵌入，与 H_t 拼接，经线性层和草稿解码层得到新特征，再由词表头选词。',
+      output: '第 1 个候选「吃」，并留下草稿特征 h₁。',
+      ready: 1
+    },
+    {
+      title: '第 2 次草稿前向，猜「火」',
+      input: '草稿特征 h₁ 和刚猜出的「吃」。',
+      action: '位置前移一格。草稿模型合并 h₁ 与「吃」的词嵌入，从新特征预测后一个词。',
+      output: '第 2 个候选「火」，并留下草稿特征 h₂。',
+      ready: 2
+    },
+    {
+      title: '第 3 次草稿前向，猜「锅」',
+      input: '草稿特征 h₂ 和刚猜出的「火」。',
+      action: '沿同一条候选序列再向前推一格。',
+      output: '第 3 个候选「锅」。将候选序列 [吃, 火, 锅] 交给下一轮验证。',
+      ready: 3
+    }
+  ],
+  sources: [
+    ['EAGLE 配置示例与草稿权重', 'https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/docs/source/user_guide/feature_guide/speculative_decoding.md#L97-L154'],
+    ['首轮的词与特征如何对齐', 'https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/spec_decode/llm_base_proposer.py#L1793-L1838'],
+    ['Llama 草稿如何合并特征和词嵌入', 'https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/llama_eagle.py#L110-L139'],
+    ['Ascend 草稿循环如何回用上一步结果', 'https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/spec_decode/llm_base_proposer.py#L1657-L1777']
+  ]
+};
 
-  function drawConnections() {
-    const map = get('flow-map').getBoundingClientRect();
-    const rect = (id) => {
-      const box = get(id).getBoundingClientRect();
-      return { l: box.left - map.left, r: box.right - map.left, t: box.top - map.top, b: box.bottom - map.top,
-        x: (box.left + box.right) / 2 - map.left, y: (box.top + box.bottom) / 2 - map.top };
-    };
-    const [origin, serial, parallel, target, priorPort, verify, sink] =
-      ['origin-model','serial','parallel','target','prior-port','verify','sink'].map(rect);
-    const group = get('paths');
+methods.eagle3 = {
+  name: 'EAGLE-3',
+  group: '串行起草',
+  deploy: '加载目标模型，以及与它的特征层和词表匹配的 EAGLE-3 草稿权重。下面的路径是占位符。此处采用启用辅助层的普通链式 Llama 草稿。',
+  config: '{"method":"eagle3","model":"/path/to/compatible-eagle3-draft","draft_tensor_parallel_size":1,"num_speculative_tokens":3}',
+  token: '目标模型刚选出的「想」。首轮仍把这个词与前一位置的目标特征配对。',
+  hidden: '取目标模型在「今天」末位的多层特征。采集层可由草稿配置指定。以 32 层 Llama 使用通用默认值为例，取执行完第 2、16、29 层的特征。部分草稿配置关闭辅助层，直接使用单路目标特征。',
+  firstInput: '多层 H_t ＋「想」',
+  pattern: 'chain',
+  stages: [
+    {
+      title: '融合目标模型的多层特征',
+      input: '同一词位置、不同深度的目标特征。例如 H_t⁽²⁾、H_t⁽¹⁶⁾、H_t⁽²⁹⁾。',
+      action: 'Runner 沿特征维拼接三份向量，Llama 草稿的线性层把 3D 维投影为草稿隐藏宽度。D 表示目标隐藏宽度。',
+      output: '得到该位置的一份融合特征 z_t，尚未产生候选。',
+      ready: 0
+    },
+    {
+      title: '第 1 次草稿前向，猜「吃」',
+      input: '融合特征 z_t 和目标选出的「想」。',
+      action: '草稿首层结合 z_t 与「想」的词嵌入，输出用于选词的特征，以及供下一步回用的草稿特征。',
+      output: '第 1 个候选「吃」，并留下草稿特征 h₁。',
+      ready: 1
+    },
+    {
+      title: '第 2 次草稿前向，猜「火」',
+      input: '草稿特征 h₁ 和候选「吃」。',
+      action: '位置前移一格。草稿模型用 h₁ 和「吃」继续预测，目标模型等到验证时才再次前向。',
+      output: '第 2 个候选「火」，并留下草稿特征 h₂。',
+      ready: 2
+    },
+    {
+      title: '第 3 次草稿前向，猜「锅」',
+      input: '草稿特征 h₂ 和候选「火」。',
+      action: '沿前两次草稿的结果继续预测下一词。',
+      output: '第 3 个候选「锅」。将候选序列 [吃, 火, 锅] 交给下一轮验证。',
+      ready: 3
+    }
+  ],
+  sources: [
+    ['Ascend 加载草稿及设置目标采集层', 'https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/worker/model_runner_v1.py#L4504-L4527'],
+    ['目标辅助层的通用默认位置', 'https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/interfaces.py#L1691-L1712'],
+    ['Llama 实际采集层输出的位置', 'https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/llama.py#L427-L441'],
+    ['Runner 按特征维拼接目标隐藏状态', 'https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/worker/model_runner_v1.py#L2148-L2176'],
+    ['Llama 草稿融合多层特征', 'https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/llama_eagle3.py#L397-L418'],
+    ['草稿模型分别返回采样与递推特征', 'https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/llama_eagle3.py#L261-L288']
+  ]
+};
+methods.mtp = {
+  name: "DeepSeek MTP",
+  group: "串行起草",
+  deploy: "普通 DeepSeek MTP 需要与目标模型兼容的 MTP 层权重。省略 model 时从目标 checkpoint 加载这些层。也可以用 model 指定兼容的权重路径。",
+  config: '{"method":"mtp","num_speculative_tokens":3}',
+  token: "最新确定的 token「想」，后续依次使用刚选出的候选。",
+  hidden: "首步取目标模型读完「今天」时的隐藏状态，后续使用 MTP 上一步的隐藏状态。",
+  firstInput: "「想」的 token ID + 目标模型读完「今天」时的隐藏状态",
+  pattern: "chain",
+  stages: [
+    {
+      title: "对齐前一位置的状态和后一位置的词",
+      input: "已处理的前缀「今天」、对应的目标模型隐藏状态，以及刚选出的「想」。",
+      action: "把输入 token ID 向左移一位，在请求末槽填入「想」。位置和目标隐藏状态保持原顺序。",
+      output: "最后一槽配成「想」的 ID 与读完「今天」时的目标状态。",
+      ready: 0
+    },
+    {
+      title: "融合「想」与目标状态，预测「吃」",
+      input: "「想」的词向量和读完「今天」时的目标状态。",
+      action: "分别归一化词向量和隐藏状态，拼接后做线性投影。MTP 层处理融合结果，输出头给出下一词分数。",
+      output: "选出候选 1「吃」，并保留本次 MTP 的隐藏状态供下一步使用。",
+      ready: 1
+    },
+    {
+      title: "把「吃」送回 MTP，预测「火」",
+      input: "刚选出的「吃」和预测「吃」时得到的 MTP 隐藏状态。",
+      action: "用「吃」的词向量与该状态再次融合，运行下一次 MTP 前向。",
+      output: "选出候选 2「火」，并得到更新的 MTP 隐藏状态。",
+      ready: 2
+    },
+    {
+      title: "把「火」送回 MTP，预测「锅」",
+      input: "刚选出的「火」和预测「火」时得到的 MTP 隐藏状态。",
+      action: "再运行一次 MTP 前向，从输出分数选出第三个候选。",
+      output: "候选 3 为「锅」。有序草稿为「吃 火 锅」。",
+      ready: 3
+    }
+  ],
+  sources: [
+    ["MTP 权重默认来源", "https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/config/speculative.py#L1140-L1156"],
+    ["token 左移与 hidden 对齐", "https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/spec_decode/llm_base_proposer.py#L1795-L1838"],
+    ["词向量与状态融合", "https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/deepseek_mtp.py#L113-L144"],
+    ["候选和状态逐步回填", "https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/spec_decode/llm_base_proposer.py#L1672-L1706"]
+  ]
+};
+
+methods.dflash = {
+  name: "DFlash",
+  group: "并行起草",
+  deploy: "为目标模型配置与其匹配的 DFlash 草稿 checkpoint。例如 Qwen/Qwen3-8B 搭配 z-lab/Qwen3-8B-DFlash-b16。所需目标层由草稿配置决定。",
+  config: '{"method":"dflash","model":"z-lab/Qwen3-8B-DFlash-b16","num_speculative_tokens":3}',
+  token: "已确定的锚点「想」和三个 [MASK] 占位 token，四个位置组成同一查询块。",
+  hidden: "收集目标模型指定层的上下文隐藏状态，融合后由草稿模型投影为上下文 K/V。",
+  firstInput: "查询块「想 [MASK] [MASK] [MASK]」+ 来自目标隐藏状态的上下文",
+  pattern: "mask",
+  stages: [
+    {
+      title: "取得「今天」的目标层特征",
+      input: "目标模型刚读完「今天」。草稿 checkpoint 指定了要取的目标层。",
+      action: "收集这些层在上下文位置的隐藏状态，按特征维拼接，并通过草稿模型的投影层融合。",
+      output: "得到供 DFlash 使用的上下文特征。",
+      ready: 0
+    },
+    {
+      title: "放入锚点和三个待填位置",
+      input: "目标模型刚确定的「想」，以及草稿长度 K = 3。",
+      action: "把「想」放在查询块的首位，后接三个 [MASK]。记录三个占位位置，稍后从这些位置读出候选。",
+      output: "查询 token ID 排列为「想 [MASK] [MASK] [MASK]」。",
+      ready: 0
+    },
+    {
+      title: "把上下文特征写成草稿模型的 K/V",
+      input: "目标层融合特征及其上下文位置。",
+      action: "DFlash 使用自己的投影参数计算上下文的键和值，写入草稿模型的上下文缓存。",
+      output: "查询块可以从草稿模型的上下文 K/V 读取「今天」的信息。",
+      ready: 0
+    },
+    {
+      title: "一次草稿前向读出三个候选",
+      input: "四个查询位置的词向量，以及已备好的上下文 K/V。",
+      action: "同时计算查询块的表示，从三个 [MASK] 位置分别选词。第二位无需等待第一位选出「吃」。",
+      output: "三个位置一次给出「吃」「火」「锅」，按位置组成有序草稿。",
+      ready: 3
+    }
+  ],
+  sources: [
+    ["目标与草稿权重的部署示例", "https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/docs/source/user_guide/feature_guide/speculative_decoding.md#L260-L270"],
+    ["选择目标隐藏层", "https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/worker/gpu_model_runner.py#L5435-L5455"],
+    ["融合目标层特征", "https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/qwen3_dflash.py#L864-L884"],
+    ["锚点、占位与输出索引", "https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/ops/triton/spec_decode/utils.py#L192-L202"],
+    ["草稿侧缓存上下文 K/V", "https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/spec_decode/dflash_proposer.py#L306-L324"],
+    ["并行提议返回 K 个候选", "https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/spec_decode/llm_base_proposer.py#L1616-L1643"]
+  ]
+};
+{
+  const ascend = "https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/";
+  const vllm = "https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/";
+  const runner = ascend + "vllm_ascend/worker/model_runner_v1.py";
+  const base = ascend + "vllm_ascend/spec_decode/llm_base_proposer.py";
+
+  methods.medusa = {
+    name: "Medusa",
+    group: "并行起草",
+    deploy: "在目标模型之外加载与它配套的 Medusa 预测头权重。本例固定使用三个头，每个头负责一个未来位置。",
+    config: '{"method":"medusa","model":"/models/compatible-medusa-heads","num_speculative_tokens":3}',
+    token: "目标模型从 H今天 选出「想」。Runner 将有效输出 ID 列表交给提议器用于选行，预测头的前向只接收选中的隐藏态。",
+    hidden: "取目标模型产生本轮最后一个有效输出时用的那一行。首轮是 H今天。如果后续验证输出「吃、面」，则取 H吃，这行对应目标预测「面」的位置。",
+    firstInput: "同一行 H今天 分别送给三个 Medusa 预测头。",
+    pattern: "heads",
+    stages: [
+      {title: "选出目标隐藏态", input: "目标模型读完「今天」时的 H今天", action: "首轮每个请求只留一行用于采样。后续若本轮验证了三个候选，提议器用本请求起点加有效输出数减一选行。", output: "三个头共用 H今天", ready: 0},
+      {title: "各头独立预测一个位置", input: "头 1、头 2、头 3 均接收 H今天", action: "每个头用自身的残差块计算词表分数并取最高分。三个头各猜「想」后的一个位置，无需前一个头先选词。", output: "依头序排成一条候选序列 [吃, 火, 锅]", ready: 3}
+    ],
+    sources: [
+      ["目标隐藏态取自 logits 对应行", runner + "#L2719-L2720"],
+      ["Ascend 按有效输出长度选行", ascend + "vllm_ascend/spec_decode/medusa_proposer.py#L46-L72"],
+      ["各预测头读取同一行", vllm + "vllm/model_executor/models/medusa.py#L107-L117"],
+      ["逐头取最高分并按位置排列", vllm + "vllm/v1/spec_decode/medusa.py#L38-L56"],
+      ["加载 Medusa 头权重", vllm + "vllm/v1/spec_decode/medusa.py#L58-L65"],
+      ["配置的预测长度决定头数", vllm + "vllm/transformers_utils/configs/medusa.py#L61-L67"]
+    ]
+  };
+
+  methods.draft = {
+    name: "独立草稿模型",
+    group: "串行起草",
+    deploy: "另加载一个与目标模型兼容的小型自回归模型。本例让两者使用同一套 token ID，草稿模型用自己的权重和 KV 计算前缀。",
+    config: '{"method":"draft_model","model":"/models/compatible-draft-llm","num_speculative_tokens":3}',
+    token: "Runner 提供目标模型本轮的输入 ID 和最新确认的「想」。首轮草稿模型处理「今天、想」，随后依次喂回它自己选出的词。",
+    hidden: "草稿模型前向不接收目标隐藏态。它通过自己的词嵌入、模型层和缓存表示上下文。",
+    firstInput: "草稿模型的初始 token 序列 [今天, 想]。",
+    pattern: "chain",
+    stages: [
+      {title: "小模型读「今天想」", input: "首轮 [今天, 想]", action: "草稿模型自己计算前缀，从「想」这一行的词表分数选出第一个候选。", output: "[吃]", ready: 1},
+      {title: "喂回第一个候选", input: "「吃」＋ 草稿模型已有的 KV", action: "再运行一次草稿前向，预测「今天想吃」后面的词。", output: "[吃, 火]", ready: 2},
+      {title: "喂回第二个候选", input: "「火」＋ 草稿模型更新后的 KV", action: "再运行一次草稿前向，预测「今天想吃火」后面的词。", output: "[吃, 火, 锅]", ready: 3}
+    ],
+    sources: [
+      ["加载独立模型与词表投影", vllm + "vllm/v1/spec_decode/draft_model.py#L102-L122"],
+      ["Ascend 草稿模型关闭 hidden 输入", ascend + "vllm_ascend/spec_decode/draft_proposer.py#L8-L17"],
+      ["扩展输入并填入最新确认 token", base + "#L1843-L1882"],
+      ["第一次草稿前向", base + "#L1470-L1492"],
+      ["上一候选进入下一次草稿前向", base + "#L1672-L1683"],
+      ["写入后续候选并返回序列", base + "#L1756-L1777"]
+    ]
+  };
+
+  methods.ngram = {
+    name: "N-gram",
+    group: "历史查找",
+    deploy: "使用 CPU 上的历史 token 查找，无需草稿模型权重。匹配长度固定为一个 token，每次最多复用匹配处之后的三个 token。",
+    config: '{"method":"ngram","num_speculative_tokens":3,"prompt_lookup_min":1,"prompt_lookup_max":1}',
+    token: "从该请求的 CPU token 缓冲区读取有效历史，包括原文「昨天想吃火锅，今天」和刚确认的「想」。",
+    hidden: "不接收目标隐藏态。查找和复制都在同一请求的 token ID 序列中进行。",
+    firstInput: "历史 [昨天, 想, 吃, 火, 锅, ，, 今天, 想]，查找键是末尾的「想」。",
+    pattern: "lookup",
+    stages: [
+      {title: "在较早的历史中匹配后缀", input: "末尾的「想」与它之前的 token ID", action: "查找先前出现的同一个 token。此例命中紧跟在「昨天」后面的「想」。若历史里没有匹配，直接返回空候选。", output: "找到旧「想」的位置。已知候选 0 个", ready: 0},
+      {title: "复制旧位置的后续 token", input: "旧「想」右侧是「吃、火、锅、，、今天、想」", action: "从命中位置之后开始复制，达到三个即停止。后续长度不足时只取可用部分。", output: "[吃, 火, 锅]", ready: 3}
+    ],
+    sources: [
+      ["Runner 把正式输出并入历史", runner + "#L3190-L3204"],
+      ["Ascend 筛选请求并传入 CPU 历史", ascend + "vllm_ascend/spec_decode/ngram_proposer.py#L29-L60"],
+      ["截取每个请求的有效历史", vllm + "vllm/v1/spec_decode/ngram_proposer.py#L192-L205"],
+      ["后缀匹配与长度范围", vllm + "vllm/v1/spec_decode/ngram_proposer.py#L210-L230"],
+      ["无命中返回空、命中复制后缀", vllm + "vllm/v1/spec_decode/ngram_proposer.py#L285-L295"]
+    ]
+  };
+}
+  const words = ['吃','火','锅'];
+  const cases = {middle:['吃','面','锅','。'],all:['吃','火','锅','。'],first:['睡','火','锅','。']};
+  const caseNotes = {
+    middle:'第一位「吃」匹配，第二位改用「面」。第三行的「锅」依赖已被丢弃的「火」，本轮一起舍弃。',
+    first:'第一位就改用目标选出的「睡」。后续预测以「吃」为前提，全部舍弃。',
+    all:'三个候选全部匹配，第四行的前缀也成立，追加目标模型自己选出的「。」。'
+  };
+  const storage = 'vllm-speculative-method-guide-v1';
+  let method = 'eagle', scenario = 'middle', step = 1;
+  function context() { return method === 'ngram' ? '昨天想吃火锅，今天' : '今天'; }
+  function confirmed() {
+    const ids = cases[scenario], mismatch = words.findIndex((w,i)=>w !== ids[i]);
+    const kept = mismatch < 0 ? words.length : mismatch;
+    return {kept, tail:ids[kept], added:words.slice(0,kept).join('') + ids[kept]};
+  }
+  function stages() {
+    const m = methods[method], out = confirmed(), predictions = cases[scenario].join('、');
+    const initial = {title:'目标模型先选出「想」', input:'当前请求的上下文「' + context() + '」。',
+      action:'目标模型完成前向，主输出头从末位置的 logits 选出「想」，并保存已计算上下文的 KV。',
+      output:'正式前缀为「' + context() + '想」。给提议器的数据是 ' + m.firstInput.replace(/。$/,'') + '。', node:'source',ready:0};
+    return [initial, ...m.stages.map(s=>({...s,node:'draft'})),
+      {title:'目标模型验证一整段输入', node:'target',ready:3,input:'目标模型自己的历史 KV、已确认词「想」、草稿 [吃, 火, 锅]。',
+        action:'一次因果前向处理 [想, 吃, 火, 锅]。四行 logits 分别预测这四个位置之后的词，贪心取各行最大值。',
+        output:'目标预测 [' + predictions + ']。原始草稿另外保留给验证器。'},
+      {title:'从左到右找第一处分歧',node:'compare',ready:3,input:'三个草稿候选和四个目标预测。',action:caseNotes[scenario],
+        output:'接受 ' + out.kept + ' 个候选，本轮可输出「' + out.added + '」。'},
+      {title:'接回原文，进入下一轮',node:'out',ready:3,input:'原正式前缀「' + context() + '想」与本轮有效输出「' + out.added + '」。',
+        action:'追加有效词，舍弃未接受的候选。若请求继续，末词将作为下一轮目标前向的起点。',
+        output:'正式文本「' + context() + '想' + out.added + '」，下轮输入末词「' + out.tail + '」。'}];
+  }
+  const set = (id,value) => { get(id).textContent = value; };
+  function drawEdges(list) {
+    const map = get('data-map').getBoundingClientRect();
+    const bounds = name => {const r=get(name + '-node').getBoundingClientRect(); return {
+      l:r.left-map.left,r:r.right-map.left,t:r.top-map.top,b:r.bottom-map.top,x:r.x+r.width/2-map.left,y:r.y+r.height/2-map.top};};
+    const [a,b,c,d,e] = ['source','draft','target','compare','out'].map(bounds);
+    const single = c.t > b.b, group=get('edge-layer'), activeNode = list[step-1]?.node;
     group.replaceChildren();
-    function wire(from, to, points, value, reuse = false) {
-      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
-      const color = reuse ? 'var(--viz-series-1)' : 'var(--viz-series-2)';
-      const attrs = { d: points.map(([x,y], i) => (i ? 'L' : 'M') + x + ' ' + y).join(' '),
-        stroke: color, fill: 'none', 'stroke-width': 1.5, 'stroke-linejoin': 'round',
-        'marker-end': 'url(#dc-' + (reuse ? 'reuse' : 'normal') + ')',
-        'data-from': from, 'data-to': to, 'aria-label': value };
-      for (const [key,val] of Object.entries(attrs)) path.setAttribute(key,val);
-      if (reuse) path.setAttribute('stroke-dasharray','4 3');
-      group.append(path);
+    function path(from,to,pts,reuse=false) {
+      const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+      const hot=activeNode===to;
+      const attr={d:pts.map(([x,y],i)=>(i?'L':'M')+x+' '+y).join(' '),fill:'none',stroke:hot?'var(--viz-series-1)':'var(--viz-series-2)',
+        'stroke-width':hot?2.3:1.5,'marker-end':'url(#sm-'+(hot?'live':'data')+')','data-from':from,'data-to':to};
+      for(const [k,v] of Object.entries(attr))p.setAttribute(k,v);
+      if(reuse)p.setAttribute('stroke-dasharray','4 3');
+      group.append(p);
     }
-    const split = (origin.b + serial.t) / 2;
-    const merge = (Math.max(serial.b, parallel.b) + target.t) / 2;
-    const stacked = parallel.t > serial.b;
-    const candidateRail = map.width - 14;
-    function edgeLabel(x, y, value) {
-      const label = document.createElementNS('http://www.w3.org/2000/svg','text');
-      label.setAttribute('x',x);
-      label.setAttribute('y',y);
-      label.setAttribute('text-anchor','middle');
-      label.setAttribute('data-edge-label','');
-      label.textContent = value;
-      group.append(label);
+    if(single){
+      path('source','draft',[[a.x,a.b],[b.x,b.t-1]]);
+      path('source','target',[[a.r,a.y],[map.width-3,a.y],[map.width-3,c.y],[c.r+1,c.y]],true);
+      path('draft','target',[[b.x,b.b],[c.x,c.t-1]]);
+      path('draft','compare',[[b.l,b.y],[3,b.y],[3,d.y],[d.l-1,d.y]]);
+      path('target','compare',[[c.x,c.b],[d.x,d.t-1]]);
+    }else{
+      path('source','draft',[[b.x,a.b],[b.x,b.t-1]]);
+      path('source','target',[[c.x,a.b],[c.x,c.t-1]],true);
+      path('draft','target',[[b.r,b.y],[c.l-1,c.y]]);
+      path('draft','compare',[[b.x,b.b],[b.x,d.t-1]]);
+      path('target','compare',[[c.x,c.b],[c.x,d.t-1]]);
     }
-    for (const [id, branch] of [['serial',serial],['parallel',parallel]]) {
-      const inputLine = stacked
-        ? [[origin.l,origin.y],[4,origin.y],[4,branch.t + 28],[branch.l - 1,branch.t + 28]]
-        : [[origin.x,origin.b],[origin.x,split],[branch.x,split],[branch.x,branch.t - 1]];
-      const outputLine = stacked
-        ? [[branch.r,branch.b - 24],[candidateRail,branch.b - 24],[candidateRail,merge],[target.x,merge],[target.x,target.t - 1]]
-        : [[branch.x,branch.b],[branch.x,merge],[target.x,merge],[target.x,target.t - 1]];
-      wire('origin-model',id,inputLine,'隐藏态 H 和已确认词 想');
-      wire(id,'target',outputLine,'三个候选 吃 火 锅');
-      if (!stacked) {
-        edgeLabel((origin.x + branch.x) / 2, split - 3, 'H ＋ 想');
-        edgeLabel((target.x + branch.x) / 2, merge - 3, '吃 · 火 · 锅');
-      }
+    path('compare','out',[[d.x,d.b],[e.x,e.t-1]]);
+    if(!single){
+      const edgeLabel=(x,y,txt)=>{const t=document.createElementNS('http://www.w3.org/2000/svg','text');t.setAttribute('x',x+6);t.setAttribute('y',y);t.textContent=txt;group.append(t);};
+      edgeLabel(b.x,(a.b+b.t)/2+4,'起草输入');edgeLabel(c.x,(a.b+c.t)/2+4,'历史 KV ＋ 想');
+      edgeLabel(b.x,(b.b+d.t)/2+4,'原始候选');edgeLabel(c.x,(c.b+d.t)/2+4,'目标预测');
     }
-    wire('origin-model','target',[[origin.r,origin.y],[map.width - 4,origin.y],
-      [map.width - 4,priorPort.y],[target.r + 1,priorPort.y]],'复用目标模型的历史 KV 和已确认词 想',true);
-    const bypass = stacked
-      ? [[candidateRail,merge],[candidateRail,verify.t + 22],[verify.r + 1,verify.t + 22]]
-      : [[target.x,merge],[4,merge],[4,verify.t + 22],[verify.l - 1,verify.t + 22]];
-    wire('draft-output','verify',bypass,'同一份原始草稿候选');
-    wire('target','verify',[[target.x,target.b],[verify.x,verify.t - 1]],'四个目标预测');
-    wire('verify','sink',[[verify.x,verify.b],[sink.x,sink.t - 1]],'通过验证的本轮新增输出');
   }
-  function show(key) {
-    if (!Object.hasOwn(scenarios, key)) return;
-    selector.value = key;
-    const target = scenarios[key];
-    const mismatch = draft.findIndex((token, i) => token !== target[i]);
-    const end = mismatch < 0 ? draft.length : mismatch;
-    const rows = get('comparisons');
-    rows.replaceChildren();
-    target.forEach((token, i) => {
-      const row = rows.insertRow();
-      const head = document.createElement('th');
-      head.scope = 'row';
-      head.textContent = prefix + draft.slice(0, i).join('');
-      row.append(head);
-      row.insertCell().textContent = draft[i] ?? '—';
-      row.insertCell().textContent = token;
-      const badge = document.createElement('span');
-      const [label, mark] = i > end ? ['跳过', ''] : i < end ? ['接受', 'accept']
-        : i === draft.length ? ['额外输出', 'bonus'] : ['纠正', 'correct'];
-      if (i > end) row.className = 'skipped';
-      badge.textContent = label;
-      badge.className = 'verdict ' + mark;
-      row.insertCell().append(badge);
-    });
-    const added = draft.slice(0, end).join('') + target[end];
-    get('new-output').textContent = added;
-    get('prefix-output').textContent = prefix + added;
-    get('next-input').textContent = target[end];
-    get('target-output').textContent = '目标预测 [' + target.join(', ') + ']';
-    get('reason').textContent = notes[key];
+  function show() {
+    const m=methods[method], list=stages(), total=list.length, targetStep=total-2, checkStep=total-1;
+    const current=list[step-1], all=step===0, ready=all?3:current.ready, seenTarget=all||step>=targetStep, seenCheck=all||step>=checkStep, seenOut=all||step===total;
+    const r=confirmed(), predicted=cases[scenario], empty='·', fmt=a=>'['+a.join(', ')+']';
+    get('method').value=method;get('scenario').value=scenario;
+    set('deployment',m.deploy);set('token-port',m.token);set('hidden-port',m.hidden);
+    set('position',all?'全局关系 · 共 '+total+' 步':'第 '+step+' / '+total+' 步');
+    Object.assign(get('position').dataset,{step,total});get('prev').disabled=step<=1;get('next').disabled=step===total;
+    get('global').setAttribute('aria-pressed',String(all));
+    const overview={title:m.name+' · 全局输入与输出',input:m.firstInput,action:m.group+'。草稿候选同时进入目标前向和验证器，目标预测进入验证器。',output:context()+'想'+r.added};
+    const detail=current||overview;
+    set('current-title',(all?'':step+'. ')+detail.title);set('current-input',detail.input);set('current-action',detail.action);set('current-output',detail.output);
+    const jumps=get('jumps'); const lastFocus=jumps.contains(document.activeElement)?document.activeElement.dataset.jump:null;
+    jumps.replaceChildren();
+    list.forEach((s,i)=>{const button=document.createElement('button'); button.type='button';button.className='btn';button.dataset.jump=i+1;
+      button.textContent=String(i+1);button.setAttribute('aria-label','第 '+(i+1)+' 步，'+s.title);button.setAttribute('aria-pressed',String(step===i+1));
+      jumps.append(button);});
+    if(lastFocus) jumps.querySelector('[data-jump="'+lastFocus+'"]')?.focus({preventScroll:true});
+    for(const node of ['source','draft','target','compare','out']) {
+      const indices=list.map((s,i)=>s.node===node?i+1:0).filter(Boolean);
+      const label=indices.length>1?indices[0]+'–'+indices[indices.length-1]:indices[0];
+      set(node+'-tag','步骤 '+label);get(node+'-node').dataset.node=node;get(node+'-node').dataset.current=String(current?.node===node);
+    }
+    set('context',context());set('first-edge','给草稿 → '+m.firstInput.replace(/。$/,'')+'。给目标验证 → 原上下文的 KV 和「想」。');
+    set('draft-heading',m.name+' · '+m.group);
+    const sketches={
+      chain:['第 1 次','第 2 次','第 3 次'],heads:['头 1 ↓','头 2 ↓','头 3 ↓'],
+      mask:['□ 位置 1 ↓','□ 位置 2 ↓','□ 位置 3 ↓'],lookup:['后继 1','后继 2','后继 3']};
+    const sketchLabels=sketches[m.pattern]; const shape=get('draft-shape');shape.className='draft-shape '+m.pattern;shape.replaceChildren();
+    sketchLabels.forEach((label,i)=>{const box=document.createElement('div'),cap=document.createElement('small'),word=document.createElement('b');
+      cap.textContent=label;word.className='word';word.textContent=i<ready?words[i]:empty;box.append(cap,word);shape.append(box);});
+    set('draft-feed',({heads:'同一行 H 同时进入三个预测头，各自选一个词。',mask:'输入「想」与三个 MASK，在一次草稿前向中填三个位置。',chain:'上一位输出的 token 回到草稿，作为下一位的输入。',lookup:'从历史中找到相同后缀，复制匹配位置后面的词。'})[m.pattern]);
+    set('draft-exit',ready===3?'送给目标模型及验证器 → '+fmt(words):'已得到 '+ready+' / 3 个候选。');
+    set('target-feed','来自上游的历史 KV ＋ 已确认的「想」＋ 草稿候选。');
+    set('verify-input',ready===3?fmt(['想',...words]):'待草稿就绪');set('predictions',seenTarget?fmt(predicted):'· · · ·');
+    const tbody=get('rows');tbody.replaceChildren();
+    ['想',...words].forEach((word,i)=>{
+      const tr=tbody.insertRow();tr.insertCell().textContent=i<=ready?word:empty;tr.insertCell().textContent=i===3?'—':i<ready?words[i]:empty;
+      tr.insertCell().textContent=seenTarget?predicted[i]:empty;
+      const badge=document.createElement('span');let kind='',label='待验证';
+      if(seenCheck){if(i<r.kept){kind='yes';label='接受';}else if(i>r.kept){label='舍弃';}
+        else if(i===3){kind='extra';label='额外输出';}else{kind='fix';label='纠正';}}
+      badge.className='badge '+kind;badge.textContent=label;tr.insertCell().append(badge);});
+    set('verdict',seenCheck?caseNotes[scenario]:'输入来自两处：草稿候选和目标预测。');
+    set('formal-output',seenOut?r.added:empty);set('joined',context()+'想'+(seenOut?r.added:''));
+    const medusaNext='下一组 Medusa 头取 H'+['想','吃','火','锅'][r.kept]+'，即这次预测出「'+r.tail+'」的那行目标隐藏态。';
+    set('resume',seenOut?('下一轮目标从「'+r.tail+'」往后生成。'+(method==='medusa'?medusaNext:'')):'等待验证器返回有效输出。');
+    const full=get('step-list');full.replaceChildren();
+    list.forEach(s=>{const li=document.createElement('li');const title=document.createElement('strong');title.textContent=s.title+'。';li.append(title,s.input+' → '+s.action+' → '+s.output);full.append(li);});
+    set('config-example',"--speculative-config '"+m.config+"'");
+    const links=get('source-links');links.replaceChildren();
+    m.sources.forEach(([label,url])=>{const a=document.createElement('a');a.textContent=label;a.href=url;a.target='_blank';a.rel='noopener noreferrer';links.append(a);});
+    drawEdges(list);
   }
-  const storageKey = 'draft-compare-scenario-v2';
-  let initial = 'middle';
-  if (window.openai) initial = window.openai.widgetState?.modelContent?.scenario ?? initial;
-  else { try { initial = localStorage.getItem(storageKey) ?? initial; } catch {} }
-  show(Object.hasOwn(scenarios, initial) ? initial : 'middle');
-  drawConnections();
-  const layout = new ResizeObserver(drawConnections);
-  for (const id of ['flow-map','origin-model','serial','parallel','target','verify','sink']) layout.observe(get(id));
-  selector.addEventListener('change', () => {
-    const scenario = selector.value;
-    show(scenario);
-    if (window.openai?.setWidgetState) {
-      window.openai.setWidgetState({ modelContent: { scenario }, privateContent: null }).catch(() => {});
-    } else { try { localStorage.setItem(storageKey, scenario); } catch {} }
-  });
-  window.addEventListener('openai:set_globals', (event) => {
-    show(event.detail?.globals?.widgetState?.modelContent?.scenario);
-  });
+  function storeState() {
+    const state={method,scenario,step};
+    if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:state,privateContent:null}).catch(()=>{});
+    else{try{localStorage.setItem(storage,JSON.stringify(state));}catch{}}
+  }
+  function selectStep(value){step=Math.min(stages().length,Math.max(0,value));get('all-notes').open=step===0;show();storeState();}
+  function restore(s){if(!s||!Object.hasOwn(methods,s.method)||!Object.hasOwn(cases,s.scenario))return;
+    method=s.method;scenario=s.scenario;step=Number.isInteger(s.step)&&s.step>=0&&s.step<=stages().length?s.step:1;get('all-notes').open=step===0;}
+  get('method').addEventListener('change',e=>{method=e.target.value;selectStep(1);});
+  get('scenario').addEventListener('change',e=>{scenario=e.target.value;show();storeState();});
+  get('prev').addEventListener('click',()=>selectStep(step-1));get('next').addEventListener('click',()=>selectStep(step+1));
+  get('global').addEventListener('click',()=>selectStep(0));
+  get('jumps').addEventListener('click',e=>{const b=e.target.closest('button[data-jump]');if(b)selectStep(Number(b.dataset.jump));});
+  try{restore(window.openai?window.openai.widgetState?.modelContent:JSON.parse(localStorage.getItem(storage)));}catch{}
+  window.addEventListener('openai:set_globals',e=>{const s=e.detail?.globals?.widgetState?.modelContent;if(s){restore(s);show();}});
+  show();
+  const observer=new ResizeObserver(()=>drawEdges(stages()));observer.observe(get('data-map'));
 })();
 </script>
 <!-- END FLOW -->

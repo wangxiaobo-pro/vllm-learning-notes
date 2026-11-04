@@ -10,7 +10,7 @@
 | vLLM-Ascend 启动流程 | 组件初始化清单、26 步启动流程、TP 分片、物理 KV 与调度器 | [vllm-ascend-startup](vllm-ascend-startup/README.md) | [vllm-ascend-startup/index.html](vllm-ascend-startup/index.html) |
 | vLLM-Ascend 图优化 | 首次捕获与后续回放、逐算子底层调用、FIA 动态参数更新与条件性融合 | [vllm-ascend-graph](vllm-ascend-graph/README.md) | [vllm-ascend-graph/index.html](vllm-ascend-graph/index.html) |
 | 权重 CPU Offload / Prefetch | 四份 CPU 权重轮用两个 NPU 静态槽，追踪层输入、输出和预取依赖 | [weight-offload-prefetch](weight-offload-prefetch/README.md) | [weight-offload-prefetch/index.html](weight-offload-prefetch/index.html) |
-| 投机解码 | 对照 MTP 串行与 DFlash 并行起草，看目标模型如何验证同一组候选并决定输出 | [speculative-decoding](speculative-decoding/README.md) | [speculative-decoding/index.html](speculative-decoding/index.html) |
+| 投机解码 | 对照草稿方法的权重、token 与隐藏状态输入，跟踪候选如何生成以及目标模型如何验证 | [speculative-decoding](speculative-decoding/README.md) | [speculative-decoding/index.html](speculative-decoding/index.html) |
 | 静态批处理与连续批处理 | 同一组请求的组批、排队、Prefill / Decode、退出与 KV 释放，附逐轮对比 | [batching](batching/README.md) | [batching/index.html](batching/index.html) |
 | vLLM 请求完整生命周期 | V1 单卡流式请求的 20 步流程、Prefill / Decode、KV 块与结束清理 | [request-lifecycle](request-lifecycle/README.md) | [request-lifecycle/index.html](request-lifecycle/index.html) |
 | Scheduler.schedule() 调度流程 | 四个本轮请求列表、两项 token 预算、KV 抢占回滚与恢复 | [scheduler](scheduler/README.md) | [scheduler/index.html](scheduler/index.html) |
@@ -33,7 +33,7 @@ vllm-learning-notes/
 ├── scheduler/                         # V1 单轮调度、请求分类与 token 记账
 ├── batching/                          # 静态批处理与连续批处理对照
 ├── chunked-prefill/                   # 分块 prefill 与历史整段调度对照
-├── speculative-decoding/              # 串行与并行起草、目标模型验证
+├── speculative-decoding/              # 起草方法、输入依赖与目标模型验证
 ├── weight-offload-prefetch/           # CPU 权重、NPU 静态槽与层间激活
 ├── parallelism/                       # 单项与组合并行的计算、分片和通信
 ├── communication-primitives/          # 通信原语与 Ring Attention 数值演示

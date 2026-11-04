@@ -1,24 +1,36 @@
 # 投机解码
 
-目标模型读过上下文「今天」，刚输出「想」。接下来能一次确定几个 token？打开[交互流程图](index.html)，沿 ②A 或 ②B 看一条草稿怎样流到验证器，再切换验证情形。
+目标模型读完「今天」，刚选出「想」。接下来的三个词能怎样提前得到，又有哪些能直接输出？
 
-图中每个框标出输入来源和输出去向。① 把所选草稿模型需要的上下文特征 H 与「想」交给 ②，同时为 ③ 保留目标模型自己的历史 KV。② 产生的候选分送到 ③ 和 ④。③ 给出各位置的目标预测，④ 将预测与原始候选比较，⑤ 把有效输出接回原文。
+- **逐步看七种算法**。选一种起草方法，从输入走到候选验证。页面显示每一步交给谁、已经得到几个候选，以及本轮新增的正式 token。[逐步流程图](index.html)
+- **并排比较串行和并行**。跟着同一个例子，看 DeepSeek MTP 怎样逐词喂回、DFlash 怎样一次填三个位置，再切换首位猜错、第二位猜错和全部猜中。[MTP 与 DFlash 并排图](comparison.html)
 
-| 起草方式 | 如何提出三个候选 |
-| --- | --- |
-| 普通 DeepSeek MTP · 串行 | 从「想」和模型状态预测「吃」，再把「吃」和更新的状态送入下一步预测「火」，最后用「火」预测「锅」。后一位依赖前一位的预测。 |
-| 常规 DFlash · 并行 | 目标模型已有的隐藏状态提供上下文。草稿模型输入锚点「想」和三个占位符 `[MASK]`，一次前向在三个占位位置给出「吃」「火」「锅」，无需等待上一位选出的 token。 |
+## 谁读取 token，谁读取目标模型的隐藏态？
 
-一次请求选择其中一种起草方式。图中约定两者碰巧给出相同候选，方便对照。表格中的「吃」「火」「锅」各代表一个教学 token。
+用 `H_t` 表示目标模型**处理完位置 t** 时的隐藏态。这里 t 是「今天」所在的位置，目标 LM head 从这一行预测出下一个 token「想」。此时已经知道「想」的 ID，目标模型要等下一次把「想」作为输入才会算出 `H_想`。以下固定三个候选，词块是教学 token，N-gram 另加一段可匹配的历史。
 
-目标模型在一次带因果掩码的前向中处理「想 吃 火 锅」。这四个位置（`K + 1`）依次预测「想」后、「吃」后、「火」后和「锅」后的 token。贪心验证从左至右保留连续匹配的前缀，第一次不匹配时采用目标模型的选择。
+| 起草方法 | 起草时使用的 token | 起草时使用的目标隐藏态 | 部署时需要的额外权重 |
+| --- | --- | --- | --- |
+| EAGLE | 首步用刚选出的「想」，后续喂回前一候选 | 首步取「今天」末位的目标特征，后续用草稿模型自己的特征 | 与目标模型配套的 EAGLE 草稿 |
+| EAGLE-3 | 同样从「想」起步，按位置递推 | 图示配置采集「今天」同一位置的多层目标特征并融合，后续使用草稿返回的特征 | 匹配目标模型和特征层配置的 EAGLE-3 草稿 |
+| 普通 DeepSeek MTP | 从「想」起步，逐步喂回「吃」「火」 | 目标特征与「想」配对猜「吃」，后续用 MTP 上一步的状态 | 配套 MTP 层，通常来自目标 checkpoint |
+| 独立草稿模型 | 首轮自己读「今天、想」，后续喂回自己的候选 | 无。草稿模型用自己的 embedding、模型层和 KV | 另加载兼容的小型自回归模型 |
+| Medusa | 预测头直接读隐藏态。Runner 用有效输出 token 的**个数**选行 | 三个头读取同一行 `H_t`，各猜「想」后不同距离的词 | 与目标模型配套的 Medusa 头权重 |
+| DFlash | 一个查询块含「想」和三个 `[MASK]`，同时预测三个占位位置 | 融合目标模型指定层的上下文特征，供草稿查询块使用 | 与目标模型匹配的 DFlash 草稿 |
+| CPU N-gram | 在本请求完整历史「昨天想吃火锅，今天想」中查找末词「想」，复制旧匹配后的「吃、火、锅」 | 无。只比较、复制 token ID | 无 |
 
-| 验证场景 | 本轮新增输出 | 原因 |
-| --- | --- | --- |
-| 第二位不匹配 | 吃 面 | 接受「吃」，用目标选出的「面」替换「火」。第三位的预测以「火」为前提，随草稿后缀舍弃。 |
-| 全部匹配 | 吃 火 锅 。 | 接受三个候选，再追加目标模型在「锅」后选出的「。」。 |
-| 首位不匹配 | 睡 | 目标在「想」后选中「睡」，本轮接受的候选数为零。 |
+`--enforce-eager` 控制模型的执行模式，启用时使用 eager 执行并关闭编译及计算图回放。`EAGLE` 是 *Extrapolation Algorithm for Greater Language-model Efficiency* 的缩写，通过 `--speculative-config` 中的 `method` 选择。页面中的路径和 `K=3` 用于说明配置形状，未做实际部署或硬件性能测试。[eager 执行开关](https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/config/model.py#L272-L279) · [Ascend 提议器选择](https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/spec_decode/__init__.py#L40-L67)
 
-**源码依据**取自 vLLM-Ascend 的 Model Runner V1 实现。图中词例用于解释依赖关系和贪心验证规则。[MTP 逐位回填](https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/spec_decode/llm_base_proposer.py#L1672-L1683) · [DFlash 查询与上下文](https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/spec_decode/dflash_proposer.py#L105-L133) · [并行起草返回全部候选](https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/spec_decode/llm_base_proposer.py#L1633-L1643) · [贪心匹配和额外 token](https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/sample/rejection_sampler.py#L859-L894)
+## 第二个候选猜错时，下一轮从哪一行开始？
+
+目标模型复用「今天」对应的历史 KV，在一次因果前向中处理 `[想, 吃, 火, 锅]`。这四行依次预测各输入位置之后的词。假设前两行选出「吃、面」，就接受「吃」、用「面」纠正「火」。后面两行都看到过错误的「火」，本轮新增输出到「面」为止。如果三位全中，最后一行还能给出额外的「。」。[目标前向选择采样行](https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/worker/model_runner_v1.py#L1856-L1886) · [贪心纠正与额外 token](https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/sample/rejection_sampler.py#L859-L894)
+
+对 Medusa，四行的 0 起始索引是 `0=H_想、1=H_吃、2=H_火、3=H_锅`。单请求在批内的起始偏移为 0，本轮有效输出 `[吃, 面]` 的长度为 2，因此下一次起草选 `0 + 2 − 1 = 1`。三个头同读 `H_吃`，即目标模型刚才用来选出「面」的那行。下一轮目标验证时，才把「面」作为正式输入继续计算。[Ascend 的 Medusa 选行公式](https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/spec_decode/medusa_proposer.py#L46-L72)
+
+## 论文里的树和图上的候选链
+
+Medusa 原论文让不同位置的多个预测组合成若干候选续写，再用树注意力一并验证。这里按本地实现绘制，每个头只取一个最高分词，三个头的结果拼成一条 `[吃, 火, 锅]`，交给目标模型验证。三个头之间没有 token 依赖。[Medusa 原论文](https://arxiv.org/abs/2401.10774) · [本版本各头取 top-1 并拼成序列](https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/spec_decode/medusa.py#L38-L56)
+
+EAGLE 用前移一位的 token 配合目标特征预测后续特征，原论文在多条分支上起草和验证。EAGLE-3 融合多层特征，训练时直接预测 token，并沿用 EAGLE-2 根据上下文构造草稿树的做法。本图跟踪 Ascend Model Runner V1 的普通链式起草路径，后续候选依赖前一步选出的词。[EAGLE 原论文](https://arxiv.org/html/2401.15077v3) · [EAGLE-3 原论文](https://arxiv.org/html/2503.01840v2) · [首步特征对齐](https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/spec_decode/llm_base_proposer.py#L1793-L1838) · [EAGLE-3 特征融合](https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/llama_eagle3.py#L397-L418) · [下一位使用前一候选](https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/spec_decode/llm_base_proposer.py#L1672-L1683)
 
 返回[项目导航](../index.html)。
