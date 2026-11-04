@@ -1,0 +1,531 @@
+<div id="prefix-kv-map" lang="zh-CN">
+  <style>
+    #prefix-kv-map{display:grid;gap:calc(var(--font-size-base)*.7);--kv-hit:var(--viz-series-1);--kv-new:var(--viz-series-2);--kv-line:var(--muted-foreground);--kv-bg:var(--background)}
+    #prefix-kv-map .kv-toolbar,#prefix-kv-map .kv-legend{display:flex;align-items:center;flex-wrap:wrap;gap:.425em 1em}
+    #prefix-kv-map .kv-legend{color:var(--muted-foreground)}
+    #prefix-kv-map .kv-legend span{display:inline-flex;align-items:center;gap:.32em}
+    #prefix-kv-map .kv-legend i{width:.72em;height:.72em;border-radius:2px;display:inline-block}
+    #prefix-kv-map .kv-legend .reuse{background:var(--kv-hit)}
+    #prefix-kv-map .kv-legend .write{background:var(--kv-new)}
+    #prefix-kv-map .kv-figure{display:block;width:100%;overflow:visible;font-family:inherit}
+    #prefix-kv-map .kv-figure text{fill:var(--foreground)}
+    #prefix-kv-map .kv-figure .kv-t-main{font-size:14px;font-weight:500}
+    #prefix-kv-map .kv-figure .kv-t-mono{font-size:13px;font-family:ui-monospace,Consolas,"Microsoft YaHei",monospace}
+    #prefix-kv-map .kv-figure .kv-t-small,#prefix-kv-map .kv-figure .kv-t-sub{font-size:12px;fill:var(--muted-foreground)}
+    #prefix-kv-map .kv-figure .kv-edge-label{font-size:12px;paint-order:stroke;stroke:var(--kv-bg);stroke-width:5px;stroke-linejoin:round}
+    #prefix-kv-map .kv-muted-phase{opacity:.45}
+    #prefix-kv-map rect.kv-current{stroke:var(--foreground);stroke-width:2}
+    #prefix-kv-map text.kv-current{fill:var(--foreground);font-weight:500}
+    #prefix-kv-map g.kv-current>path{stroke-width:3}
+    #prefix-kv-map .kv-executor{display:grid;gap:.45em}
+    #prefix-kv-map [data-status]{font-weight:500}
+    #prefix-kv-map .kv-frame{min-width:0}
+    #prefix-kv-map .kv-tab-content:not([hidden]){display:grid;gap:calc(var(--font-size-base)*.7)}
+    #prefix-kv-map .kv-src{color:var(--muted-foreground)}
+    #prefix-kv-map .is-traced path{stroke-width:3}
+    #prefix-kv-map .is-traced .kv-edge-label{font-weight:500}
+  </style>
+  <h2>一次请求怎样复用前缀 KV</h2>
+  <div class="nav nav-pills" role="tablist" aria-label="缓存实现">
+    <button id="kv-map-tab-v" type="button" class="nav-link active" role="tab" aria-selected="true" aria-controls="kv-map-common" data-engine="vllm">vLLM · 哈希表</button>
+    <button id="kv-map-tab-s" type="button" class="nav-link" role="tab" aria-selected="false" aria-controls="kv-map-common" data-engine="sglang">SGLang · 前缀树</button>
+  </div>
+  <section id="kv-map-common" class="kv-tab-content" role="tabpanel" aria-labelledby="kv-map-tab-v">
+    <div class="viz-controls" role="group" aria-label="高亮图中的阶段">
+      <button type="button" data-phase="0" data-overview class="btn" aria-pressed="true">全图</button>
+      <button type="button" data-phase="1" class="btn" aria-pressed="false">建缓存</button>
+      <button type="button" data-phase="2" class="btn" aria-pressed="false">查前缀</button>
+      <button type="button" data-phase="3" class="btn" aria-pressed="false">用 KV</button>
+    </div>
+    <div class="kv-executor">
+      <div class="viz-controls" role="group" aria-label="单步执行器">
+        <button type="button" class="btn" data-prev disabled>上一步</button>
+        <button type="button" class="btn btn-primary" data-next>下一步</button>
+        <button type="button" class="btn" data-play>播放一次查找</button>
+      </div>
+      <div data-status aria-live="polite" aria-atomic="true"></div>
+    </div>
+  <div class="kv-legend text-small" aria-label="图例"><span><i class="reuse"></i>复用已有 KV</span><span><i class="write"></i>计算新 KV</span><span>⇢ 返回结果</span></div>
+  <div class="kv-frame"><svg class="kv-figure" role="img"></svg></div>
+  <div class="kv-src text-small" data-source></div>
+  </section>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('prefix-kv-map');
+  const svg = root.querySelector('.kv-figure');
+  const ns = 'http://www.w3.org/2000/svg';
+  const phaseButtons = Array.from(root.querySelectorAll('[data-phase]'));
+  const tabs = Array.from(root.querySelectorAll('[data-engine]'));
+  const actions = {
+    vllm:['全图','R1 建立缓存','R2 入队并生成块哈希','查 h1，AB 命中块 7','查 h4，CX 未命中','向调度器返回块 7 和命中长度 2','分配块 24、31 并登记哈希','向 Worker 下发块表 [7, 24, 31]','Worker 读块 7，将 CXEF 写入块 24、31'],
+    sglang:['全图','R1 写入压缩节点 ABCDEF','调度器取出 R2，准备查树','匹配 ABC，拆开旧节点','返回命中长度 3 和 ABC 的节点 ID','取出 ABC 的旧槽位，为 XEF 分配新槽位','组装 R2 的六个槽位','Worker 读取 ABC，写入 XEF 的 KV','将 XEF 作为新叶插回树中']
+  };
+  const phaseStarts={vllm:[0,1,2,6],sglang:[0,1,2,5]};
+  const descriptions = {
+    vllm:'R1 缓存 ABCDEF。R2 的 ABCXEF 逐块查表，AB 命中块 7，CX 未命中。返回长度 2，调度器分配块 24、31，worker 读取 AB，写入 CXEF。',
+    sglang:'R1 缓存 ABCDEF。R2 的 ABCXEF 匹配压缩树，ABC 命中。调度器取得长度 3 和节点 ID，分配器从该节点取旧槽 40 至 42，为 XEF 分配 70 至 72，前向后插入新叶。'
+  };
+  let engine='vllm',lastWidth=0,playing=false,timer=0;
+  const cursors={vllm:0,sglang:0};
+  const prev=root.querySelector('[data-prev]'), next=root.querySelector('[data-next]'), play=root.querySelector('[data-play]');
+  const valid = value => Number.isInteger(value) && value>=0 && value<=8;
+  function phaseFor(step) {return step>=phaseStarts[engine][3]?3:step>=2?2:step;}
+  function el(tag, attrs={}, content, parent=svg) {
+    const element = document.createElementNS(ns,tag);
+    for (const [k,v] of Object.entries(attrs)) if (v!=null) element.setAttribute(k,v);
+    if(content!=null) element.textContent = content;
+    parent.append(element);
+    return element;
+  }
+  function phaseClass(on,focus) {
+    const step=cursors[engine];
+    if(!step)return '';
+    if(focus!=null && (Array.isArray(focus)?focus:[focus]).includes(step))return 'kv-current';
+    const phase=phaseFor(step);
+    return on!=null && on!==0 && !(Array.isArray(on)?on:[on]).includes(phase) ? 'kv-muted-phase' : '';
+  }
+  const strokes = {call:'var(--kv-line)',data:'var(--kv-line)',return:'var(--kv-line)',hit:'var(--kv-hit)',new:'var(--kv-new)'};
+  const fills = {neutral:'var(--muted)',header:'color-mix(in srgb,var(--foreground) 10%,var(--kv-bg))',owner:'color-mix(in srgb,var(--foreground) 5%,var(--kv-bg))',hit:'color-mix(in srgb,var(--kv-hit) 16%,var(--kv-bg))',new:'color-mix(in srgb,var(--kv-new) 18%,var(--kv-bg))'};
+  function rect(x,y,w,h,{kind='neutral',phase:on,rx=7,focus}={}) {
+    return el('rect',{x,y,width:w,height:h,rx,fill:fills[kind]??fills.neutral,stroke:'var(--border)','stroke-width':1,class:phaseClass(on,focus)});
+  }
+  function textAt(x,y,label,{align='middle',kind='main',phase:on,focus}={}) {
+    return el('text',{x,y,'text-anchor':align,class:'kv-t-'+kind+' '+phaseClass(on,focus)},label);
+  }
+  function node(x,y,w,h,{title,sub,kind='neutral',phase:on,focus}={}) {
+    rect(x,y,w,h,{kind,phase:on,rx:8,focus});
+    const mid=y+h/2;
+    textAt(x+w/2,mid+(sub?-3:5),title,{phase:on,focus});
+    if(sub) textAt(x+w/2,mid+15,sub,{kind:'sub',phase:on,focus});
+  }
+  function edge(points,{phase:on,kind='data',dashed=false,label,lx,ly,focus}={}) {
+    const stroke=strokes[kind]??strokes.data;
+    const d=points.map(([x,y],i)=>(i?'L':'M')+x+' '+y).join(' ');
+    const group=el('g',{class:phaseClass(on,focus),'data-pk-edge':kind,'data-pk-label':label});
+    el('path',{d,fill:'none',stroke,'stroke-width':kind==='hit'||kind==='new'?2.1:1.6,'stroke-dasharray':dashed||kind==='return'?'5 4':null,'stroke-linejoin':'round','stroke-linecap':'round','marker-end':'url(#pk-tip-'+kind+')'},null,group);
+    if(label!=null) el('text',{x:lx,y:ly,'text-anchor':'middle',class:'kv-edge-label'},label,group);
+    return group;
+  }
+  function drawVllm(g) {
+  const w = g.w;
+  const narrow = g.compact;
+  const pad = narrow ? 8 : 12;
+  const leftW = narrow ? (w - 3 * pad) / 2 : Math.round(w * 0.335);
+  const mapX = narrow ? pad : Math.round(w * 0.51);
+  const mapW = w - mapX - pad;
+  const mapY = narrow ? 234 : 112;
+  const mapH = 262;
+  const mapBottom = mapY + mapH;
+  const r1X = narrow ? 2 * pad + leftW : mapX;
+  const r1W = narrow ? leftW : mapW;
+  const cLeft = pad + leftW / 2;
+  const cR1 = r1X + r1W / 2;
+  const grouped = [1, 2, 3];
+  const steps = [1, 2, 3, 4, 5, 6, 7, 8];
+  const step = g.step ?? ([0, 1, 4, 8][g.phase] || 0);
+  const overview = step === 0;
+  const reached = n => overview || step >= n;
+  const text = (x, y, value, kind, phase, focus, align = 'middle') =>
+    g.text(x, y, value, {kind, phase, focus, align});
+  const box = (x, y, width, height, kind, phase, focus) =>
+    g.rect(x, y, width, height, {kind, phase, focus, rx: 7});
+  const line = (points, kind, phase, focus, label, lx, ly) =>
+    g.edge(points, {kind, phase, focus, label, lx, ly});
+  const card = (x, y, width, height, title, sub, kind, phase, focus) =>
+    g.node(x, y, width, height, {title, sub, kind, phase, focus});
+
+  // R1 has already produced reusable KV at the end of action 1.
+  box(pad, 7, leftW, 68, 'owner', [2, 3], 2);
+  text(cLeft, 27, '分词器 → R2', 'main', [2, 3], 2);
+  text(cLeft, 46, reached(2) ? 'AB | CX | EF' : '尚未到达', 'mono', [2, 3], 2);
+  text(cLeft, 64, reached(2) ? '[h1, h4, h5]' : '哈希未生成', 'mono', [2, 3], 2);
+  card(r1X, 7, r1W, 68, 'R1 prefill 完成', 'AB | CD | EF', 'neutral', 1, 1);
+
+  const callerY = narrow ? 111 : 137;
+  const callerH = 76;
+  line([[cLeft, 75], [cLeft, callerY]], 'data', 2, 2, reached(2) ? 'R2 入队' : '等待 R2',
+    cLeft + 31, narrow ? 98 : 111);
+  box(pad, callerY, leftW, callerH, 'owner', [2, 3], [2, 3, 4, 5]);
+  text(cLeft, callerY + 23, 'Scheduler.schedule', 'main', 2, [2, 3, 4, 5]);
+  text(cLeft, callerY + 45, reached(3) ? 'get_computed_blocks' : 'waiting queue', 'sub', 2, [2, 3, 4, 5]);
+  const scheduleStatus = ['R2 · 上限 5 tokens', 'R2 尚未到达', 'R2 已入队',
+    '查 h1 · 上限 5 tokens', '查 h4 · 遇缺即停', '收到块 7 · 命中 2'][step] || '已知前缀长 2';
+  text(cLeft, callerY + 63, scheduleStatus, 'small', 2, [2, 3, 4, 5]);
+
+  const inspect = [1, 3, 4, 5, 6];
+  box(mapX, mapY, mapW, mapH, 'neutral', grouped, inspect);
+  text(mapX + mapW / 2, mapY + 22, 'BlockPool · 前缀哈希表', 'main', grouped, inspect);
+  const col = [0.23, 0.56, 0.83].map(frac => mapX + frac * mapW);
+  ['父哈希 + token', '表键', 'KV 块 ID'].forEach((v, i) =>
+    text(col[i], mapY + 45, v, 'small', grouped, inspect));
+  const oldRows = [
+    ['根 + AB', '(h1,g0)', '7', reached(3) ? 'hit' : 'neutral', grouped, [1, 3, 5]],
+    ['h1 + CD', '(h2,g0)', '18', 'neutral', grouped, 1],
+    ['h2 + EF', '(h3,g0)', '9', 'neutral', grouped, 1]
+  ];
+  function drawRow([parent, key, value, kind, phase, focus], y) {
+    g.rect(mapX + 6, y, mapW - 12, 24, {kind, phase, focus, rx: 3});
+    [parent, key, value].forEach((v, j) =>
+      text(col[j], y + 17, v, 'mono', phase, focus));
+  }
+  text(mapX + 11, mapY + 65, 'R1 已有记录', 'small', grouped, [1, 3], 'start');
+  oldRows.forEach((row, i) => drawRow(row, mapY + 72 + i * 28));
+  let mapNote;
+  if (reached(6)) {
+    text(mapX + 11, mapY + 174, 'R2 分配后登记', 'small', 3, 6, 'start');
+    drawRow(['h1 + CX', '(h4,g0)', '24', 'new', 3, 6], mapY + 181);
+    drawRow(['h4 + EF', '(h5,g0)', '31', 'new', 3, 6], mapY + 209);
+    mapNote = reached(8) ? 'EF 的父哈希不同，进入另一块' : '索引已登记，新 KV 等待写入';
+  } else if (reached(4)) {
+    text(mapX + 11, mapY + 174, 'R2 查找探针', 'small', 2, 4, 'start');
+    drawRow(['h1 + CX', '(h4,g0)', '未命中', 'new', 2, 4], mapY + 181);
+    drawRow(['h4 + EF', '(h5,g0)', '未探查', 'neutral', 2, 4], mapY + 209);
+    mapNote = step === 4 ? '停止查找 · 有效记录仍为 3 条' : '返回命中前缀 · [块 7]，2 tokens';
+  } else if (step === 3) {
+    text(mapX + mapW / 2, mapY + 192, '第一次探查 · h1 命中块 7', 'main', 2, 3);
+    mapNote = '下一次探查 h4';
+  } else {
+    text(mapX + mapW / 2, mapY + 192, '表中共 3 条记录', 'sub', 1, 1);
+    mapNote = step === 1 ? 'R1 的 KV 已就绪' : 'R2 尚未发起探查';
+  }
+  text(mapX + mapW / 2, mapBottom - 10, mapNote, 'small', grouped, [1, 2, 3, 4, 5, 6]);
+
+  const allocY = narrow ? mapBottom + 51 : 244;
+  const allocX = pad;
+  const allocW = narrow ? Math.min(228, w * 0.64) : leftW;
+  const allocH = 84;
+  const cAlloc = allocX + allocW / 2;
+  const lookup = overview ? '① 查 h1、h4' : step === 3 ? '查 h1' : step === 4 ? '查 h4' :
+    reached(4) ? '查询结束' : '待查询';
+  const returned = overview ? '② 块 7 · 2 tokens' : reached(5) ? '块 7 · 2 tokens' : '等待返回';
+  if (narrow) {
+    line([[cR1, 75], [cR1, mapY]], 'data', 1, 1, '先登记，再写 KV', cR1, 151);
+    line([[cLeft, callerY + callerH], [cLeft, mapY]], 'call', 2, [3, 4], lookup, cLeft, mapY - 16);
+    line([[cAlloc, mapBottom], [cAlloc, allocY]], 'return', 2, 5, returned, cAlloc, allocY - 18);
+  } else {
+    line([[cR1, 75], [cR1, mapY]], 'data', 1, 1, '先登记，再写 KV', cR1 + 61, 99);
+    const gutter = (pad + leftW + mapX) / 2;
+    line([[pad + leftW, callerY + 35], [mapX, callerY + 35]], 'call', 2, [3, 4], lookup, gutter, callerY + 24);
+    line([[mapX, allocY + 19], [pad + leftW, allocY + 19]], 'return', 2, 5, returned, gutter, allocY + 8);
+  }
+
+  box(allocX, allocY, allocW, allocH, 'owner', [2, 3], [5, 6]);
+  text(cAlloc, allocY + 23, '调度器分配块位', 'main', [2, 3], [5, 6]);
+  text(cAlloc, allocY + 43, reached(6) ? 'allocate_slots(R2, 4, …)' :
+    reached(5) ? '已命中 2 · 还需 4 个位置' : '等待命中结果', 'sub', [2, 3], [5, 6]);
+  text(cAlloc, allocY + 66, reached(6) ? '复用 7 · 新分配 24、31' : '新块未分配', 'small', 3, 6);
+  const reg = overview ? '③ 登记' : reached(6) ? '登记' : '待登记';
+  if (narrow) {
+    const regX = w - pad - 32;
+    line([[allocX + allocW, allocY + 48], [regX, allocY + 48], [regX, mapBottom]], 'new', 3, 6,
+      reg, regX - 13, allocY + 33);
+  } else {
+    const gutter = (pad + leftW + mapX) / 2;
+    line([[pad + leftW, allocY + 67], [mapX, allocY + 67]], 'new', 3, 6,
+      reached(6) ? reg + ' h4、h5' : reg, gutter, allocY + 57);
+  }
+
+  const planY = Math.max(allocY + allocH, mapBottom) + 45;
+  const planX = pad, planW = w - 2 * pad;
+  line([[cAlloc, allocY + allocH], [cAlloc, planY]], 'data', 3, 7,
+    reached(7) ? '取完整块表' : '待组装块表', cAlloc + 42, planY - 12);
+  box(planX, planY, planW, 85, 'owner', 3, 7);
+  text(w / 2, planY + 23, reached(7) ? 'SchedulerOutput · R2 的块表' : 'SchedulerOutput · 等待下发',
+    'main', 3, 7);
+  const chips = reached(7) ? ['块 7 · AB', '块 24 · CX', '块 31 · EF'] :
+    ['AB · 待下发', 'CX · 待下发', 'EF · 待下发'];
+  const chipGap = 5, inset = 7;
+  const chipW = (planW - inset * 2 - 2 * chipGap) / 3;
+  const centers = chips.map((label, i) => {
+    const x = planX + inset + i * (chipW + chipGap);
+    const kind = reached(7) ? (i ? 'new' : 'hit') : 'neutral';
+    g.rect(x, planY + 35, chipW, 31, {kind, phase: 3, focus: 7, rx: 4});
+    text(x + chipW / 2, planY + 55, label, 'mono', 3, 7);
+    return x + chipW / 2;
+  });
+  const workY = planY + 137;
+  const workerW = Math.min(planW - 12, 365);
+  const workerX = (w - workerW) / 2;
+  const dispatch = reached(7) ? (overview ? '④ ' : '') + 'execute_model · 已算 2 / 调度 4' : '等待调度计划';
+  line([[w / 2, planY + 85], [w / 2, workY]], 'call', 3, 7, dispatch, w / 2, workY - 18);
+  card(workerX, workY, workerW, 62, 'Worker · attention forward',
+    reached(8) ? '位置 [2,3,4,5] → 计算 CXEF' : reached(7) ? '已接收计划 · 等待 forward' : '等待执行',
+    'owner', 3, 8);
+
+  const memY = workY + 129;
+  const offset = Math.min(workerW * 0.32, 100);
+  const west = w / 2 - offset, east = w / 2 + offset;
+  const turn = memY - 22;
+  line([[centers[0], memY], [centers[0], turn], [west, turn], [west, workY + 62]],
+    'hit', 3, 8, reached(8) ? '读取 AB' : '待读取', centers[0], memY - 36);
+  line([[east, workY + 62], [east, turn], [centers[1], turn], [centers[1], memY]],
+    'new', 3, 8, reached(8) ? '写入 CX' : '待写入', w / 2, memY - 36);
+  line([[east, workY + 62], [east, turn], [centers[2], turn], [centers[2], memY]],
+    'new', 3, 8, reached(8) ? '写入 EF' : '待写入', centers[2], memY - 36);
+  const ids = [7, 24, 31], contents = ['AB 的 KV', 'CX 的 KV', 'EF 的 KV'];
+  chips.forEach((_, i) => {
+    const x = planX + inset + i * (chipW + chipGap);
+    const hasSlot = i === 0 || reached(6);
+    const available = i === 0 || reached(8);
+    card(x, memY, chipW, 54, hasSlot ? '块 ' + ids[i] : '未分配',
+      available ? contents[i] : hasSlot ? 'KV 待写' : '—',
+      i === 0 ? 'hit' : reached(6) ? 'new' : 'neutral', 3, i === 0 ? [1, 8] : [6, 8]);
+  });
+  text(w / 2, memY + 77, 'Worker 持有的设备 KV 池', 'sub', 3, [1, 6, 8]);
+  g.end(memY + 89);
+}
+
+function drawSglang(g) {
+  const w = g.w;
+  const small = g.compact;
+  const left = 12;
+  const right = w - 23;
+  const center = (left + right) / 2;
+  const routeX = w - 7;
+  const step = g.step ?? [0,1,4,8][g.phase];
+  const reached = (n) => step === 0 || step >= n;
+  const visual = (focus) => {
+    const actions = Array.isArray(focus) ? focus : [focus];
+    const phase = [...new Set(actions.map(n => n === 1 ? 1 : n <= 4 ? 2 : 3))];
+    return {phase, focus};
+  };
+  const shape = (x, y, width, height, title, sub, kind, focus) =>
+    g.node(x, y, width, height, {title, sub, kind, ...visual(focus)});
+  const line = (points, focus, kind, dashed = false, label, lx, ly) => {
+    if (!(Array.isArray(focus) ? focus : [focus]).some(reached)) {
+      return g.el('g', {'aria-hidden':'true'});
+    }
+    return g.edge(points, {...visual(focus), kind, dashed, label, lx, ly});
+  };
+  const note = (x, y, label, kind, focus, align = 'middle') =>
+    g.text(x, y, label, {kind, ...visual(focus), align});
+  const hasSplit = reached(3);
+  const hasNewLeaf = reached(8);
+  const seedLeftW = small ? (right-left)*.45 : Math.round(w*.37);
+  const seedRightX = small ? left+seedLeftW+26 : Math.round(w*.54);
+  const seedRightW = right-seedRightX;
+  shape(left, 12, seedLeftW, 51, '① R1 先 prefill', 'ABCDEF 生成 KV', 'owner', 1);
+  shape(seedRightX, 12, seedRightW, 51, 'root → ABCDEF', 'FULL 槽 40–45', 'hit', 1);
+  line([[left+seedLeftW,37],[seedRightX-2,37]],1,'call',false,
+    small ? undefined : '① checkpoint 建树', (left+seedLeftW+seedRightX)/2,29);
+
+  const treeX = small ? left : seedRightX;
+  const treeW = right-treeX;
+  const treeY = small ? 243 : 84;
+  const treeH = small ? 186 : 204;
+  const treeCenter = treeX+treeW/2;
+  const reqW = small ? right-left : seedLeftW;
+  const reqY = small ? 87 : 93;
+  const callerY = small ? 161 : 168;
+  const resultY = small ? treeY+treeH+30 : 246;
+  shape(left, reqY, reqW, 47, reached(2) ? '② 调度器取等待请求 R2' : '② 等待调度 R2',
+    'get_new_batch_prefill', 'owner', 2);
+  line([[left+reqW/2,reqY+47],[left+reqW/2,callerY-2]],2,'call',false,
+    '留 F 做前向',left+reqW/2+46,callerY-9);
+  shape(left, callerY, reqW, 50, 'Req.init_next_round_input',
+    reached(2) ? 'ABCXEF → match_kv_cache' : '待接收 R2', 'owner', [2,3]);
+
+  g.rect(treeX,treeY,treeW,treeH,{kind:'neutral',...visual([1,3,4,5,8]),rx:11});
+  if (small) {
+    line([[right,37],[routeX,37],[routeX,treeY+12],[right+2,treeY+12]],1,'hit');
+  } else {
+    line([[treeCenter,63],[treeCenter,treeY-2]],1,'hit');
+  }
+  note(treeCenter, treeY+22, hasSplit ? 'UnifiedRadixCache.match_prefix' : 'UnifiedRadixCache', 'mono', [1,3,4,5,8]);
+  const rootY = treeY+48;
+  note(treeCenter, rootY, 'root', 'mono', [1,3,5,8]);
+  const sharedY = treeY+65;
+  const sharedW = Math.min(treeW-26, 139);
+  line([[treeCenter,rootY+4],[treeCenter,sharedY-2]],hasSplit ? [3,5] : 1,'call').setAttribute('data-query-part','walk');
+  shape(treeCenter-sharedW/2,sharedY,sharedW,40,
+    hasSplit ? 'A B C' : 'A B C D E F',
+    hasSplit ? '槽 40 · 41 · 42' : '槽 40–45', 'hit', hasSplit ? [3,4,5,8] : 1);
+  const forkY = sharedY+52;
+  const leafY = treeY+(small ? 130 : 143);
+  const inset = 10;
+  const childGap = 10;
+  const leafW = (treeW-2*inset-childGap)/2;
+  const oldX = treeX+inset;
+  const freshX = oldX+leafW+childGap;
+  const oldCenter=oldX+leafW/2;
+  const freshCenter=freshX+leafW/2;
+  if (hasSplit) {
+    note(right-33,sharedY+25,'D ≠ X','mono',3);
+    line([[treeCenter,sharedY+40],[treeCenter,forkY],[oldCenter,forkY],[oldCenter,leafY-2]],3,'call');
+    shape(oldX,leafY,leafW,40,'D E F','槽 43 · 44 · 45','neutral',3);
+    if (hasNewLeaf) {
+      line([[treeCenter,forkY],[freshCenter,forkY],[freshCenter,leafY-2]],8,'new');
+      shape(freshX,leafY,leafW,40,'X E F','槽 70 · 71 · 72','new',8);
+    } else {
+      note(freshCenter,leafY+21,'X 分支尚未插入','small',[3,7]);
+    }
+  } else {
+    note(treeCenter,leafY+13,'R1 写入时只有一段压缩路径','small',1);
+  }
+
+  const resultTitle=reached(4) ? '④ 命中长度 3' : '④ 等待匹配结果';
+  const resultSub=reached(4) ? 'req.last_node = NodeId(ABC)' : 'req.last_node 待更新';
+  if (small) {
+    line([[center,callerY+50],[center,treeY-2]],3,'call',false,'③ 有效 key = ABCXE',center,treeY-10);
+    line([[center,treeY+treeH],[center,resultY-2]],4,'return',true,'④ MatchResult',center,resultY-10);
+  } else {
+    const reqRight = left+reqW;
+    line([[reqRight,callerY+19],[treeX-2,callerY+19]],3,'call',false,'③ key = ABCXE',(reqRight+treeX)/2,callerY+11);
+    line([[treeX,treeY+121],[treeX-12,treeY+121],[treeX-12,resultY+24],[reqRight+2,resultY+24]],4,'return',true,
+      '④ MatchResult',(reqRight+treeX-12)/2,resultY+15);
+  }
+  shape(left,resultY,reqW,46,resultTitle,resultSub,reached(4)?'hit':'neutral',4);
+
+  const slotY = small ? resultY+83 : 342;
+  const pairGap = small ? 12 : 30;
+  const pairW = (right-left-pairGap)/2;
+  const allocX = left+pairW+pairGap;
+  const oldMid = left+pairW/2;
+  const newMid = allocX+pairW/2;
+  const resultMid=left+reqW/2;
+  const dispatchY=slotY-20;
+  line([[resultMid,resultY+46],[resultMid,dispatchY],[oldMid,dispatchY],[oldMid,slotY-2]],5,'hit');
+  line([[resultMid,dispatchY],[newMid,dispatchY],[newMid,slotY-2]],5,'data');
+  shape(left,slotY,pairW,45,reached(5)?'⑤ 沿 ABC 取旧槽':'⑤ 取前缀槽位',
+    reached(5)?'FULL 索引 40–42':'R2 尚未取索引',reached(5)?'hit':'neutral',5);
+  shape(allocX,slotY,pairW,45,reached(5)?'⑤ 为 XEF 分配槽':'⑤ 分配新槽位',
+    reached(5)?'out_cache_loc 70–72':'尚未分配',reached(5)?'new':'neutral',5);
+
+  const rowY = slotY+94;
+  note(center,rowY-16,reached(6)?'⑥ 写入 R2 请求行 · token → KV 槽':'⑥ R2 请求行尚未写入','sub',6);
+  line([[oldMid,slotY+45],[oldMid,rowY-2]],6,'hit');
+  line([[newMid,slotY+45],[newMid,rowY-2]],6,'new');
+  const tokens=['A','B','C','X','E','F'];
+  const slots=[40,41,42,70,71,72];
+  const cellGap=3, splitGap=7;
+  const cellW=(right-left-4*cellGap-splitGap)/6;
+  tokens.forEach((token,i) => {
+    const x=left+i*(cellW+cellGap)+(i>=3 ? splitGap-cellGap : 0);
+    shape(x,rowY,cellW,43,reached(6)?token:'·',reached(6)?String(slots[i]):'—',
+      reached(6)?(i<3?'hit':'new'):'neutral',6);
+  });
+
+  const gpuY = rowY+85;
+  const gpuW = small ? Math.min(147,(right-left)*.46) : Math.min(230,(right-left)*.36);
+  const poolW = small ? Math.min(117,(right-left)*.37) : Math.min(210,(right-left)*.32);
+  const poolX=right-poolW;
+  line([[center,rowY+43],[center,gpuY-19],[left+gpuW/2,gpuY-19],[left+gpuW/2,gpuY-2]],7,'data');
+  shape(left,gpuY,gpuW,62,'⑦ Worker 前向',reached(7)?'input_ids = X E F':'等待 R2 的前向','owner',7);
+  const poolStatus = reached(7) ? '70–72 已写 KV' : reached(5) ? '70–72 待写 KV' : '40–45 已有 KV';
+  shape(poolX,gpuY,poolW,62,'设备 KV 池',poolStatus,reached(7)?'new':'neutral',[1,5,7]);
+  const port=left+gpuW, arrowMid=(port+poolX)/2;
+  line([[poolX,gpuY+20],[port+2,gpuY+20]],7,'hit',false,small?'读旧':'读 ABC · 槽 40–42',arrowMid,gpuY+14);
+  line([[port,gpuY+48],[poolX-2,gpuY+48]],7,'new',false,small?'写新':'写 XEF · 槽 70–72',arrowMid,gpuY+42);
+
+  const commitY=gpuY+105;
+  line([[left+gpuW/2,gpuY+62],[left+gpuW/2,commitY-2]],8,'return',true,
+    small?'采样 1 token，R2 完成':'⑧ 返回采样 token，R2 完成',left+gpuW/2,commitY-11);
+  shape(left,commitY,right-left,53,
+    small?'⑧ release_kv_cache → checkpoint':'⑧ release_kv_cache → checkpoint → insert',
+    reached(8)?(small?'insert(ABCXEF, [40,41,42,70,71,72])':'key = ABCXEF · value = [40,41,42,70,71,72]'):'R2 的新前缀尚未登记',
+    reached(8)?'new':'neutral',8);
+  if (hasNewLeaf) {
+    const turnY=leafY+30;
+    line([[right,commitY+27],[routeX,commitY+27],[routeX,turnY],[freshX+leafW+2,turnY]],
+       8,'new',false);
+  }
+  g.end(commitY+69);
+}
+
+
+  function draw(animate=false) {
+    const width = Math.floor(svg.getBoundingClientRect().width);
+    if(!width) return;
+    lastWidth=width;
+    svg.replaceChildren();
+    const step=cursors[engine];
+    svg.dataset.step=String(step);
+    svg.dataset.engine=engine;
+    const alt=step ? (engine==='vllm'?'vLLM':'SGLang')+'，第 '+step+' 步，'+actions[engine][step] : descriptions[engine];
+    svg.setAttribute('aria-label',alt);
+    el('title',{},alt);
+    const defs=el('defs');
+    for(const [kind,stroke] of Object.entries(strokes)) {
+      const m=el('marker',{id:'pk-tip-'+kind,viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:6,markerHeight:6,orient:'auto',markerUnits:'strokeWidth'},null,defs);
+      el('path',{d:'M 0 0 L 10 5 L 0 10 L 2.2 5 Z',fill:stroke},null,m);
+    }
+    const g={w:width,compact:width<600,step,phase:phaseFor(step),at:(...nums)=>!step||nums.includes(step),el,rect,node,text:textAt,edge,end(height){svg.setAttribute('viewBox','0 0 '+width+' '+height);svg.style.height=height+'px'}};
+    if(engine==='vllm') drawVllm(g); else drawSglang(g);
+    if(animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      for(const path of svg.querySelectorAll('g.kv-current>path')) {
+        const dot=el('circle',{r:4,fill:'var(--foreground)','pointer-events':'none'});
+        const motion=el('animateMotion',{dur:'0.7s',path:path.getAttribute('d'),begin:'indefinite',fill:'freeze'},null,dot);
+        motion.addEventListener('endEvent',()=>dot.remove(),{once:true});
+        motion.beginElement();
+      }
+    }
+  }
+  function refresh(animate=false) {
+    const step=cursors[engine],phase=phaseFor(step);
+    for (const b of phaseButtons) b.setAttribute('aria-pressed', String(Number(b.dataset.phase)===phase));
+    for (const b of tabs) {
+      const active=b.dataset.engine===engine;
+      b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active));
+      if(active) root.querySelector('[role="tabpanel"]').setAttribute('aria-labelledby',b.id);
+    }
+    const source=root.querySelector('[data-source]');
+    source.textContent=engine==='vllm'?'vLLM V1 · 单缓存组 g0 · 每块 2 个 token，按整块查找。块号为教学示例。':'SGLang · UnifiedRadixCache · 每页 1 个 token。槽位编号为教学示例。';
+    prev.disabled=step<=1;
+    next.disabled=step>=8;
+    play.textContent=playing?'暂停播放':'播放一次查找';
+    root.querySelector('[data-status]').textContent=step?'第 '+step+' / 8 步　'+actions[engine][step]:'全图　点「下一步」从 R1 建缓存开始';
+    draw(animate);
+  }
+  function save() {
+    window.openai?.setWidgetState?.({modelContent:{view:engine,step:cursors[engine],steps:{...cursors},diagramVersion:4}})?.catch(()=>{});
+  }
+  function stopPlayback() {
+    clearTimeout(timer);playing=false;
+  }
+  function go(step,animate=true) {
+    cursors[engine]=step;refresh(animate);save();
+  }
+  play.addEventListener('click',()=>{
+    if(playing){stopPlayback();refresh();return;}
+    const finish=engine==='vllm'?5:4;
+    playing=true;
+    function advance(step) {
+      if(step===finish)playing=false;
+      go(step);
+      if(playing)timer=setTimeout(()=>advance(step+1),1050);
+    }
+    advance(2);
+  });
+  prev.addEventListener('click',()=>{stopPlayback();go(Math.max(1,cursors[engine]-1),false)});
+  next.addEventListener('click',()=>{stopPlayback();go(Math.min(8,cursors[engine]+1))});
+  for(const b of phaseButtons) b.addEventListener('click',()=>{stopPlayback();go(phaseStarts[engine][Number(b.dataset.phase)])});
+  function restore(state) {
+    const st=state?.modelContent;
+    const supported=st?.diagramVersion===3 || st?.diagramVersion===4;
+    const view=supported && st.view==='sglang'?'sglang':'vllm';
+    const steps={vllm:0,sglang:0};
+    if(st?.diagramVersion===4) {
+      for(const id of Object.keys(steps))if(valid(st.steps?.[id]))steps[id]=st.steps[id];
+      if(!valid(st.steps?.[view]) && valid(st.step))steps[view]=st.step;
+    } else if(st?.diagramVersion===3 && Number.isInteger(st.phase) && st.phase>=0 && st.phase<=3) {
+      steps[view]=phaseStarts[view][st.phase];
+    }
+    if(lastWidth && engine===view && Object.keys(steps).every(id=>steps[id]===cursors[id]))return;
+    stopPlayback();engine=view;Object.assign(cursors,steps);refresh();
+  }
+  function syncTab(e) {
+    if(!e.target.closest?.('#prefix-kv-map [role="tab"]'))return;
+    const selected=tabs.find(b=>b.getAttribute('aria-selected')==='true');
+    if(selected && selected.dataset.engine!==engine) {stopPlayback();engine=selected.dataset.engine;refresh();save();}
+  }
+  window.addEventListener('click',syncTab);
+  window.addEventListener('keydown',syncTab);
+  window.addEventListener('openai:set_globals',e=>{
+    if(!e.detail?.globals || !('widgetState' in e.detail.globals))return;
+    restore(e.detail.globals.widgetState);
+  });
+  restore(window.openai?.widgetState);
+  new ResizeObserver(()=>{if(Math.floor(svg.getBoundingClientRect().width)!==lastWidth)draw()}).observe(root);
+})();
+</script>

@@ -102,6 +102,10 @@
                 <span class="flow-copy"><span class="flow-title">PagedAttention 的上下游数据流</span><span class="flow-description">跟随一个请求，看 Scheduler 分配块号、Worker 更新块表，以及每层 Attention 如何读写 KV。</span></span>
                 <span class="flow-tag">交互动画</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
+              <li><a class="flow" href="prefix-kv-cache/index.html" data-keywords="vLLM SGLang prefix caching prefix cache KVCache BlockPool UnifiedRadixCache 哈希表 前缀树 前缀复用 槽位">
+                <span class="flow-copy"><span class="flow-title">前缀 KV 缓存：哈希表与前缀树</span><span class="flow-description">逐步执行同一对请求，看 vLLM 查到哪个块、SGLang 如何拆开前缀树，以及 Worker 从哪里读写 KV。</span></span>
+                <span class="flow-tag">单步模拟</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
               <li><a class="flow" href="kv-offloading/index.html" data-keywords="vLLM Ascend KV Offloading OffloadingConnector CPU NPU HBM DRAM D2H H2D 卸载 回载 前缀复用 块映射">
                 <span class="flow-copy"><span class="flow-title">KV Offloading 的设备结构</span><span class="flow-description">追踪同一段前缀的 KV 如何从两个 NPU 块写入主存，再回载到另一个请求的新块。</span></span>
                 <span class="flow-tag">设备结构图</span><span class="flow-arrow" aria-hidden="true">↗</span>
