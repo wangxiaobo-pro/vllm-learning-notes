@@ -1827,6 +1827,12 @@ html&gt;body{padding:0}&lt;/style&gt;
   &lt;/style&gt;
   &lt;div class=&quot;choose&quot;&gt;&lt;h2&gt;注意力演算&lt;/h2&gt;&lt;label class=&quot;form-label&quot;&gt;&lt;span class=&quot;sr-only&quot;&gt;选择注意力机制&lt;/span&gt;&lt;select data-p=&quot;model&quot; class=&quot;form-select&quot;&gt;&lt;/select&gt;&lt;/label&gt;&lt;/div&gt;
   &lt;div data-p=&quot;param&quot; class=&quot;param&quot; hidden&gt;&lt;label for=&quot;attention-parameter&quot; data-p=&quot;paramname&quot; class=&quot;form-label&quot;&gt;&lt;/label&gt;&lt;input id=&quot;attention-parameter&quot; class=&quot;form-range&quot; type=&quot;range&quot; min=&quot;0&quot; step=&quot;1&quot; data-p=&quot;slider&quot;&gt;&lt;/div&gt;
+  &lt;div data-p=&quot;modes&quot; class=&quot;viz-controls&quot; role=&quot;group&quot; aria-label=&quot;CSA2 计算模式&quot; hidden&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-mode=&quot;0&quot; aria-pressed=&quot;true&quot;&gt;Full · 新建&lt;/button&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-mode=&quot;1&quot; aria-pressed=&quot;false&quot;&gt;Reindex · 重选&lt;/button&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-mode=&quot;2&quot; aria-pressed=&quot;false&quot;&gt;Reuse · 沿用&lt;/button&gt;
+  &lt;/div&gt;
+  &lt;p data-p=&quot;mode-description&quot; class=&quot;text-small&quot; hidden&gt;&lt;/p&gt;
   &lt;div class=&quot;viz-controls&quot; role=&quot;group&quot; aria-label=&quot;计算回放&quot;&gt;
     &lt;button type=&quot;button&quot; class=&quot;btn btn-primary&quot; data-p=&quot;next&quot;&gt;执行下一步&lt;/button&gt;
     &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-p=&quot;play&quot; aria-pressed=&quot;false&quot;&gt;自动执行&lt;/button&gt;
@@ -2057,7 +2063,7 @@ Object.assign(runSteps, {
     return {layer,p:painter(layer,w),frames:[],title:null};
   });
   const duration=1800,clamp=t=&gt;Math.max(0,Math.min(1,t));
-  let height=0,detailHeight=0,opened=false,cut=null,copy=null,lens=null,onSelect=null;
+  let height=0,opened=false,cut=null,copy=null,lens=null,divider=null,overviewLabel=null,onSelect=null;
   const lensBands={};
   function register(i,cb,opts={}){
     const ratio=(v,f)=&gt;v==null?f:v&gt;1?v/duration:v;
@@ -2133,20 +2139,25 @@ Object.assign(runSteps, {
       if(!lens){
         const defs=S(&#x27;defs&#x27;),clip=S(&#x27;clipPath&#x27;,{id:&#x27;live-crop&#x27;});
         cut=S(&#x27;rect&#x27;,{x:0,y:0,width:w});clip.append(cut);defs.append(clip);svg.prepend(defs);
-        lens=S(&#x27;g&#x27;,{&#x27;data-detail&#x27;:&#x27;&#x27;,&#x27;aria-hidden&#x27;:&#x27;true&#x27;,&#x27;pointer-events&#x27;:&#x27;none&#x27;});
+        lens=S(&#x27;g&#x27;,{&#x27;data-detail&#x27;:&#x27;&#x27;,&#x27;data-live-lens&#x27;:&#x27;&#x27;,&#x27;aria-hidden&#x27;:&#x27;true&#x27;,&#x27;pointer-events&#x27;:&#x27;none&#x27;});
         copy=S(&#x27;use&#x27;,{href:&#x27;#attention-art&#x27;});const crop=S(&#x27;g&#x27;,{&#x27;clip-path&#x27;:&#x27;url(#live-crop)&#x27;});crop.append(copy);lens.append(crop);
         const p=painter(lens,w);
-        p.line(5,detailHeight+5,w-5,detailHeight+5,{stroke:&#x27;line&#x27;});
-        p.text(6,detailHeight+24,&#x27;全流程 · 点图中步骤可重播&#x27;,{size:12,tone:&#x27;dim&#x27;});
+        divider=p.line(5,0,w-5,0,{stroke:&#x27;line&#x27;});
+        divider.setAttribute(&#x27;data-live-divider&#x27;,&#x27;&#x27;);
+        overviewLabel=p.text(6,0,&#x27;全流程 · 点图中步骤可重播&#x27;,{size:12,tone:&#x27;dim&#x27;});
         svg.append(lens);
       }
       opened=i&gt;=0&amp;&amp;enable;
-      const pad=opened?detailHeight+36:0;
+      let pad=0;
       if(opened){
         const from=lensBands[i]?.[0]??Math.max(0,layers[i].title.y-16);
         const to=lensBands[i]?.[1]??(layers[i+1]?layers[i+1].title.y-19:height);
-        cut.setAttribute(&#x27;height&#x27;,Math.min(detailHeight,Math.max(20,to-from+2)));
+        const detailHeight=Math.max(20,to-from+2);
+        cut.setAttribute(&#x27;height&#x27;,detailHeight);
         copy.setAttribute(&#x27;transform&#x27;,&#x27;translate(0 &#x27;+(-from)+&#x27;)&#x27;);
+        divider.setAttribute(&#x27;y1&#x27;,detailHeight+5);divider.setAttribute(&#x27;y2&#x27;,detailHeight+5);
+        overviewLabel.setAttribute(&#x27;y&#x27;,detailHeight+24);
+        pad=detailHeight+36;
       }
       lens.setAttribute(&#x27;display&#x27;,opened?&#x27;inline&#x27;:&#x27;none&#x27;);
       whole.setAttribute(&#x27;transform&#x27;,&#x27;translate(0 &#x27;+pad+&#x27;)&#x27;);
@@ -2161,9 +2172,6 @@ Object.assign(runSteps, {
         l.layer.setAttribute(&#x27;data-motions&#x27;,l.frames.length);
         for(const f of l.frames)f(1);
       });
-      detailHeight=Math.ceil(Math.max(...layers.map((l,i)=&gt;{
-        const band=lensBands[i];return band?band[1]-band[0]+2:(layers[i+1]?.title.y??(height+18))-l.title.y+2;
-      })));
       return height;
     }
   };
@@ -3139,26 +3147,34 @@ Object.assign(runSteps, {
   const R=attention(reindexIDs,[0,1],[[1,0],[0,1]]);
   const U=attention(reindexIDs,[-1,0],[[-1,0],[0,-1]]);
   const vector=v=&gt;&#x27;(&#x27;+v.map(x=&gt;fmt(x,4)).join(&#x27;, &#x27;)+&#x27;)&#x27;;
-  runSteps.csa2=()=&gt;[
-    {label:&#x27;看一组非重叠压缩&#x27;,value:&#x27;编码器教学 m=2。两个输入经内容门得到 ¼、¾ 的逐通道权重，原始摘要 (0.5,1.5) 经 RMSNorm 得 (0.4472,1.3416)。&#x27;},
-    {label:&#x27;Decoder Full 生成共享 KV&#x27;,value:&#x27;解码器教学 m=1。编码器输出乘 WKV 后归一化成为六条主 KV。索引 K 从旋转前的主 latent 投影并归一化得到。&#x27;},
-    {label:&#x27;Full 对六个位置打分&#x27;,value:&#x27;单索引头 qᴵ=(1,0)，分数 [1,0.8,0.96,0,0,0.6]。Top-2 为槽 1、3，供本 Full 层注意力读取。&#x27;},
-    {label:&#x27;按块最大分建立候选池&#x27;,value:&#x27;A、B、C 的最大索引分为 1、0.96、0.6。保留含最新位置的 C，再选 A，得到供后层检索的候选池 {1,2,5,6}。&#x27;},
-    {label:&#x27;Full 合并全局与局部读出&#x27;,value:&#x27;槽 1、3 与本层局部 t₅、t₆ 共用 softmax 分母，另加入 sink 的 exp(0)。主查询 (1,0) 得到 o=&#x27;+vector(F.out)+&#x27;。&#x27;},
-    {label:&#x27;Reindex 换查询、重选位置&#x27;,value:&#x27;沿用共享主 KV 与索引 K，在候选池内用 qᴵ=(0,1) 打分。选槽 5、2，以本层主 Q 与局部 KV 得到 o=&#x27;+vector(R.out)+&#x27;。&#x27;},
-    {label:&#x27;Reuse 沿用位置、重算注意力&#x27;,value:&#x27;沿用最近 Reindex 的 {5,2}。本层主查询换成 (−1,0)，局部 KV 也由本层生成。重新算权重得到 o=&#x27;+vector(U.out)+&#x27;。&#x27;},
-    {label:&#x27;各层输出交给残差路径&#x27;,value:&#x27;实际按逆 RoPE、组内低秩投影、组间输出投影返回隐藏空间。教学设逆 RoPE 与输出矩阵为单位映射，三个 y 分别为 &#x27;+[F,R,U].map(a=&gt;vector(a.out)).join(&#x27;、&#x27;)+&#x27;。&#x27;}
+  const modeData=[F,R,U],modeNames=[&#x27;Full&#x27;,&#x27;Reindex&#x27;,&#x27;Reuse&#x27;];
+  const normalizeMode=param=&gt;Math.max(0,Math.min(2,Math.trunc(Number(param)||0)));
+  const finalStep=mode=&gt;({label:&#x27;本层输出返回残差路径&#x27;,value:&#x27;核心结果先逆 RoPE，再经组内与组间输出投影。本例均为单位映射，&#x27;+modeNames[mode]+&#x27; 的 y=&#x27;+vector(modeData[mode].out)+&#x27;。&#x27;});
+  const mainStep=mode=&gt;({label:&#x27;本层 Q 与局部 KV 参与注意力&#x27;,value:&#x27;读取选中槽位与本层局部 t₅、t₆，一起做 softmax，并加入零分数 sink。本层主查询为 &#x27;+vector(modeData[mode].query)+&#x27;，得到 o=&#x27;+vector(modeData[mode].out)+&#x27;。&#x27;});
+  const sequences=[
+    [
+      {label:&#x27;独立压缩示意&#x27;,value:&#x27;编码器 m=2 的非重叠组。内容门产生 ¼、¾，合并后为 (0.5,1.5)，RMSNorm 得 (0.4472,1.3416)。此 inset 与下方 decoder 六槽算例独立。&#x27;},
+      {label:&#x27;Full 新建共享缓存&#x27;,value:&#x27;Decoder m=1。从编码器输出 Hsrc 生成主 C，再由旋转前的主 latent 投影、归一化生成索引 kᴵ。六个位置均已可见。&#x27;},
+      {label:&#x27;全范围索引&#x27;,value:&#x27;Full 以 qᴵ=(1,0) 对六槽打分，得到 [1,0.8,0.96,0,0,0.6]。本层读取 Top-2 {1,3}。&#x27;},
+      {label:&#x27;建立后层候选池&#x27;,value:&#x27;块 A、B、C 最大分为 1、0.96、0.6。保留最新位置所在 C，再选其余最大块 A，输出候选池 P={1,2,5,6}。&#x27;},
+      mainStep(0),finalStep(0)
+    ],
+    [
+      {label:&#x27;接收 Full 的共享数据&#x27;,value:&#x27;本层接收最近 Full 产生的主 C、索引 kᴵ 与候选池 P={1,2,5,6}。六槽缓存完整保留。&#x27;},
+      {label:&#x27;换查询，池内重新选&#x27;,value:&#x27;本层 qᴵ=(0,1)，在 P 中计算索引分 [0,0.6,0.8,0]，按分数选出 {5,2}，发布新的 Top-2。&#x27;},
+      mainStep(1),finalStep(1)
+    ],
+    [
+      {label:&#x27;接收主缓存与最新下标&#x27;,value:&#x27;从最近 Full 接收主 C，并从最近 Reindex 接收 {5,2}。本层按这些下标取值，继续使用本层自己的主 Q 和局部 KV。&#x27;},
+      mainStep(2),finalStep(2)
+    ]
   ];
+  runSteps.csa2=param=&gt;sequences[normalizeMode(param)];
   const text=(p,x,y,s,o={})=&gt;p.text(x,y,s,{size:13,...o});
   const mid=(p,x,y,s,o={})=&gt;text(p,x,y,s,{anchor:&#x27;middle&#x27;,...o});
   const rect=(p,x,y,w,h,fill=&#x27;soft&#x27;,stroke=&#x27;none&#x27;)=&gt;p.rect(x,y,w,h,{fill,stroke,rx:3,sw:1});
-  const path=(p,pts,tone=&#x27;line&#x27;)=&gt;p.path(pts.map(([x,y],i)=&gt;(i?&#x27;L&#x27;:&#x27;M&#x27;)+x+&#x27; &#x27;+y).join(&#x27; &#x27;),{fill:&#x27;none&#x27;,stroke:tone,sw:1.2});
-  function arrow(p,x1,y1,x2,y2,tone=&#x27;s1&#x27;){
-    const theta=Math.atan2(y2-y1,x2-x1),a=Math.cos(theta),b=Math.sin(theta);
-    return p.path(&#x27;M&#x27;+x1+&#x27; &#x27;+y1+&#x27; L&#x27;+x2+&#x27; &#x27;+y2+&#x27; M&#x27;+(x2-5*a+3*b)+&#x27; &#x27;+(y2-5*b-3*a)+&#x27; L&#x27;+x2+&#x27; &#x27;+y2+&#x27; L&#x27;+(x2-5*a-3*b)+&#x27; &#x27;+(y2-5*b+3*a),{fill:&#x27;none&#x27;,stroke:tone,sw:1.4});
-  }
   function row(d,p,y,label,values,tone=0,selected=[]){
-    const labelW=45,cw=(d.w-labelW-9)/values.length,cx=i=&gt;labelW+(i+.5)*cw;
+    const labelW=55,cw=(d.w-labelW-9)/values.length,cx=i=&gt;labelW+(i+.5)*cw;
     text(p,7,y+15,label,{size:12,tone:&#x27;dim&#x27;});
     const nodes=values.map((v,i)=&gt;{
       rect(p,labelW+i*cw+1,y,cw-3,22,selected.includes(i)?&#x27;soft1&#x27;:tone?&#x27;soft&#x27;+tone:&#x27;soft&#x27;);
@@ -3167,7 +3183,7 @@ Object.assign(runSteps, {
     return {nodes,cx,cw};
   }
   function scoreRow(d,p,stage,y,values,ids,selected){
-    const labelW=45,cw=(d.w-labelW-9)/6,cx=i=&gt;labelW+(i+.5)*cw,base=y+66;
+    const labelW=55,cw=(d.w-labelW-9)/6,cx=i=&gt;labelW+(i+.5)*cw,base=y+66;
     text(p,7,y+15,&#x27;槽&#x27;,{size:12,tone:&#x27;dim&#x27;});
     text(p,7,base-8,&#x27;I&#x27;,{size:12,tone:&#x27;dim&#x27;});
     for(let j=0;j&lt;6;j++){
@@ -3182,7 +3198,7 @@ Object.assign(runSteps, {
     }
     return {cx,bottom:base+24};
   }
-  function attn(d,p,stage,y,a){
+  function attn(d,p,stage,y,a,mode){
     const centers=[d.w*.25,d.w*.75],cellWidth=Math.min(172,d.w*.43);
     a.local.forEach((v,i)=&gt;{
       mid(p,centers[i],y,&#x27;本层输入 h&#x27;+(i+5),{size:12,tone:&#x27;dim&#x27;});
@@ -3190,7 +3206,7 @@ Object.assign(runSteps, {
       mid(p,centers[i],y+24,&#x27;√2&#x27;+vector(v),{size:12});
     });
     text(p,8,y+50,&#x27;局部 KV=RMSNorm(h I)&#x27;,{size:12});
-    const qFormula=stage===6?&#x27;q=(h₆,₂/√2, 0)&#x27;:&#x27;q=h₆/√2&#x27;;
+    const qFormula=mode===2?&#x27;q=(h₆,₂/√2, 0)&#x27;:&#x27;q=h₆/√2&#x27;;
     text(p,8,y+70,qFormula+&#x27; = &#x27;+vector(a.query),{size:13});
     y+=93;
     text(p,8,y,&#x27;z=q·KV/√2　 α=softmax([z₁,z₂,z₃,z₄,0])&#x27;,{size:d.w&lt;350?11.5:13});
@@ -3216,103 +3232,122 @@ Object.assign(runSteps, {
     for(let j=0;j&lt;4;j++)d.travel(stage,[[labels.cx(j),y+186],[labels.cx(j),y+194],[d.w-12,y+194],[d.w-12,y+219]],{delay:j*.16,dur:.34,tone:j&lt;2?&#x27;s1&#x27;:&#x27;s2&#x27;});
     return y+243;
   }
-  scenes.csa2=d=&gt;{
-    const w=d.w,pad=8;
-    let p=d.stage(0,19,&#x27;独立示意 · 编码器 m=2 非重叠压缩&#x27;);
-    const cx=[w*.24,w*.74],pairW=Math.min(148,w*.42);
-    [&#x27;t₁ + t₂ → 摘要 A&#x27;,&#x27;t₃ + t₄ → 摘要 B&#x27;].forEach((s,i)=&gt;{
-      rect(p,cx[i]-pairW/2,31,pairW,25,&#x27;soft1&#x27;);mid(p,cx[i],48,s,{size:12});
+  function compressionInset(d){
+    const p=d.stage(0,19,&#x27;独立示意 · 编码器 m=2 非重叠组&#x27;),w=d.w;
+    const centers=[w*.25,w*.75],box=Math.min(152,w*.44);
+    [&#x27;t₁,t₂ → 摘要 A&#x27;,&#x27;t₃,t₄ → 摘要 B&#x27;].forEach((s,i)=&gt;{
+      rect(p,centers[i]-box/2,31,box,23,&#x27;soft1&#x27;);mid(p,centers[i],47,s,{size:12});
     });
-    text(p,8,77,&#x27;A 的输入　h₁=(2,0)　h₂=(0,2)&#x27;,{size:12});
-    text(p,8,97,&#x27;Cᵢ=hᵢWKV　 Zᵢ=hᵢWZ　→　通道门&#x27;,{size:12});
-    const gateY=108,gw=w-16;
-    const left=rect(p,8,gateY,gw*.25,12,&#x27;s1&#x27;),right=rect(p,8+gw*.25,gateY,gw*.75,12,&#x27;s2&#x27;);
-    d.change(0,t=&gt;{const a=.5-.25*t;left.setAttribute(&#x27;width&#x27;,gw*a);right.setAttribute(&#x27;x&#x27;,8+gw*a);right.setAttribute(&#x27;width&#x27;,gw*(1-a));});
-    mid(p,8+gw*.125,gateY+28,&#x27;¼ · h₁&#x27;,{size:12});mid(p,8+gw*.625,gateY+28,&#x27;¾ · h₂&#x27;,{size:12});
-    text(p,8,158,&#x27;¼(2,0)+¾(0,2)=(0.5,1.5)&#x27;,{size:13});
-    text(p,8,179,&#x27;RMSNorm → A=(0.4472,1.3416)&#x27;,{weight:500,size:13});
-    text(p,8,201,&#x27;WKV=I　 WZ=[[0,0],[ln3/2,ln3/2]]&#x27;,{size:12,tone:&#x27;dim&#x27;});
-    text(p,8,221,&#x27;教学　RMS γ=1、ε=0，RoPE=I，忽略量化&#x27;,{size:12,tone:&#x27;dim&#x27;});
-    let y=254;p=d.stage(1,y,&#x27;Decoder Full · m=1，生成共享缓存&#x27;);
-    text(p,pad,y+23,&#x27;编码器输出 Hsrc → C=RMSNorm(Hsrc WKV)&#x27;,{size:w&lt;350?11.5:13});
-    text(p,pad,y+44,&#x27;本例 Hsrc=C=√2 u，WKV=I&#x27;,{size:12});
-    row(d,p,y+55,&#x27;槽&#x27;,[1,2,3,4,5,6]);
-    row(d,p,y+80,&#x27;u₁&#x27;,unit.map(v=&gt;fmt(v[0])),1);
-    row(d,p,y+105,&#x27;u₂&#x27;,unit.map(v=&gt;fmt(v[1])),1);
-    const idx=row(d,p,y+143,&#x27;索引 K&#x27;,unit.map((_,i)=&gt;&#x27;k&#x27;+(i+1)),2);
-    for(let j=0;j&lt;6;j++){
-      const line=arrow(p,idx.cx(j),y+131,idx.cx(j),y+140);
-      d.trace(1,line,{delay:j*.05,dur:.5});d.move(1,idx.nodes[j],0,-13,{delay:j*.05,dur:.5});
+    text(p,8,75,&#x27;A 的 h₁=(2,0)，h₂=(0,2)，WKV=I&#x27;,{size:12});
+    text(p,8,95,&#x27;WZ=[[0,0],[ln3/2,ln3/2]]&#x27;,{size:12});
+    text(p,8,115,&#x27;Z₁=(0,0)，Z₂=(ln3,ln3) → 门 ¼、¾&#x27;,{size:12});
+    const ww=w-16,left=rect(p,8,125,ww/4,10,&#x27;s1&#x27;),right=rect(p,8+ww/4,125,ww*.75,10,&#x27;s2&#x27;);
+    d.change(0,t=&gt;{const a=1/(1+Math.exp(t*Math.log(3)));left.setAttribute(&#x27;width&#x27;,ww*a);right.setAttribute(&#x27;x&#x27;,8+ww*a);right.setAttribute(&#x27;width&#x27;,ww*(1-a));});
+    text(p,8,156,&#x27;¼h₁+¾h₂=(0.5,1.5)&#x27;,{size:12});
+    text(p,8,177,&#x27;RMSNorm → (0.4472,1.3416)&#x27;,{size:13,weight:500});
+    text(p,8,197,&#x27;以下 decoder 六槽是另一个独立教学例。&#x27;,{size:12,tone:&#x27;dim&#x27;});
+    return 230;
+  }
+  function sharedRows(d,p,stage,y,mode){
+    const selected=mode===2?reindexIDs:[];
+    row(d,p,y,&#x27;槽&#x27;,[1,2,3,4,5,6],0,selected);
+    const a=row(d,p,y+24,&#x27;u₁&#x27;,unit.map(v=&gt;fmt(v[0])),1,selected);
+    const b=row(d,p,y+48,&#x27;u₂&#x27;,unit.map(v=&gt;fmt(v[1])),1,selected);
+    [a,b].forEach(r=&gt;r.nodes.forEach((node,i)=&gt;d.move(stage,node,0,-10,{delay:i*.045,dur:.55})));
+    return y+74;
+  }
+  function receive(d,mode){
+    const p=d.stage(0,19,mode===1?&#x27;Reindex · 接收 Full 的缓存与候选池&#x27;:&#x27;Reuse · 接收共享缓存与最新 Top-2&#x27;),w=d.w;
+    if(mode===1){
+      text(p,8,43,&#x27;最近 Full → 主 C、索引 kᴵ、候选池 P&#x27;,{size:12});
+      text(p,8,63,&#x27;本例 C=kᴵ=√2u，下表保留六条完整缓存。&#x27;,{size:12});
+    }else{
+      text(p,8,43,&#x27;最近 Full → C；最近 Reindex → {5,2}&#x27;,{size:12});
+      text(p,8,63,&#x27;本例主 C=√2u，按继承的下标读取。&#x27;,{size:12});
     }
-    text(p,8,y+187,&#x27;kᴵ=RMSNorm(C WᴵK)=C，本例 WᴵK=I&#x27;,{size:12});
-    text(p,8,y+208,&#x27;共享源 Full 层持有 C 与 kᴵ · 六槽均已可见&#x27;,{size:12,tone:&#x27;dim&#x27;});
-    y+=241;p=d.stage(2,y,&#x27;Full 索引 · 每个可见槽各算一分&#x27;);
-    text(p,8,y+24,&#x27;qᴵ=(1,0)　 Iⱼ=ReLU(qᴵ·kᴵⱼ)/√2&#x27;,{size:12});
-    const scored=scoreRow(d,p,2,y+37,indexFull,[0,1,2,3,4,5],fullIDs);
-    text(p,8,scored.bottom+15,&#x27;Full 自用 Top-2　{1,3}&#x27;,{weight:500});
-    d.travel(2,[[scored.cx(0),scored.bottom-3],[scored.cx(0),scored.bottom+3],[w-19,scored.bottom+3]],{delay:.5,dur:.5});
-    y=scored.bottom+49;p=d.stage(3,y,&#x27;块内取 max · 建立后层候选池&#x27;);
-    const bw=(w-24)/3,bx=i=&gt;8+i*(bw+4),bc=i=&gt;bx(i)+bw/2;
-    const blocks=[[&#x27;A&#x27;,&#x27;槽 1,2&#x27;,&#x27;max(1,.8)=1&#x27;],[&#x27;B&#x27;,&#x27;槽 3,4&#x27;,&#x27;max(.96,0)=.96&#x27;],[&#x27;C&#x27;,&#x27;槽 5,6&#x27;,&#x27;max(0,.6)=.6&#x27;]];
-    blocks.forEach(([name,slots,val],i)=&gt;{
-      rect(p,bx(i),y+13,bw,58,i===1?&#x27;soft&#x27;:&#x27;soft1&#x27;,i===1?&#x27;line&#x27;:&#x27;s1&#x27;);
-      mid(p,bc(i),y+29,name+&#x27; · &#x27;+slots,{size:12});mid(p,bc(i),y+49,val,{size:11});
-      mid(p,bc(i),y+65,i===2?&#x27;最新块 · 保留&#x27;:i===0?&#x27;其余最大 · 选&#x27;:&#x27;跳过&#x27;,{size:11});
-      const fill=rect(p,bx(i)+5,y+75,(bw-10)*[1,.96,.6][i],5,i===1?&#x27;line&#x27;:&#x27;s1&#x27;);d.grow(3,fill,&#x27;x&#x27;);
+    let y=sharedRows(d,p,0,76,mode);
+    if(mode===1){
+      const r=row(d,p,y+7,&#x27;P&#x27;,[1,2,5,6],2);
+      r.nodes.forEach((n,i)=&gt;d.move(0,n,0,-10,{delay:.1*i,dur:.5}));
+      text(p,8,y+48,&#x27;继承的 P={1,2,5,6}，限定本层检索范围。&#x27;,{size:12});
+      y+=68;
+    }else{
+      const r=row(d,p,y+7,&#x27;Top-2&#x27;,[5,2],2);
+      r.nodes.forEach((n,i)=&gt;d.move(0,n,0,-13,{delay:.12*i,dur:.6}));
+      text(p,8,y+48,&#x27;gather(C,{5,2}) → 本层主注意力&#x27;,{size:13});
+      y+=68;
+    }
+    text(p,8,y+4,&#x27;教学 RMS γ=1、ε=0；RoPE=I；忽略量化。&#x27;,{size:12,tone:&#x27;dim&#x27;});
+    return y+36;
+  }
+  function fullCache(d,y){
+    const p=d.stage(1,y,&#x27;Decoder Full · 从 Hsrc 生成 C 与 kᴵ&#x27;);
+    text(p,8,y+23,&#x27;C=RMSNorm(Hsrc WKV)，m=1&#x27;,{size:12});
+    text(p,8,y+43,&#x27;编码器输出 Hsrc=√2u，WKV=I → C=√2u&#x27;,{size:12});
+    let end=sharedRows(d,p,1,y+53,0);
+    text(p,8,end+17,&#x27;kᴵ=RMSNorm(C WᴵK)=C，WᴵK=I&#x27;,{size:12});
+    text(p,8,end+38,&#x27;kᴵ 源于 RoPE 前的主 latent。六槽均已可见。&#x27;,{size:12,tone:&#x27;dim&#x27;});
+    text(p,8,end+59,&#x27;教学 RMS γ=1、ε=0；RoPE=I；忽略量化。&#x27;,{size:12,tone:&#x27;dim&#x27;});
+    return end+91;
+  }
+  function index(d,stage,y,mode){
+    const p=d.stage(stage,y,mode===0?&#x27;Full · 六槽打分，选本层 Top-2&#x27;:&#x27;Reindex · 换查询，在 P 内重选&#x27;);
+    text(p,8,y+23,mode===0?&#x27;本层 h₆=√2(1,0) → qᴵ=h₆/√2=(1,0)&#x27;:&#x27;本层 h₆=√2(0,1) → qᴵ=h₆/√2=(0,1)&#x27;,{size:12});
+    text(p,8,y+43,&#x27;单索引头权重 1，Iⱼ=ReLU(qᴵ·kᴵⱼ)/√2&#x27;,{size:12});
+    const values=mode===0?indexFull:unit.map(v=&gt;Math.max(0,v[1]));
+    const r=scoreRow(d,p,stage,y+53,values,mode===0?[0,1,2,3,4,5]:pool,mode===0?fullIDs:reindexIDs);
+    text(p,8,r.bottom+17,mode===0?&#x27;本层使用 Top-2 {1,3}&#x27;:&#x27;本层重选 Top-2 {5,2}，传给后续 Reuse&#x27;,{size:13,weight:500});
+    return r.bottom+49;
+  }
+  function candidates(d,y){
+    const p=d.stage(3,y,&#x27;按块最大分建立后层候选池&#x27;),w=d.w,bw=(w-24)/3,bx=i=&gt;8+i*(bw+4),bc=i=&gt;bx(i)+bw/2;
+    [[&#x27;A&#x27;,&#x27;槽1,2&#x27;,&#x27;max(1,.8)=1&#x27;],[&#x27;B&#x27;,&#x27;槽3,4&#x27;,&#x27;max(.96,0)=.96&#x27;],[&#x27;C&#x27;,&#x27;槽5,6&#x27;,&#x27;max(0,.6)=.6&#x27;]].forEach(([name,slots,score],i)=&gt;{
+      rect(p,bx(i),y+14,bw,57,i===1?&#x27;soft&#x27;:&#x27;soft1&#x27;,i===1?&#x27;line&#x27;:&#x27;s1&#x27;);
+      mid(p,bc(i),y+30,name+&#x27; · &#x27;+slots,{size:12});mid(p,bc(i),y+49,score,{size:11});
+      mid(p,bc(i),y+65,i===2?&#x27;最新块 · 必选&#x27;:i===0?&#x27;其余最大 · 选&#x27;:&#x27;跳过&#x27;,{size:11});
+      d.grow(3,rect(p,bx(i)+5,y+76,(bw-10)*[1,.96,.6][i],5,i===1?&#x27;line&#x27;:&#x27;s1&#x27;),&#x27;x&#x27;);
     });
-    text(p,8,y+104,&#x27;候选池 P　{1,2,5,6} · 供后层重新检索&#x27;,{size:12});
-    const candidates=row(d,p,y+114,&#x27;P&#x27;,[1,2,5,6],1);
-    [0,0,2,2].forEach((src,j)=&gt;d.travel(3,[[bc(src),y+83],[bc(src),y+89],[candidates.cx(j),y+89],[candidates.cx(j),y+114]],{delay:.1*j,dur:.6}));
-    text(p,8,y+156,&#x27;Top-2 选“读谁”　候选池限定“在哪找”&#x27;,{size:12,tone:&#x27;dim&#x27;});
-    y+=190;p=d.stage(4,y,&#x27;Full · 选中的主 KV 与本层窗口一起读&#x27;);
-    y=attn(d,p,4,y+27,F)+25;
-    p=d.stage(5,y,&#x27;Reindex · 共用 C、kᴵ，换查询重选&#x27;);
-    text(p,8,y+24,&#x27;共享源 Full → C、kᴵ　新 qᴵ=(0,1)&#x27;,{size:12});
-    const scores=unit.map(v=&gt;Math.max(0,v[1]));
-    const r=scoreRow(d,p,5,y+36,scores,pool,reindexIDs);
-    text(p,8,r.bottom+16,&#x27;仅在 P 内 Top-2　{5,2} → 本层读取&#x27;,{weight:500,size:13});
-    y=attn(d,p,5,r.bottom+43,R)+25;
-    p=d.stage(6,y,&#x27;Reuse · 沿用最新选择，用本层 Q 读&#x27;);
-    const bx1=w*.24,bx2=w*.74,bww=Math.min(148,w*.42);
-    rect(p,bx1-bww/2,y+14,bww,32,&#x27;soft1&#x27;);rect(p,bx2-bww/2,y+14,bww,32,&#x27;soft2&#x27;);
-    mid(p,bx1,y+35,&#x27;Full 的共享 C&#x27;,{size:12});mid(p,bx2,y+35,&#x27;Reindex 的 {5,2}&#x27;,{size:12});
-    [bx1,bx2].forEach((x,i)=&gt;{
-      const pts=[[x,y+47],[x,y+55],[w/2,y+55],[w/2,y+61]];
-      path(p,pts,i?&#x27;s2&#x27;:&#x27;s1&#x27;);d.travel(6,pts,{tone:i?&#x27;s2&#x27;:&#x27;s1&#x27;,delay:.12*i,dur:.5});
-    });
-    mid(p,w/2,y+76,&#x27;gather(C, {5,2})&#x27;,{size:13});
-    y=attn(d,p,6,y+107,U)+25;
-    p=d.stage(7,y,&#x27;跨层共享同一份缓存 · 分别输出&#x27;);
-    const col=(w-16)/3,centers=[0,1,2].map(i=&gt;8+(i+.5)*col);
-    [&#x27;Full&#x27;,&#x27;Reindex&#x27;,&#x27;Reuse&#x27;].forEach((name,i)=&gt;{
-      mid(p,centers[i],y+24,name,{weight:500});
-      rect(p,8+i*col+1,y+35,col-3,24,&#x27;soft1&#x27;);
-      mid(p,centers[i],y+52,[&#x27;产 C,kᴵ&#x27;,&#x27;读 C,kᴵ&#x27;,&#x27;读 C&#x27;][i],{size:12});
-      rect(p,8+i*col+1,y+91,col-3,24,i===2?&#x27;soft2&#x27;:&#x27;soft&#x27;);
-      mid(p,centers[i],y+108,[&#x27;选 {1,3}&#x27;,&#x27;重选 {5,2}&#x27;,&#x27;沿用 {5,2}&#x27;][i],{size:12});
-      mid(p,centers[i],y+148,&#x27;本层 Q + SWA&#x27;,{size:11,tone:&#x27;dim&#x27;});
-      const a=[F,R,U][i];rect(p,8+i*col+1,y+158,col-3,44,&#x27;soft2&#x27;);
-      const o1=mid(p,centers[i],y+176,fmt(a.out[0],4),{size:13}),o2=mid(p,centers[i],y+194,fmt(a.out[1],4),{size:13});
-      d.move(7,o1,0,-9,{delay:i*.15,dur:.5});d.move(7,o2,0,-9,{delay:i*.15,dur:.5});
-    });
-    [1,2].forEach(i=&gt;{
-      const pts=[[centers[0],y+60],[centers[0],y+72],[centers[i],y+72],[centers[i],y+60]];
-      d.trace(7,path(p,pts,&#x27;s1&#x27;),{delay:i*.1,dur:.55});
-      arrow(p,centers[i],y+72,centers[i],y+60);
-      d.travel(7,pts,{delay:i*.1,dur:.55});
-    });
-    const copyIDs=[[centers[1],y+116],[centers[1],y+128],[centers[2],y+128],[centers[2],y+116]];
-    d.trace(7,path(p,copyIDs,&#x27;s2&#x27;),{delay:.3,dur:.5});arrow(p,centers[2],y+128,centers[2],y+116,&#x27;s2&#x27;);
-    d.travel(7,copyIDs,{delay:.3,dur:.5,tone:&#x27;s2&#x27;});
-    text(p,8,y+226,&#x27;o → 逆 RoPE → 组内 Wₒᵃ → 拼接 → Wₒᵇ → y&#x27;,{size:w&lt;350?11:13});
-    text(p,8,y+248,&#x27;教学单头，Wₒᵃ=Wₒᵇ=I，因此 y=o&#x27;,{size:12});
-    const table=[
-      [&#x27;本图&#x27;,&#x27;m=1&#x27;,&#x27;Top-2&#x27;,&#x27;池 2×2&#x27;,&#x27;窗 2&#x27;],
-      [&#x27;V4.1&#x27;,&#x27;m=1&#x27;,&#x27;Top-512&#x27;,&#x27;池 2048×8&#x27;,&#x27;窗128&#x27;]
-    ];
-    const xx=[8,w*.25,w*.46,w*.71,w*.93];
-    table.forEach((vals,i)=&gt;vals.forEach((value,j)=&gt;text(p,xx[j],y+277+i*21,value,{anchor:j?&#x27;middle&#x27;:&#x27;start&#x27;,size:11.5,tone:&#x27;dim&#x27;})));
-    d.finish(y+315);
+    const r=row(d,p,y+95,&#x27;P&#x27;,[1,2,5,6],1);
+    r.nodes.forEach((n,i)=&gt;d.move(3,n,bc(i&lt;2?0:2)-r.cx(i),-12,{delay:.1*i,dur:.55}));
+    text(p,8,y+139,&#x27;P 限定后层搜索范围，Full 仍读取 {1,3}。&#x27;,{size:12});
+    return y+173;
+  }
+  function result(d,stage,y,mode){
+    const p=d.stage(stage,y,modeNames[mode]+&#x27; · 输出返回本层残差路径&#x27;),a=modeData[mode],w=d.w;
+    text(p,8,y+23,&#x27;o → 逆 RoPE → 组内 Wₒᵃ → 拼接 → Wₒᵇ&#x27;,{size:12});
+    text(p,8,y+44,&#x27;教学单头，两级 Wₒ=I，逆 RoPE=I → y=o&#x27;,{size:12});
+    rect(p,8,y+56,w-16,31,&#x27;soft3&#x27;);
+    const output=mid(p,w/2,y+77,&#x27;y = &#x27;+vector(a.out),{size:15,weight:500});
+    d.move(stage,output,0,-12,{dur:.7});
+    const carry=mode===0?&#x27;向后层提供 C、kᴵ、P、{1,3}&#x27;:mode===1?&#x27;共享 C、kᴵ 保持，发布本层 {5,2}&#x27;:&#x27;本层输出来自自己的 Q、局部 KV 与新权重&#x27;;
+    text(p,8,y+111,carry,{size:12});
+    text(p,8,y+137,&#x27;本图 m=1 · Top-2 · 池 2×2 · 窗 2&#x27;,{size:11.5,tone:&#x27;dim&#x27;});
+    text(p,8,y+157,&#x27;V4.1 m=1 · Top-512 · 池 2048×8 · 窗 128&#x27;,{size:11.5,tone:&#x27;dim&#x27;});
+    d.finish(y+176);
+  }
+  scenes.csa2=(d,param=0)=&gt;{
+    const mode=normalizeMode(param);
+    let y;
+    if(mode===0){
+      y=compressionInset(d);
+      y=fullCache(d,y);
+      y=index(d,2,y,0);
+      y=candidates(d,y);
+      const p=d.stage(4,y,&#x27;Full · 主 KV 与本层窗口共同取值&#x27;);
+      y=attn(d,p,4,y+28,F,mode)+26;
+      result(d,5,y,mode);
+    }else if(mode===1){
+      y=receive(d,mode);
+      y=index(d,1,y,mode);
+      const p=d.stage(2,y,&#x27;Reindex · 重选 KV 与本层窗口取值&#x27;);
+      y=attn(d,p,2,y+28,R,mode)+26;
+      result(d,3,y,mode);
+    }else{
+      y=receive(d,mode);
+      const p=d.stage(1,y,&#x27;Reuse · 自己的 Q 与局部 KV 重算&#x27;);
+      y=attn(d,p,1,y+28,U,mode)+26;
+      result(d,2,y,mode);
+    }
   };
 })();
 
@@ -3345,6 +3380,11 @@ Object.assign(runSteps, {
   const query=range(8,j=&gt;&#x27;当前查询 q&#x27;+subs[j+1]);
   const parameters={mha:heads,mqa:heads,gqa:heads,paged:range(4,j=&gt;&#x27;跟踪缓存地址 · &#x27;+[&#x27;t₁&#x27;,&#x27;t₂&#x27;,&#x27;t₃&#x27;,&#x27;t₄&#x27;][j]),swa:query,streaming:query,block:range(8,j=&gt;&#x27;当前查询 q&#x27;+subs[8-j])};
   const defaults={paged:3,swa:7,streaming:7},reduce=matchMedia(&#x27;(prefers-reduced-motion: reduce)&#x27;);
+  const modes=[
+    {name:&#x27;Full&#x27;,description:&#x27;新建主 KV 与索引 K → 全域打分 → 选位置、建候选池 → 本层注意力输出&#x27;},
+    {name:&#x27;Reindex&#x27;,description:&#x27;接收 Full 的缓存和候选池 → 新索引 Q 重选位置 → 本层注意力输出&#x27;},
+    {name:&#x27;Reuse&#x27;,description:&#x27;接收主 KV 和最近选中的位置 → 新主 Q、局部 KV → 本层注意力输出&#x27;}
+  ];
   const DURATION=1800,HOLD=550;
   let id=&#x27;csa2&#x27;,param=0,steps=[],index=-1,art=null,svg=null,auto=false,paused=false,elapsed=0,raf=0,last=0,detail=false,width=0;
   function displayControls(){
@@ -3356,7 +3396,7 @@ Object.assign(runSteps, {
     el(&#x27;result&#x27;).textContent=s?&#x27;。&#x27;+s.value:&#x27;。点击执行下一步，或点图中某一步重播。&#x27;;
   }
   function persist(){
-    window.openai?.setWidgetState?.({modelContent:{mechanism:id},privateContent:{platesVersion:3,param,stepIndex:index}})?.catch?.(()=&gt;{});
+    window.openai?.setWidgetState?.({modelContent:{mechanism:id,...(id===&#x27;csa2&#x27;?{csa2Mode:modes[param].name}:{})},privateContent:{platesVersion:4,param,stepIndex:index}})?.catch?.(()=&gt;{});
   }
   function frameAt(t){
     if(!art)return;
@@ -3401,7 +3441,7 @@ Object.assign(runSteps, {
   function draw(){
     const w=host.clientWidth;if(!w)return;
     width=w;svg=S(&#x27;svg&#x27;,{class:&#x27;plate-svg&#x27;,role:&#x27;img&#x27;});
-    svg.prepend(S(&#x27;title&#x27;,{},modelSelect.selectedOptions[0].textContent),S(&#x27;desc&#x27;,{},steps.map(s=&gt;s.label+&#x27;。&#x27;+s.value).join(&#x27; &#x27;)));
+    svg.prepend(S(&#x27;title&#x27;,{},modelSelect.selectedOptions[0].textContent+(id===&#x27;csa2&#x27;?&#x27; · &#x27;+modes[param].name:&#x27;&#x27;)),S(&#x27;desc&#x27;,{},steps.map(s=&gt;s.label+&#x27;。&#x27;+s.value).join(&#x27; &#x27;)));
     host.replaceChildren(svg);art=diagram(svg,w,steps.length);scenes[id](art,param);art.ready();
     art.focus(index);art.inspect(index,detail);frameAt(index&lt;0||reduce.matches?1:Math.min(1,elapsed/DURATION));
     art.activate(i=&gt;manual(i,true));
@@ -3410,10 +3450,16 @@ Object.assign(runSteps, {
     if(!Object.hasOwn(scenes,name))return;
     cancelTick();auto=false;paused=false;detail=false;elapsed=DURATION;
     id=name;const params=parameters[id];
-    param=params?Math.max(0,Math.min(params.length-1,Number.isInteger(n)?n:(defaults[id]||0))):0;
+    const count=id===&#x27;csa2&#x27;?modes.length:params?.length||1;
+    param=Math.max(0,Math.min(count-1,Number.isInteger(n)?n:(defaults[id]||0)));
     steps=runSteps[id](param);index=Math.min(steps.length-1,Math.max(-1,idx));
     modelSelect.value=id;el(&#x27;param&#x27;).hidden=!params;
     if(params){slider.max=params.length-1;slider.value=param;slider.setAttribute(&#x27;aria-valuetext&#x27;,params[param]);el(&#x27;paramname&#x27;).textContent=params[param];}
+    el(&#x27;modes&#x27;).hidden=id!==&#x27;csa2&#x27;;el(&#x27;mode-description&#x27;).hidden=id!==&#x27;csa2&#x27;;
+    if(id===&#x27;csa2&#x27;){
+      root.querySelectorAll(&#x27;[data-mode]&#x27;).forEach(button=&gt;button.setAttribute(&#x27;aria-pressed&#x27;,String(Number(button.dataset.mode)===param)));
+      el(&#x27;mode-description&#x27;).textContent=modes[param].description;
+    }
     const sources=el(&#x27;refs&#x27;);sources.replaceChildren();
     for(const [label,url] of refs[id]){const a=document.createElement(&#x27;a&#x27;);a.href=url;a.textContent=label;a.target=&#x27;_blank&#x27;;a.rel=&#x27;noopener noreferrer&#x27;;sources.append(a);}
     displayControls();draw();if(save)persist();
@@ -3421,13 +3467,17 @@ Object.assign(runSteps, {
   function restore(state){
     const name=state?.modelContent?.mechanism,p=state?.privateContent;
     if(!Object.hasOwn(scenes,name))return;
-    const n=Number.isInteger(p?.param)?p.param:defaults[name]||0;
-    const i=[2,3].includes(p?.platesVersion)&amp;&amp;Number.isInteger(p.stepIndex)?p.stepIndex:-1;
+    const savedMode=modes.findIndex(m=&gt;m.name===state?.modelContent?.csa2Mode);
+    const value=name===&#x27;csa2&#x27;&amp;&amp;p?.platesVersion!==4?0:name===&#x27;csa2&#x27;&amp;&amp;savedMode&gt;=0?savedMode:Number.isInteger(p?.param)?p.param:defaults[name]||0;
+    const n=Math.max(0,Math.min((name===&#x27;csa2&#x27;?modes.length:parameters[name]?.length||1)-1,value));
+    const compatible=[2,3,4].includes(p?.platesVersion)&amp;&amp;(name!==&#x27;csa2&#x27;||p?.platesVersion===4);
+    const i=compatible&amp;&amp;Number.isInteger(p.stepIndex)?Math.max(-1,Math.min(runSteps[name](n).length-1,p.stepIndex)):-1;
     if(id!==name||param!==n)choose(name,n,i,false);
     else if(index!==i){auto=false;detail=false;selectStep(i,false,false);}
   }
   modelSelect.addEventListener(&#x27;change&#x27;,()=&gt;choose(modelSelect.value));
   slider.addEventListener(&#x27;input&#x27;,()=&gt;choose(id,Number(slider.value)));
+  root.querySelectorAll(&#x27;[data-mode]&#x27;).forEach(button=&gt;button.addEventListener(&#x27;click&#x27;,()=&gt;choose(&#x27;csa2&#x27;,Number(button.dataset.mode))));
   choose(id,param,-1,false);restore(window.openai?.widgetState);
   window.addEventListener(&#x27;openai:set_globals&#x27;,e=&gt;restore(e.detail?.globals?.widgetState));
   new ResizeObserver(()=&gt;{if(host.clientWidth!==width)draw();}).observe(host);
