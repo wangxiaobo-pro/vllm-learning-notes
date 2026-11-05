@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="根据模型 forward 探索 DeepSeek、GLM、Kimi 和 MiniMax 的输入输出、组件内部与推测解码验证。">
+  <title>模型架构图谱 · vLLM 学习笔记</title>
+  <link rel="stylesheet" href="style.css">
+  <script>window.ARCH_MODELS={};</script>
+  <script src="data/legacy-graphs.js" defer></script>
+  <script src="data/deepseek.js" defer></script>
+  <script src="data/deepseek-pro.js" defer></script>
+  <script src="data/glm53.js" defer></script>
+  <script src="data/kimi-k3.js" defer></script>
+  <script src="data/minimax.js" defer></script>
+  <script src="art.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#component-title">跳到当前组件</a>
+  <main class="page">
+    <header class="page-header"><a href="../index.html">← 学习流程目录</a><span>FORWARD / ARCHITECTURE</span></header>
+    <div class="title-row"><div><p class="eyebrow">从输入走到输出</p><h1>模型架构图谱</h1></div><button id="theme" type="button" aria-label="切换明暗主题">明暗主题</button></div>
+    <p class="lede">选择模型 Sheet，点击组件展开内部；悬停或用键盘聚焦节点，高亮它的输入与输出连线。</p>
+    <nav id="sheets" class="sheets" aria-label="模型 Sheet"></nav>
+    <section class="model-intro" aria-label="模型基线"><h2 id="model-name"></h2><p id="model-summary"></p><div id="stats" class="stats"></div></section>
+    <nav id="breadcrumb" class="breadcrumb" aria-label="组件路径"></nav>
+    <section id="component" aria-labelledby="component-title">
+      <div class="section-title"><div><p class="eyebrow" id="component-kicker"></p><h2 id="component-title" tabindex="-1"></h2></div><label class="component-jump">转到组件<select id="component-select" aria-label="转到组件"></select></label></div>
+      <div id="intro" class="intro"></div>
+      <div class="ports"><div><span class="port-label">输入 · 从哪里来</span><p id="inputs"></p></div><div><span class="port-label">输出 · 交给谁</span><p id="outputs"></p></div></div>
+      <div class="controls"><button id="play" class="primary" type="button">播放数据流</button><button id="all" type="button" aria-pressed="true">全局关系</button><button id="prev" type="button">上一步</button><button id="next" type="button">下一步</button><span id="counter" class="counter"></span></div>
+      <div id="step-caption" role="status" aria-live="polite"></div>
+      <div class="legend"><span><i class="tensor"></i>张量 / 残差</span><span><i class="memory"></i>记忆 / KV / 状态</span><span><i class="expert"></i>专家计算</span><span>虚线：条件分支</span><span>↗：进入组件</span></div>
+      <div id="diagram" class="diagram" aria-label="当前组件的数据流图"></div>
+      <section id="node-detail" class="node-detail" hidden aria-live="polite"><div class="detail-heading"><h3 id="node-title"></h3><button id="close-node" type="button" aria-label="关闭算子详情">收起</button></div><p id="node-description"></p><div class="detail-ports"><div><h4>接收</h4><ul id="node-in"></ul></div><div><h4>产生并交给</h4><ul id="node-out"></ul></div></div></section>
+      <section id="verification-example" hidden aria-labelledby="verification-title"><h3 id="verification-title">验证示例 · 贪心模式</h3><p>教学候选为 a、b、c、d、e。选择目标模型的验证结果，观察最终提交的连续前缀。</p><div class="controls"><button type="button" data-verification="partial" aria-pressed="true">在 c 首次拒绝</button><button type="button" data-verification="all" aria-pressed="false">全部接受</button></div><div id="token-verification" class="token-verification"></div><p id="verification-explanation"></p></section>
+      <section class="flow-notes"><h3>完整调用与数据流</h3><ol id="steps"></ol></section>
+      <details class="edge-table" open><summary>逐条连线：谁把什么交给谁</summary><div id="edges"></div></details>
+      <section class="notes" id="notes-section"><h3>实现边界</h3><ul id="notes"></ul></section>
+      <details class="sources" open><summary>源码与配置依据</summary><ul id="sources"></ul><p id="baseline" class="baseline"></p></details>
+    </section>
+    <footer>所有层号按 0 起始标注。图形纹理、选中专家与动画为教学示意；静态源码分析，不代表模型或硬件实测。<a href="README.md">阅读说明</a></footer>
+  </main>
+</body>
+</html>

@@ -1,0 +1,517 @@
+<div id="ds41-flow">
+  <h2>DeepSeek V4.1 Flash · 跟着 token 走一遍</h2>
+  <div class="text-small text-muted">40 层 · hidden 5120 · 4 路残差 · 层号从 0 开始</div>
+  <div class="viz-controls">
+    <label class="form-label">展开范围
+      <select class="form-select" data-view>
+        <option value="main">整体 forward</option>
+        <option value="block">单层 mHC 与 MoE</option>
+        <option value="attention">L20 Attention 内部</option>
+        <option value="sharing">逐层查看 KV / TopK 共享</option>
+      </select>
+    </label>
+  </div>
+  <div class="viz-row" data-navigation>
+    <button type="button" class="btn btn-primary" data-play>播放数据流</button>
+    <button type="button" class="btn" data-all aria-pressed="true">全局关系</button>
+    <button type="button" class="btn" data-prev disabled>上一步</button>
+    <button type="button" class="btn" data-next>下一步</button>
+    <span class="text-small tabular-nums" data-counter>全部步骤</span>
+  </div>
+  <div class="viz-row text-small" data-legend>
+    <span><span class="ds-key ds-key-tensor"></span>张量 / 残差</span>
+    <span><span class="ds-key ds-key-memory"></span>记忆 / KV</span>
+    <span><span class="ds-key ds-key-expert"></span>专家计算</span>
+  </div>
+  <div class="text-small" data-current aria-live="polite"></div>
+  <div class="text-small" data-caption></div>
+  <div data-chart></div>
+  <div data-layers hidden>
+    <div class="text-small" data-layer-detail aria-live="polite"></div>
+    <div class="text-small text-muted">Causal Encoder · L0–19</div>
+    <div class="ds-layer-grid" data-encoder></div>
+    <div class="text-small text-muted">Decoder · L20–39</div>
+    <div class="ds-layer-grid" data-decoder></div>
+  </div>
+  <details data-steps><summary>完整编号流程</summary><ol></ol></details>
+  <details data-evidence>
+    <summary>源码与适用范围</summary>
+    <ul class="text-small">
+      <li>Ascend checkout：94e3e25f；主链 model.py:1514，单层 :887，Attention dsa_v41.py:734。</li>
+      <li>示例 T=8：本轮 flattened tokens；图中张量为未按 TP/EP 切分的逻辑形状。</li>
+      <li>矩阵纹理、专家选择和概率条仅作示意；动画速度不代表执行耗时，播放一次后停止。</li>
+      <li>本地 Ascend 与官方 minimal forward 均遍历全部 40 层；本图不将 CED prefill 跳层视作此路径的已实现行为。</li>
+      <li>Engram 需运行时启用；DSpark 是可选推测解码旁支。KV 字节布局依硬件与后端而变。</li>
+      <li>静态源码与页面交互检查；没有执行模型或 NPU 推理。</li>
+    </ul>
+  </details>
+</div>
+<style>
+#ds41-flow { display:flex; flex-direction:column; gap:calc(var(--font-size-base)*.75); color:var(--foreground); min-width:0; }
+#ds41-flow [data-chart] { width:100%; min-width:0; }
+#ds41-flow .ds-graph { display:block; width:100%; overflow:visible; }
+#ds41-flow .ds-graph text { fill:var(--foreground); font-family:inherit; font-weight:400; }
+#ds41-flow .ds-graph .ds-title { font-weight:500; }
+#ds41-flow .ds-graph .ds-sub { fill:var(--foreground); }
+#ds41-flow .ds-node { fill:var(--background); stroke:none; }
+#ds41-flow .ds-node.ds-active { fill:color-mix(in srgb,var(--viz-series-1) 7%,var(--background)); }
+#ds41-flow .ds-edge { fill:none; stroke:var(--muted-foreground); stroke-width:1.2; }
+#ds41-flow .ds-edge.ds-active { stroke:var(--viz-series-1); stroke-width:2; }
+#ds41-flow .ds-edge.ds-optional { stroke-dasharray:5 4; }
+#ds41-flow .ds-label-bg { fill:var(--background); }
+#ds41-flow .ds-step { fill:var(--muted-foreground); }
+#ds41-flow .ds-key { display:inline-block; width:9px; height:9px; margin-inline-end:5px; border-radius:2px; }
+#ds41-flow .ds-key-tensor { background:var(--viz-series-1); }
+#ds41-flow .ds-key-memory { background:var(--viz-series-2); }
+#ds41-flow .ds-key-expert { background:var(--viz-series-3); }
+#ds41-flow .ds-object { --ink:var(--viz-series-1); --face:var(--background); --line:color-mix(in srgb,var(--foreground) 40%,var(--background)); --rule:color-mix(in srgb,var(--foreground) 17%,var(--background)); }
+#ds41-flow .ds-object path, #ds41-flow .ds-object line, #ds41-flow .ds-object rect { vector-effect:non-scaling-stroke; }
+#ds41-flow [data-current]:empty { display:none; }
+#ds41-flow .ds-layer-grid { display:grid; grid-template-columns:repeat(10,minmax(0,1fr)); gap:4px; }
+#ds41-flow [data-layers] { display:flex; flex-direction:column; gap:calc(var(--font-size-base)*.5); }
+#ds41-flow [hidden] { display:none !important; }
+#ds41-flow details { overflow-wrap:anywhere; }
+#ds41-flow summary { color:var(--muted-foreground); }
+#ds41-flow ol, #ds41-flow ul { padding-inline-start:24px; margin-block:8px 0; }
+#ds41-flow li + li { margin-top:6px; }
+@media(max-width:520px) { #ds41-flow .ds-layer-grid { grid-template-columns:repeat(5,minmax(0,1fr)); } }
+</style>
+<script>
+(() => {
+  const root = document.getElementById('ds41-flow');
+  const chart = root.querySelector('[data-chart]');
+  const picker = root.querySelector('[data-view]');
+  const all = root.querySelector('[data-all]');
+  const prev = root.querySelector('[data-prev]');
+  const next = root.querySelector('[data-next]');
+  const play = root.querySelector('[data-play]');
+  const NS = 'http://www.w3.org/2000/svg';
+  let state = {view:'main', step:-1, layer:26};
+  let playing=false, playTimer=null, motionFrame=null;
+  const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
+  const n = (id, lines, col, row, order, kind='') => ({id,lines,col,row,order,kind});
+  const e = (a,b,label,step,route='',optional=false) => ({a,b,label,step,route,optional});
+  const diagrams = {
+    main: {
+      title:'整体 forward：输入 → 40 层 CED → 下一 token',
+      caption:'教学形状 T=8 · 实线：主干/数据依赖；虚线：条件入口或可选旁支',
+      cols:2,
+      nodes:[
+        n('input',['① 文本 → Embedding','input_ids [8] → h [8,5120]','也接受上游 inputs_embeds'],0,0,0),
+        n('vision',['可选图像入口','ViT ×32 → Aligner','合并到图像占位 embedding'],1,0,1),
+        n('expand',['② 展开 4 路残差','h [8,5120] → [8,4,5120]','初始 pre_mix = [1,0,0,0]'],0,1,2),
+        n('engram',['Engram 条件记忆','token n-gram → hash → lookup','门控注入 L1、L14 层前'],1,1,3,'memory'),
+        n('encoder',['③ Causal Encoder ×20','L0–19 · Attention + MoE','残差 [8,4,5120]'],0,2,4),
+        n('kv',['④ L20 生成全局 KV','Encoder 输出先 hc_pre / Norm','C1：每 token 一个 KV latent'],1,2,5,'memory'),
+        n('decoder',['⑤ Decoder ×20','L20–39 · Attention + MoE','读取 L20 全局 KV + 各层 SWA'],0,3,6),
+        n('draft',['可选 DSpark 草稿分支','L37/38/39 入口残差取均值','3 stages · 候选块 5 tokens'],1,4,7),
+        n('collapse',['⑥ hc_collapse → RMSNorm','最后 pre_mix 加权折叠 4 路','[8,4,5120] → [8,5120]'],0,4,8),
+        n('logits',['⑦ compute_logits / LM head','forward 先返回 hidden_states','runner 选择位置再计算 logits'],0,5,9),
+        n('sample',['⑧ 外部 sampler','logits → 下一个 token','作为后续 decode 的输入'],0,6,10)
+      ],
+      edges:[
+        e('input','expand','② h',2),e('vision','expand','① 合并',1,'',true),
+        e('input','engram','③ IDs + 历史',3,'',true),e('expand','encoder','③ H',3),
+        e('engram','encoder','③ 门控记忆',3,'',true),e('encoder','kv','④ 表征',4),
+        e('encoder','decoder','⑤ 残差',5),e('kv','decoder','⑤ 共享 KV',5),
+        e('decoder','draft','⑤ aux',5,'',true),e('decoder','collapse','⑥ H',6),
+        e('collapse','logits','⑦ hidden',7),e('logits','sample','⑧ logits',8)
+      ],
+      steps:[
+        ['input','vision','文本嵌入与可选视觉嵌入 → inputs_embeds [8,5120]。'],
+        ['expand','将每个 token 的 hidden 复制为 4 路；初始化跨子层传递的 pre_mix。'],
+        ['encoder','engram','依次执行 L0–19；启用 Engram 时，在 L1、L14 的 block 前门控注入记忆。'],
+        ['kv','L20 的 hc_pre + RMSNorm 读取 Encoder 末端表征，再投影出 Decoder 共享的全局 KV。'],
+        ['decoder','draft','依次执行 L20–39；各层保留独立 SWA，复用 L20 全局 KV；可选采集 DSpark 的入口表征。'],
+        ['collapse','按最后 ffn_pre 对 4 路残差加权折叠，再做最终 RMSNorm。'],
+        ['logits','模型 forward 返回 hidden；compute_logits 另由 runner 调用。'],
+        ['sample','外部 sampler 选择 token，下一轮把新 token 送回模型。']
+      ]
+    },
+    block:{
+      title:'一个 block：mHC → Attention → mHC → MoE',
+      caption:'同一结构用于 L0–39 · Engram 在 L1、L14 的本 block 入口之前注入',
+      cols:2,
+      nodes:[
+        n('hin',['① 输入 4 路残差 H','[8,4,5120]','接收上一子层 pre_mix'],0,0,0),
+        n('apre',['② Attention hc_pre + Norm','按传入 pre_mix 混合 → [8,5120]','产生 post / comb / attn_pre'],0,1,1),
+        n('attn',['③ 稀疏 Attention','本层 SWA + 可用全局 KV','输出 x [8,5120]'],0,2,2),
+        n('apost',['④ Attention hc_post','组合残差 + 写回 Attention 输出','H′ [8,4,5120]'],0,3,3),
+        n('fpre',['⑤ FFN hc_pre + RMSNorm','使用上一步生成的 attn_pre','生成 ffn_pre 交给下一层'],0,4,4),
+        n('ids',['原始 token IDs','来自模型输入','选择文本 / 图像路由偏置'],1,5,5),
+        n('route',['⑥ Router 计算专家分数','FP32 normalized hidden','384 experts → 选 6 个'],0,5,6),
+        n('experts',['⑦ Routed experts','被选中的 6 个专家各自计算','SwiGLU → 输出加权求和'],0,6,7),
+        n('shared',['⑦ Shared expert ×1','同一 normalized hidden','SwiGLU → shared output'],1,6,8),
+        n('sum',['⑧ 汇总 MoE 输出','routed 加权和先乘缩放系数','再加 shared → x [8,5120]'],0,7,9),
+        n('fpost',['⑨ FFN hc_post','组合 H′ + 写回 MoE 输出','[8,4,5120] + ffn_pre → 下一层'],0,8,10)
+      ],
+      edges:[
+        e('hin','apre','② H / pre',2),e('apre','attn','③ x',3),e('attn','apost','④ x',4),
+        e('hin','apost','④ residual',4,'left'),
+        e('apost','fpre','⑤ H′',5),e('apre','fpre','⑤ attn_pre',5,'right'),
+        e('fpre','route','⑥ FP32 x',6),e('ids','route','⑥ token IDs',6),e('route','experts','⑦ IDs / 权重',7),
+        e('fpre','experts','⑦ x [8,5120]',7,'right'),
+        e('fpre','shared','⑦ x',7,'right'),e('experts','sum','⑧ 加权和',8),e('shared','sum','⑧ shared',8),
+        e('sum','fpost','⑨ x',9),e('apost','fpost','⑨ residual H′',9,'left')
+      ],
+      steps:[
+        ['hin','输入 [8,4,5120] 残差与上一子层产生的 pre_mix。'],
+        ['apre','hc_pre 使用 incoming pre_mix 混合 4 路；计算当前 post/comb 与下个子层使用的 attn_pre。'],
+        ['attn','归一化 hidden 进入 Attention，输出仍是 [8,5120]。'],
+        ['apost','hc_post 混合原 4 路 residual，并把 Attention 输出按 post 系数写回。'],
+        ['fpre','FFN hc_pre 使用 attn_pre；RMSNorm 同时准备专家输入与 FP32 router 输入。'],
+        ['route','ids','Router 为 384 个 routed experts 打分，选择每 token 的 6 个专家；raw IDs 决定文本/图像路由偏置。'],
+        ['experts','shared','选中专家与 1 个 shared expert 处理相同归一化输入；raw token IDs 还用于文本/图像路由偏置。'],
+        ['sum','按路由权重汇总 routed 输出，乘 routed_scaling_factor 后加 shared 输出，得到 [8,5120]。'],
+        ['fpost','第二次 hc_post 更新 4 路残差；ffn_pre 随输出传给下一层。']
+      ]
+    },
+    attention:{
+      title:'L20 Attention：本层窗口 + 全局 KV + 稀疏选择',
+      caption:'逻辑形状：未切分 TP · S 表示缓存历史长度 · 本图展开 L20（KV / TopK / candidate 源）',
+      cols:3,
+      nodes:[
+        n('x',['① 归一化输入 x','来自 Encoder 末端','[8,5120]'],1,0,0),
+        n('q',['① Q 投影','wq_a → Norm → wq_b','RoPE → [8,64,512]'],0,1,1),
+        n('swa',['① 本层 SWA KV','wkv → Norm → RoPE','写 L20 窗口缓存（128）'],1,1,2,'memory'),
+        n('comp',['② C1：Wkv → Norm','本轮 latent [8,512]','RoPE → KV cache [S,512]'],2,1,3,'memory'),
+        n('iq',['③ Index Q / 权重','Q：从 qr 投影并旋转','权重：从当前 x 投影'],0,2,4),
+        n('ik',['② Index K 缓存','从未 RoPE 的 latent 投影','k_norm → RoPE → cache'],2,2,5,'memory'),
+        n('top',['③ Indexer 稀疏选择','Top512 位置 + 候选块','2048 blocks × 8 positions'],1,3,6),
+        n('sparse',['④ Sparse Attention','Q + SWA KV + Top512 KV','带 causal mask / sink'],1,4,7),
+        n('out',['⑤ inverse RoPE','wo_a → wo_b → [8,5120]','输出送回 hc_post'],1,5,8)
+      ],
+      edges:[
+        e('x','q','① x',1),e('x','swa','① x',1),e('x','comp','② x',2),
+        e('comp','ik','② latent',2),e('q','iq','③ qr',3),e('x','iq','③ weights',3,'left'),
+        e('iq','top','③ Q / w',3),e('ik','top','③ K',3),
+        e('top','sparse','④ 位置 IDs',4),e('q','sparse','④ Q',4,'left'),
+        e('swa','sparse','④ 本层 KV',4,'right'),e('comp','sparse','④ 全局 KV',4,'right'),
+        e('sparse','out','⑤ output',5)
+      ],
+      steps:[
+        ['x','q','swa','输入 x 分别生成 Q 和本层 SWA KV；SWA 每层独立，窗口大小 128。'],
+        ['comp','ik','L20 用独立投影生成 C1 latent；主 KV 与 index K 分别处理 RoPE 并存储。'],
+        ['iq','top','L20 全局检索，输出 Top512 位置与最多 2048 个候选 block ID（每块 8 个位置）。'],
+        ['sparse','Attention 同时读取本层 SWA 与 Top512 全局 KV；候选块不直接等同于实际 Attention 范围。'],
+        ['out','对 Attention 输出做 inverse RoPE，再经过分组低秩 wo_a / wo_b 返回 hidden 维。']
+      ]
+    }
+  };
+  const kvSources=[2,8,14,20], idxSources=[2,8,14,20,24,28,32,36];
+  const latest=(xs,l)=>xs.filter(v=>v<=l).at(-1);
+  function sharing() {
+    const l=state.layer, has=l>=2, k=latest(kvSources,l), ix=latest(idxSources,l), ratio=l<2?0:l<20?2:1;
+    const nodes=[
+      n('current',[`① 当前层 L${l}`,l<20?'Causal Encoder':'Decoder','归一化 hidden [8,5120]'],0,0,0),
+      n('local',[`② L${l} 自己的 SWA KV`,'每层独立投影、写入','窗口 128 tokens'],0,1,1,'memory'),
+      n('q',['② 本层 Q','只用本层当前 hidden','不共享其他层的 Q'],1,1,2),
+      n('merge',[`④ L${l} Sparse Attention`,has?'本层 SWA + 选中全局 KV':'仅本层 SWA','输出交给本层 hc_post'],0,4,6)
+    ];
+    const edges=[e('current','local','② 投影',2),e('current','q','② 投影',2),e('local','merge','④ SWA',4,'left'),e('q','merge','④ Q',4,'right')];
+    if(has){
+      nodes.push(n('global',[`③ 读取 L${k} 的全局 KV`,`C${ratio}：${ratio===2?'8 token → 4 latent':'8 token → 8 latent'}`,l===k?'本层生产并使用':'此前 source 层已写入'],0,2,3,'memory'));
+      nodes.push(n('index',[`③ 使用 L${ix} 的 Top512`,l===ix?'本层重新检索':'复用此前 index source 的索引',ix>20?'在 L20 候选块内检索':'全局检索'],1,2,4,'memory'));
+      edges.push(e('global','merge','④ 全局 KV',4),e('index','merge','④ 位置 IDs',4));
+      if(ix>20){
+        nodes.push(n('candidate',['L20 候选块范围','2048 blocks × 8 positions',`供 L${ix} 检索；index K 也来自 L20`],1,3,5,'memory'));
+        edges.push(e('candidate','index','③ 限定范围',3));
+      }
+    }
+    return {
+      title:`L${l} 的 Attention 数据来源`,cols:2,nodes,edges,
+      caption:'点选下方层号 · C2 为门控池化；C1 不减少 token 数 · 8 token 是教学示例',
+      steps:[
+        ['current',`L${l} 接收本层归一化 hidden。`],
+        ['local','q',`L${l} 生成自己的 Q 与 SWA KV；全局共享不替代各层窗口。`],
+        has?['global','index','candidate',`L${l} 的全局 KV 生产层是 L${k}，TopK 生产层是 L${ix}。`]:['local','L0、L1 的压缩率为 0，不使用全局 KV 或 indexer。'],
+        ['merge',has?'按 Top512 索引读取全局 KV，并与本层窗口一起参与 Attention。':'对本层 SWA 窗口执行 Attention。']
+      ]
+    };
+  }
+  function svgEl(tag,attrs={},parent){const el=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))el.setAttribute(k,String(v));if(parent)parent.appendChild(el);return el;}
+  function addText(parent,x,y,content,classes=''){const t=svgEl('text',{x,y,'text-anchor':'middle',class:classes},parent);t.textContent=content;return t;}
+  const illustratedLabels={
+    main:{input:['① 输入 Embedding','8 tokens → 8 行向量','[8,5120]'],vision:['可选视觉输入','patches → ViT ×32','Aligner → 占位嵌入'],expand:['② 复制为 4 路','同一 embedding 复制','[8,4,5120]'],engram:['Engram 查表','n-gram → hash → gate','注入 L1 / L14 层前'],encoder:['③ 因果 Encoder','L0–19 · 共 20 层','Attention + MoE'],kv:['④ L20 全局 KV','末端表征 → C1 投影','供 Decoder 共享'],decoder:['⑤ Decoder','L20–39 · 共 20 层','共享 KV + 独立 SWA'],draft:['可选 DSpark','L37/38/39 入口 aux','3 stages → 5 候选'],collapse:['⑥ 4 路加权折叠','pre_mix → RMSNorm','[8,5120]'],logits:['⑦ LM head','runner 调用 logits','候选 token 分数'],sample:['⑧ 采样下一 token','外部 sampler','进入下一轮 decode']},
+    block:{hin:['① 四路残差 H','[8,4,5120]','接收 pre_mix'],apre:['② mHC 汇入','pre_mix + RMSNorm','4 路 → [8,5120]'],attn:['③ Attention','SWA + 可用全局 KV','输出 [8,5120]'],apost:['④ mHC 写回','post / comb','保留 residual 旁路'],fpre:['⑤ FFN 汇入','attn_pre + RMSNorm','传递新的 ffn_pre'],ids:['原始 token IDs','上游模型输入','文本 / 图像偏置'],route:['⑥ Router','384 experts 选 6','每 token 独立选择'],experts:['⑦ 路由专家','高亮 6 / 384','示意一个 token'],shared:['⑦ 共享专家','相同 normalized x','独立计算一份输出'],sum:['⑧ 汇总 MoE','加权 routed × scale','再加 shared 输出'],fpost:['⑨ mHC 写回','更新 4 路残差','ffn_pre → 下一层']},
+    attention:{x:['① 归一化输入','Encoder 末端','[8,5120]'],q:['① Q 投影','低秩投影 + Norm','RoPE → Q'],swa:['① 本层 SWA','投影 + Norm','RoPE · 窗口128'],comp:['② 全局 KV','C1：Wkv → Norm','8 行 → 历史 S 行'],iq:['③ Index Q','qr → Q；x → 权重','每 query 独立'],ik:['② Index K','原始 latent → 投影','Norm → RoPE'],top:['③ 稀疏选择','Top512 位置','另产 2048 候选块'],sparse:['④ Attention','SWA + Top512 KV','causal mask / sink'],out:['⑤ 输出投影','inverse RoPE','wo_a → wo_b → H']}
+  };
+  function labelsFor(node){
+    if(illustratedLabels[state.view])return illustratedLabels[state.view][node.id]||node.lines;
+    const l=state.layer,k=latest(kvSources,l),ix=latest(idxSources,l);
+    return {current:[`① 当前层 L${l}`,l<20?'Causal Encoder':'Decoder','输入 [8,5120]'],local:[`② L${l} 独立 SWA`,'本层投影、写入','窗口 128'],q:['② 本层 Q','当前 hidden 投影','不共享其他层 Q'],global:[`③ L${k} 全局 KV`,l===k?'本层生产并使用':'source 层此前已写',l<20?'C2：8 → 4 latent':'C1：8 → 8 latent'],index:[`③ L${ix} 的 Top512`,l===ix?'本层重新检索':'复用索引',ix>20?'在 L20 候选中选':'全局检索'],candidate:['L20 候选块','2048 blocks × 8','index K 也来自 L20'],merge:[`④ L${l} Attention`,l<2?'仅本层 SWA':'本层 SWA + 全局 KV','输出 → hc_post']}[node.id]||node.lines;
+  }
+  function objectKind(node){
+    const id=node.id;
+    if(id==='encoder'||id==='decoder')return 'stack';
+    if(['expand','hin','current'].includes(id))return 'streams';
+    if(['apre','fpre','collapse'].includes(id))return 'gather';
+    if(['apost','fpost'].includes(id))return 'scatter';
+    if(id==='vision')return 'vision';
+    if(id==='engram')return 'hash';
+    if(id==='draft')return 'draft';
+    if(id==='route')return 'router';
+    if(id==='experts')return 'experts';
+    if(id==='shared')return 'shared';
+    if(id==='sum')return 'sum';
+    if(['attn','sparse','merge'].includes(id))return 'attention';
+    if(id==='logits')return 'logits';
+    if(id==='sample')return 'sample';
+    if(['top','index','candidate'].includes(id))return 'selection';
+    if(node.kind==='memory'||id==='comp'||id==='ik')return 'cache';
+    return 'tokens';
+  }
+  function drawObject(parent,node,x,y,width){
+    const kind=objectKind(node), scale=width/100;
+    const memory=['cache','hash','selection'].includes(kind);
+    const expert=['router','experts','shared','sum'].includes(kind);
+    const ink=`var(--viz-series-${memory?2:expert?3:1})`;
+    const g=svgEl('g',{class:'ds-object',transform:`translate(${x},${y}) scale(${scale})`,style:`--ink:${ink}`,'data-object':kind,'aria-hidden':'true'},parent);
+    const rect=(a,b,w,h,fill='var(--face)',stroke='var(--line)',r=1)=>svgEl('rect',{x:a,y:b,width:w,height:h,rx:r,fill,stroke,'stroke-width':.8},g);
+    const line=(x1,y1,x2,y2,color='var(--rule)',sw=1)=>svgEl('line',{x1,y1,x2,y2,stroke:color,'stroke-width':sw},g);
+    const path=(d,fill='none',stroke='var(--line)',sw=.8)=>svgEl('path',{d,fill,stroke,'stroke-width':sw,'stroke-linejoin':'round'},g);
+    const tint='color-mix(in srgb,var(--ink) 17%,var(--face))';
+    const soft='color-mix(in srgb,var(--foreground) 6%,var(--face))';
+    if(kind==='tokens'){
+      for(let r=0;r<8;r++){
+        rect(3,5+r*9,17,6,'var(--ink)','none',2).setAttribute('data-token-cell','');
+        line(22,8+r*9,31,8+r*9);
+        for(let c=0;c<6;c++)rect(35+c*9,5+r*9,7,6,(r+c)%3?'var(--ink)':tint,'none');
+      }
+    }else if(kind==='streams'){
+      for(let stream=0;stream<4;stream++){
+        rect(4+stream*23,4,19,72,'var(--face)','var(--rule)',3);
+        for(let t=0;t<8;t++)rect(7+stream*23,7+t*8.4,13,5.4,'var(--ink)','none',1);
+      }
+    }else if(kind==='stack'){
+      for(let layer=19;layer>=0;layer--){
+        const xx=5+layer*.7,yy=9+layer*2.7;
+        path(`M ${xx} ${yy+4} L ${xx+61} ${yy} L ${xx+75} ${yy+10} L ${xx+14} ${yy+14} Z`,layer===0?tint:'var(--face)');
+        if(layer%4===0)line(xx+20,yy+7,xx+58,yy+4,'var(--ink)',1.4);
+      }
+    }else if(kind==='cache'||kind==='hash'){
+      path('M 7 13 L 78 7 L 92 18 L 21 24 Z',soft);
+      path('M 78 7 L 92 18 L 92 72 L 78 62 Z',soft);
+      rect(7,13,71,55);
+      for(let row=0;row<5;row++){
+        const pulled=kind==='hash'&&row===2;
+        rect(pulled?1:11,18+row*9,62,6,row===2?'var(--ink)':tint,'none');
+        for(let c=1;c<6;c++)line(11+c*10,18+row*9,11+c*10,24+row*9,'var(--face)');
+      }
+    }else if(kind==='vision'){
+      for(let r=0;r<4;r++)for(let c=0;c<4;c++)rect(3+c*14,10+r*14,12,12,(r+c)%3===0?'var(--ink)':tint,'var(--rule)');
+      for(let r=0;r<5;r++){line(62,21+r*9,73,21+r*9);rect(76,18+r*9,18,6,'var(--ink)','none');}
+    }else if(kind==='gather'||kind==='scatter'){
+      const flip=kind==='scatter';
+      for(let i=0;i<4;i++){
+        const yy=12+i*18;
+        path(flip?`M 28 40 C 48 40 52 ${yy} 74 ${yy}`:`M 24 ${yy} C 47 ${yy} 48 40 74 40`,'none','var(--ink)',1.5);
+        for(let j=0;j<3;j++)rect(flip?76+j*6:4+j*6,yy-4,4,8,'var(--ink)','none');
+      }
+      rect(flip?5:77,28,17,24,tint,'var(--ink)',2);
+    }else if(kind==='router'){
+      rect(3,29,14,22,tint,'var(--ink)',2);
+      for(let i=0;i<6;i++){const yy=7+i*13;path(`M 20 40 C 48 40 47 ${yy} 74 ${yy}`,'none','var(--ink)',1.2);rect(78,yy-4,14,8,'var(--ink)','none',2);}
+    }else if(kind==='experts'){
+      const selected=new Set([4,53,123,204,281,377]);
+      for(let i=0;i<384;i++)rect(5+(i%16)*5.5,5+Math.floor(i/16)*2.9,4.1,1.9,selected.has(i)?'var(--ink)':'var(--rule)','none',.2);
+      for(const i of selected)rect(4.6+(i%16)*5.5,4.7+Math.floor(i/16)*2.9,5,2.6,'var(--ink)','none',.5);
+    }else if(kind==='shared'){
+      rect(13,12,66,55,tint,'var(--ink)',3);
+      for(let i=0;i<4;i++){svgEl('circle',{cx:25+i*14,cy:26,r:3,fill:'var(--ink)'},g);svgEl('circle',{cx:25+i*14,cy:52,r:3,fill:'var(--ink)'},g);for(let j=0;j<4;j++)line(25+i*14,29,25+j*14,49);}
+    }else if(kind==='sum'){
+      for(let i=0;i<6;i++){rect(2,7+i*11,9,6,'var(--ink)','none');line(14,10+i*11,46,40,'var(--ink)');}
+      svgEl('circle',{cx:53,cy:40,r:12,fill:'var(--face)',stroke:'var(--line)'},g);
+      line(47,40,59,40,'var(--ink)',1.5);line(53,34,53,46,'var(--ink)',1.5);line(66,40,78,40);rect(80,27,14,26,tint,'var(--ink)',2);
+    }else if(kind==='attention'){
+      for(let r=0;r<8;r++)for(let c=0;c<8;c++)rect(9+c*9,5+r*9,7,7,c>r?soft:(r+c)%3===0?'var(--ink)':tint,'none',.5);
+    }else if(kind==='selection'){
+      for(let r=0;r<6;r++)for(let c=0;c<10;c++)rect(4+c*9,9+r*10,6.5,7,[2,5,8,11,24,39,46,53].includes(r*10+c)?'var(--ink)':soft,'none',1);
+    }else if(kind==='logits'){
+      [17,29,39,63,22,47,16,9].forEach((h,i)=>rect(5+i*11,72-h,7,h,i===5?'var(--ink)':tint,'none',1));
+    }else if(kind==='sample'){
+      for(let i=0;i<3;i++)rect(5+i*12,30,9,20,soft,'none',2);
+      line(44,40,57,40,'var(--ink)',1.5);rect(61,17,30,46,tint,'var(--ink)',3);
+      for(let i=0;i<4;i++)line(68,27+i*8,84,27+i*8,'var(--ink)',2);
+    }else if(kind==='draft'){
+      for(let i=0;i<3;i++){rect(4,5+i*12,62,7,tint,'var(--rule)');line(69,8+i*12,89,42);}
+      for(let i=0;i<5;i++)rect(5+i*18,54,13,20,tint,'var(--line)',2);
+      path('M 5 78 H 90','none','var(--line)').setAttribute('stroke-dasharray','3 3');
+    }
+  }
+  function animateFlow(){
+    if(motionFrame!==null)cancelAnimationFrame(motionFrame);
+    if(state.step<0||reducedMotion.matches)return;
+    const svg=chart.querySelector('svg'),paths=[...svg.querySelectorAll('path.ds-edge.ds-active')];
+    const particles=[];
+    paths.forEach(path=>{
+      const source=path.dataset.from;
+      const memory=['kv','comp','ik','global','index','candidate','engram','local','swa'].includes(source);
+      const expert=['route','experts','shared','sum'].includes(source);
+      for(let i=0;i<3;i++){
+        const cell=svgEl('rect',{width:8,height:6,rx:2,fill:`var(--viz-series-${memory?2:expert?3:1})`,class:'ds-packet','aria-hidden':'true'},svg);
+        particles.push({cell,path,len:path.getTotalLength(),delay:i*110});
+      }
+    });
+    const start=performance.now();
+    const tick=time=>{
+      let running=false;
+      particles.forEach(p=>{
+        const elapsed=time-start-p.delay;
+        if(elapsed<0){p.cell.setAttribute('visibility','hidden');running=true;return;}
+        const t=Math.min(1,elapsed/900),point=p.path.getPointAtLength(t*p.len);
+        p.cell.setAttribute('visibility',t===1?'hidden':'visible');
+        p.cell.setAttribute('x',point.x-4);p.cell.setAttribute('y',point.y-3);
+        if(t<1)running=true;
+      });
+      if(running)motionFrame=requestAnimationFrame(tick);else{particles.forEach(p=>p.cell.remove());motionFrame=null;}
+    };
+    motionFrame=requestAnimationFrame(tick);
+  }
+  function renderGraph(d) {
+    const W=Math.max(280,Math.floor(chart.getBoundingClientRect().width));
+    const narrow=W<570, nodeH=88, rowGap=narrow?36:42, pad=narrow?24:20;
+    const columns=narrow?1:d.cols, gap=d.cols===3?20:64;
+    const usable=W-pad*2;
+    const nodeW=narrow?usable:(usable-gap*(columns-1))/columns;
+    const positions=new Map();
+    const ordered=[...d.nodes].sort((a,b)=>a.order-b.order);
+    let maxY=0;
+    d.nodes.forEach(node=>{
+      const r=narrow?ordered.findIndex(n=>n.id===node.id):node.row;
+      const c=narrow?0:node.col;
+      const p={x:pad+c*(nodeW+gap),y:10+r*(nodeH+rowGap),w:nodeW,h:nodeH};
+      positions.set(node.id,p);maxY=Math.max(maxY,p.y+p.h);
+    });
+    const H=maxY+16;
+    const svg=svgEl('svg',{class:'ds-graph',viewBox:`0 0 ${W} ${H}`,width:W,height:H,role:'img','aria-label':d.title});
+    const title=svgEl('title',{},svg);title.textContent=d.title;
+    const desc=svgEl('desc',{},svg);desc.textContent=d.steps.map((s,i)=>`${i+1}. ${s.at(-1)}`).join(' ');
+    const defs=svgEl('defs',{},svg);
+    ['base','active'].forEach(kind=>{
+      const marker=svgEl('marker',{id:`ds-arrow-${kind}`,viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:6,markerHeight:6,orient:'auto-start-reverse'},defs);
+      svgEl('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:kind==='active'?'var(--viz-series-1)':'var(--muted-foreground)'},marker);
+    });
+    const edgeGroup=svgEl('g',{},svg), labels=[];
+    d.edges.forEach((edge,i)=>{
+      const a=positions.get(edge.a),b=positions.get(edge.b);if(!a||!b)return;
+      let path,lx,ly;
+      const sameCol=Math.abs(a.x-b.x)<1;
+      const adjacent=Math.abs(b.y-a.y)<=nodeH+rowGap+1;
+      if(sameCol&&adjacent&&!edge.route){
+        const down=b.y>a.y,sx=a.x+a.w/2,sy=down?a.y+a.h:a.y,ty=down?b.y:b.y+b.h;
+        path=`M ${sx} ${sy} L ${sx} ${ty}`;lx=sx;ly=(sy+ty)/2;
+      }else if(!sameCol&&!edge.route){
+        const goRight=b.x>a.x, sx=goRight?a.x+a.w:a.x, tx=goRight?b.x:b.x+b.w;
+        const offset=a.y===b.y?0:(goRight?-10:10);
+        const sy=a.y+a.h/2+offset,ty=b.y+b.h/2+offset,mid=(sx+tx)/2+(goRight?-8:8);
+        path=`M ${sx} ${sy} H ${mid} V ${ty} H ${tx}`;lx=mid;ly=(sy+ty)/2-8;
+      }else{
+        const right=edge.route==='right'||(!edge.route&&i%2===1);
+        const sx=right?a.x+a.w:a.x,tx=right?b.x+b.w:b.x;
+        const lane=!narrow&&sameCol&&right&&a.x+a.w<W-pad-2?a.x+a.w+6+(i%4)*(gap-12)/4:right?W-7-(i%3)*6:7+(i%3)*6;
+        const sy=a.y+a.h/2,ty=b.y+b.h/2;
+        path=`M ${sx} ${sy} H ${lane} V ${ty} H ${tx}`;
+        lx=lane;ly=ty-12;
+      }
+      const active=state.step===edge.step-1;
+      svgEl('path',{d:path,class:`ds-edge${active?' ds-active':''}${edge.optional?' ds-optional':''}`,'marker-end':`url(#ds-arrow-${active?'active':'base'})`,'data-from':edge.a,'data-to':edge.b},edgeGroup);
+      const routed=edge.route|| (sameCol&&!adjacent);
+      const label=narrow||routed||d.cols===3?edge.label.slice(0,1):edge.label;
+      labels.push({lx,ly,label,active});
+    });
+    d.nodes.forEach(node=>{
+      const p=positions.get(node.id),step=d.steps[state.step];
+      const active=step&&step.slice(0,-1).includes(node.id);
+      const g=svgEl('g',{'data-node':node.id},svg);
+      svgEl('rect',{x:p.x,y:p.y,width:p.w,height:p.h,rx:6,class:`ds-node${active?' ds-active':''}`},g);
+      const artW=Math.min(96,p.w*.36);
+      drawObject(g,node,p.x+3,p.y+(p.h-artW*.8)/2,artW);
+      const textX=p.x+artW+12;
+      labelsFor(node).forEach((line,i)=>{const text=addText(g,textX,p.y+26+i*21,line,i===0?'ds-title':'ds-sub text-small');text.setAttribute('text-anchor','start');});
+    });
+    labels.forEach(({lx,ly,label})=>{
+      const g=svgEl('g',{},svg),len=label.length*7+9;
+      lx=Math.max(len/2+1,Math.min(W-len/2-1,lx));
+      svgEl('rect',{x:lx-len/2,y:ly-12,width:len,height:17,rx:3,class:'ds-label-bg'},g);
+      addText(g,lx,ly,label,'text-small ds-step');
+    });
+    chart.replaceChildren(svg);
+  }
+  function save(){
+    const api=window.openai;
+    if(api&&typeof api.setWidgetState==='function'){
+      Promise.resolve(api.setWidgetState({modelContent:{model:'DeepSeek V4.1 Flash',view:state.view,layer:state.view==='sharing'?state.layer:null},privateContent:{...state}})).catch(()=>{});
+    }
+  }
+  function restore(s){
+    const p=s&&s.privateContent;if(!p||typeof p!=='object')return;
+    if(Object.hasOwn(diagrams,p.view)||p.view==='sharing')state.view=p.view;
+    if(Number.isInteger(p.step)&&p.step>=-1)state.step=p.step;
+    if(Number.isInteger(p.layer)&&p.layer>=0&&p.layer<40)state.layer=p.layer;
+  }
+  function render(animate=false){
+    if(motionFrame!==null){cancelAnimationFrame(motionFrame);motionFrame=null;}
+    const d=state.view==='sharing'?sharing():diagrams[state.view];
+    if(state.step>=d.steps.length)state.step=-1;
+    picker.value=state.view;
+    root.querySelector('[data-caption]').textContent=d.caption;
+    root.querySelector('[data-counter]').textContent=state.step<0?'全部步骤':`${state.step+1} / ${d.steps.length}`;
+    root.querySelector('[data-current]').textContent=state.step<0?'':`${state.step+1}. ${d.steps[state.step].at(-1)}`;
+    all.setAttribute('aria-pressed',String(state.step<0));prev.disabled=state.step<0;next.disabled=state.step===d.steps.length-1;
+    const list=root.querySelector('[data-steps] ol');list.replaceChildren();
+    d.steps.forEach((s,i)=>{const li=document.createElement('li');li.textContent=s.at(-1);list.appendChild(li);});
+    root.querySelector('[data-layers]').hidden=state.view!=='sharing';
+    if(state.view==='sharing'){
+      const l=state.layer,k=latest(kvSources,l),ix=latest(idxSources,l);
+      root.querySelector('[data-layer-detail]').textContent=l<2?`L${l}：仅 SWA`:`L${l} ← 全局 KV：L${k} · TopK：L${ix}${ix>20?' · 候选范围：L20':''}`;
+      root.querySelectorAll('[data-layer]').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.layer)===l)));
+    }
+    renderGraph(d);
+    if(animate)animateFlow();
+  }
+  function stopPlayback(){
+    playing=false;clearTimeout(playTimer);playTimer=null;
+    play.textContent='播放数据流';play.setAttribute('aria-pressed','false');
+    if(motionFrame!==null){cancelAnimationFrame(motionFrame);motionFrame=null;}
+    chart.querySelectorAll('.ds-packet').forEach(packet=>packet.remove());
+  }
+  function advancePlayback(){
+    const count=(state.view==='sharing'?sharing():diagrams[state.view]).steps.length;
+    playTimer=setTimeout(()=>{
+      if(!playing)return;
+      if(state.step===count-1){stopPlayback();return;}
+      state.step++;render(true);save();advancePlayback();
+    },1600);
+  }
+  play.addEventListener('click',()=>{
+    if(playing){stopPlayback();return;}
+    const count=(state.view==='sharing'?sharing():diagrams[state.view]).steps.length;
+    if(state.step<0||state.step===count-1)state.step=0;
+    playing=true;play.textContent='暂停';play.setAttribute('aria-pressed','true');
+    render(true);save();advancePlayback();
+  });
+  for(let i=0;i<40;i++){
+    const button=document.createElement('button');button.className='btn viz-tile';button.type='button';button.textContent=`${i}`;button.dataset.layer=i;
+    button.setAttribute('aria-label',`查看 L${i} 的 KV 与 TopK 来源`);button.setAttribute('aria-pressed','false');
+    button.addEventListener('click',()=>{stopPlayback();state.layer=i;state.step=-1;render();save();});
+    root.querySelector(i<20?'[data-encoder]':'[data-decoder]').appendChild(button);
+  }
+  picker.addEventListener('change',()=>{stopPlayback();state.view=picker.value;state.step=-1;render();save();});
+  all.addEventListener('click',()=>{stopPlayback();state.step=-1;render();save();});
+  prev.addEventListener('click',()=>{stopPlayback();state.step--;render(true);save();});
+  next.addEventListener('click',()=>{stopPlayback();state.step++;render(true);save();});
+  restore(window.openai&&window.openai.widgetState);render();
+  let lastWidth=chart.getBoundingClientRect().width;
+  new ResizeObserver(()=>{const width=chart.getBoundingClientRect().width;if(Math.abs(width-lastWidth)>1){lastWidth=width;render();}}).observe(chart);
+  window.addEventListener('openai:set_globals',event=>{
+    const s=event.detail&&event.detail.globals&&event.detail.globals.widgetState;
+    if(s){
+      const p=s.privateContent;
+      if(p&&p.view===state.view&&p.step===state.step&&p.layer===state.layer)return;
+      stopPlayback();restore(s);render();
+    }
+  });
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)stopPlayback();});
+})();
+</script>
