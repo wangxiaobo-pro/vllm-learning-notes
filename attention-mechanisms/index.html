@@ -1824,6 +1824,12 @@ html&gt;body{padding:0}&lt;/style&gt;
     #attn-complete-plates .diagram-host{min-width:0}
     #attn-complete-plates .plate-svg{display:block;width:100%;font-family:inherit}
     #attn-complete-plates .refs{display:flex;flex-wrap:wrap;gap:.25em .8em}
+    #attn-complete-plates .mode-intro{display:grid;gap:calc(var(--font-size-base)*.4)}
+    #attn-complete-plates .mode-notes{display:grid;gap:calc(var(--font-size-base)*.4);margin:0}
+    #attn-complete-plates .mode-note{display:grid;grid-template-columns:6em minmax(0,1fr);gap:calc(var(--font-size-base)*.5)}
+    #attn-complete-plates .mode-note dt{font-weight:500}
+    #attn-complete-plates .mode-note dd{margin:0;min-width:0}
+    @media(max-width:480px){#attn-complete-plates .mode-note{grid-template-columns:minmax(0,1fr);gap:calc(var(--font-size-base)*.2)}}
   &lt;/style&gt;
   &lt;div class=&quot;choose&quot;&gt;&lt;h2&gt;注意力演算&lt;/h2&gt;&lt;label class=&quot;form-label&quot;&gt;&lt;span class=&quot;sr-only&quot;&gt;选择注意力机制&lt;/span&gt;&lt;select data-p=&quot;model&quot; class=&quot;form-select&quot;&gt;&lt;/select&gt;&lt;/label&gt;&lt;/div&gt;
   &lt;div data-p=&quot;param&quot; class=&quot;param&quot; hidden&gt;&lt;label for=&quot;attention-parameter&quot; data-p=&quot;paramname&quot; class=&quot;form-label&quot;&gt;&lt;/label&gt;&lt;input id=&quot;attention-parameter&quot; class=&quot;form-range&quot; type=&quot;range&quot; min=&quot;0&quot; step=&quot;1&quot; data-p=&quot;slider&quot;&gt;&lt;/div&gt;
@@ -1832,7 +1838,14 @@ html&gt;body{padding:0}&lt;/style&gt;
     &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-mode=&quot;1&quot; aria-pressed=&quot;false&quot;&gt;Reindex · 重选&lt;/button&gt;
     &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-mode=&quot;2&quot; aria-pressed=&quot;false&quot;&gt;Reuse · 沿用&lt;/button&gt;
   &lt;/div&gt;
-  &lt;p data-p=&quot;mode-description&quot; class=&quot;text-small&quot; hidden&gt;&lt;/p&gt;
+  &lt;div data-p=&quot;mode-intro&quot; class=&quot;mode-intro&quot; hidden&gt;
+    &lt;p class=&quot;text-small&quot;&gt;CSA2 通过共享缓存和索引结果，减少长上下文中的重复工作。以下以 Decoder 为例，三种角色预先分配到不同层；每层仍计算自己的主 Q、局部窗口和输出。&lt;/p&gt;
+    &lt;dl class=&quot;mode-notes&quot;&gt;
+      &lt;div class=&quot;mode-note&quot;&gt;&lt;dt&gt;解决什么问题&lt;/dt&gt;&lt;dd data-p=&quot;mode-problem&quot;&gt;&lt;/dd&gt;&lt;/div&gt;
+      &lt;div class=&quot;mode-note&quot;&gt;&lt;dt&gt;计算流程&lt;/dt&gt;&lt;dd data-p=&quot;mode-description&quot;&gt;&lt;/dd&gt;&lt;/div&gt;
+      &lt;div class=&quot;mode-note&quot;&gt;&lt;dt&gt;计算取舍&lt;/dt&gt;&lt;dd data-p=&quot;mode-cost&quot;&gt;&lt;/dd&gt;&lt;/div&gt;
+    &lt;/dl&gt;
+  &lt;/div&gt;
   &lt;div class=&quot;viz-controls&quot; role=&quot;group&quot; aria-label=&quot;计算回放&quot;&gt;
     &lt;button type=&quot;button&quot; class=&quot;btn btn-primary&quot; data-p=&quot;next&quot;&gt;执行下一步&lt;/button&gt;
     &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-p=&quot;play&quot; aria-pressed=&quot;false&quot;&gt;自动执行&lt;/button&gt;
@@ -3381,9 +3394,18 @@ Object.assign(runSteps, {
   const parameters={mha:heads,mqa:heads,gqa:heads,paged:range(4,j=&gt;&#x27;跟踪缓存地址 · &#x27;+[&#x27;t₁&#x27;,&#x27;t₂&#x27;,&#x27;t₃&#x27;,&#x27;t₄&#x27;][j]),swa:query,streaming:query,block:range(8,j=&gt;&#x27;当前查询 q&#x27;+subs[8-j])};
   const defaults={paged:3,swa:7,streaming:7},reduce=matchMedia(&#x27;(prefers-reduced-motion: reduce)&#x27;);
   const modes=[
-    {name:&#x27;Full&#x27;,description:&#x27;新建主 KV 与索引 K → 全域打分 → 选位置、建候选池 → 本层注意力输出&#x27;},
-    {name:&#x27;Reindex&#x27;,description:&#x27;接收 Full 的缓存和候选池 → 新索引 Q 重选位置 → 本层注意力输出&#x27;},
-    {name:&#x27;Reuse&#x27;,description:&#x27;接收主 KV 和最近选中的位置 → 新主 Q、局部 KV → 本层注意力输出&#x27;}
+    {name:&#x27;Full&#x27;,
+      problem:&#x27;若每层都单独保存主 KV、独立搜索长历史，显存和计算会重复。本例首个 Full 建立共享缓存，并为后层圈定检索候选。&#x27;,
+      description:&#x27;编码器输出 Hsrc → 新建主 KV、索引 K → 本层索引 Q 全域打分 → 本层 Top-K + 后层候选池 → 本层注意力输出。&#x27;,
+      cost:&#x27;承担建库与全域索引，供后层复用。Full 的主注意力仍只读取选中 KV 和本层局部窗口。&#x27;},
+    {name:&#x27;Reindex&#x27;,
+      problem:&#x27;各层的查询需求不同，一直沿用旧位置可能错过本层需要的信息。Reindex 保留共享缓存，用自己的索引 Q 重新选择位置。&#x27;,
+      description:&#x27;接收主 KV、索引 K、候选池 → 本层新索引 Q → 候选内重选 Top-K → 本层主 Q + 局部 KV → 注意力输出。&#x27;,
+      cost:&#x27;省去重建共享缓存，保留本层重选能力。候选池限定搜索范围；Top-K 决定实际读取位置，并传给 Reuse。&#x27;},
+    {name:&#x27;Reuse&#x27;,
+      problem:&#x27;相邻层若选中的位置相近，反复索引和 Top-K 会重复工作。Reuse 沿用最近一次选择，进一步减少索引开销。&#x27;,
+      description:&#x27;接收主 KV + 最近 Full / Reindex 的 Top-K → 读取这些位置 → 本层主 Q + 局部 KV → 新注意力权重 → 输出。&#x27;,
+      cost:&#x27;省去索引 Q、索引打分和 Top-K；仍重新计算本层注意力与输出，因此输出会随本层输入变化。&#x27;}
   ];
   const DURATION=1800,HOLD=550;
   let id=&#x27;csa2&#x27;,param=0,steps=[],index=-1,art=null,svg=null,auto=false,paused=false,elapsed=0,raf=0,last=0,detail=false,width=0;
@@ -3455,10 +3477,12 @@ Object.assign(runSteps, {
     steps=runSteps[id](param);index=Math.min(steps.length-1,Math.max(-1,idx));
     modelSelect.value=id;el(&#x27;param&#x27;).hidden=!params;
     if(params){slider.max=params.length-1;slider.value=param;slider.setAttribute(&#x27;aria-valuetext&#x27;,params[param]);el(&#x27;paramname&#x27;).textContent=params[param];}
-    el(&#x27;modes&#x27;).hidden=id!==&#x27;csa2&#x27;;el(&#x27;mode-description&#x27;).hidden=id!==&#x27;csa2&#x27;;
+    el(&#x27;modes&#x27;).hidden=id!==&#x27;csa2&#x27;;el(&#x27;mode-intro&#x27;).hidden=id!==&#x27;csa2&#x27;;
     if(id===&#x27;csa2&#x27;){
       root.querySelectorAll(&#x27;[data-mode]&#x27;).forEach(button=&gt;button.setAttribute(&#x27;aria-pressed&#x27;,String(Number(button.dataset.mode)===param)));
       el(&#x27;mode-description&#x27;).textContent=modes[param].description;
+      el(&#x27;mode-problem&#x27;).textContent=modes[param].problem;
+      el(&#x27;mode-cost&#x27;).textContent=modes[param].cost;
     }
     const sources=el(&#x27;refs&#x27;);sources.replaceChildren();
     for(const [label,url] of refs[id]){const a=document.createElement(&#x27;a&#x27;);a.href=url;a.textContent=label;a.target=&#x27;_blank&#x27;;a.rel=&#x27;noopener noreferrer&#x27;;sources.append(a);}

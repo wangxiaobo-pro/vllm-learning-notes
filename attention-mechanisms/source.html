@@ -9,6 +9,12 @@
     #attn-complete-plates .diagram-host{min-width:0}
     #attn-complete-plates .plate-svg{display:block;width:100%;font-family:inherit}
     #attn-complete-plates .refs{display:flex;flex-wrap:wrap;gap:.25em .8em}
+    #attn-complete-plates .mode-intro{display:grid;gap:calc(var(--font-size-base)*.4)}
+    #attn-complete-plates .mode-notes{display:grid;gap:calc(var(--font-size-base)*.4);margin:0}
+    #attn-complete-plates .mode-note{display:grid;grid-template-columns:6em minmax(0,1fr);gap:calc(var(--font-size-base)*.5)}
+    #attn-complete-plates .mode-note dt{font-weight:500}
+    #attn-complete-plates .mode-note dd{margin:0;min-width:0}
+    @media(max-width:480px){#attn-complete-plates .mode-note{grid-template-columns:minmax(0,1fr);gap:calc(var(--font-size-base)*.2)}}
   </style>
   <div class="choose"><h2>注意力演算</h2><label class="form-label"><span class="sr-only">选择注意力机制</span><select data-p="model" class="form-select"></select></label></div>
   <div data-p="param" class="param" hidden><label for="attention-parameter" data-p="paramname" class="form-label"></label><input id="attention-parameter" class="form-range" type="range" min="0" step="1" data-p="slider"></div>
@@ -17,7 +23,14 @@
     <button type="button" class="btn" data-mode="1" aria-pressed="false">Reindex · 重选</button>
     <button type="button" class="btn" data-mode="2" aria-pressed="false">Reuse · 沿用</button>
   </div>
-  <p data-p="mode-description" class="text-small" hidden></p>
+  <div data-p="mode-intro" class="mode-intro" hidden>
+    <p class="text-small">CSA2 通过共享缓存和索引结果，减少长上下文中的重复工作。以下以 Decoder 为例，三种角色预先分配到不同层；每层仍计算自己的主 Q、局部窗口和输出。</p>
+    <dl class="mode-notes">
+      <div class="mode-note"><dt>解决什么问题</dt><dd data-p="mode-problem"></dd></div>
+      <div class="mode-note"><dt>计算流程</dt><dd data-p="mode-description"></dd></div>
+      <div class="mode-note"><dt>计算取舍</dt><dd data-p="mode-cost"></dd></div>
+    </dl>
+  </div>
   <div class="viz-controls" role="group" aria-label="计算回放">
     <button type="button" class="btn btn-primary" data-p="next">执行下一步</button>
     <button type="button" class="btn" data-p="play" aria-pressed="false">自动执行</button>
@@ -1566,9 +1579,18 @@ Object.assign(runSteps, {
   const parameters={mha:heads,mqa:heads,gqa:heads,paged:range(4,j=>'跟踪缓存地址 · '+['t₁','t₂','t₃','t₄'][j]),swa:query,streaming:query,block:range(8,j=>'当前查询 q'+subs[8-j])};
   const defaults={paged:3,swa:7,streaming:7},reduce=matchMedia('(prefers-reduced-motion: reduce)');
   const modes=[
-    {name:'Full',description:'新建主 KV 与索引 K → 全域打分 → 选位置、建候选池 → 本层注意力输出'},
-    {name:'Reindex',description:'接收 Full 的缓存和候选池 → 新索引 Q 重选位置 → 本层注意力输出'},
-    {name:'Reuse',description:'接收主 KV 和最近选中的位置 → 新主 Q、局部 KV → 本层注意力输出'}
+    {name:'Full',
+      problem:'若每层都单独保存主 KV、独立搜索长历史，显存和计算会重复。本例首个 Full 建立共享缓存，并为后层圈定检索候选。',
+      description:'编码器输出 Hsrc → 新建主 KV、索引 K → 本层索引 Q 全域打分 → 本层 Top-K + 后层候选池 → 本层注意力输出。',
+      cost:'承担建库与全域索引，供后层复用。Full 的主注意力仍只读取选中 KV 和本层局部窗口。'},
+    {name:'Reindex',
+      problem:'各层的查询需求不同，一直沿用旧位置可能错过本层需要的信息。Reindex 保留共享缓存，用自己的索引 Q 重新选择位置。',
+      description:'接收主 KV、索引 K、候选池 → 本层新索引 Q → 候选内重选 Top-K → 本层主 Q + 局部 KV → 注意力输出。',
+      cost:'省去重建共享缓存，保留本层重选能力。候选池限定搜索范围；Top-K 决定实际读取位置，并传给 Reuse。'},
+    {name:'Reuse',
+      problem:'相邻层若选中的位置相近，反复索引和 Top-K 会重复工作。Reuse 沿用最近一次选择，进一步减少索引开销。',
+      description:'接收主 KV + 最近 Full / Reindex 的 Top-K → 读取这些位置 → 本层主 Q + 局部 KV → 新注意力权重 → 输出。',
+      cost:'省去索引 Q、索引打分和 Top-K；仍重新计算本层注意力与输出，因此输出会随本层输入变化。'}
   ];
   const DURATION=1800,HOLD=550;
   let id='csa2',param=0,steps=[],index=-1,art=null,svg=null,auto=false,paused=false,elapsed=0,raf=0,last=0,detail=false,width=0;
@@ -1640,10 +1662,12 @@ Object.assign(runSteps, {
     steps=runSteps[id](param);index=Math.min(steps.length-1,Math.max(-1,idx));
     modelSelect.value=id;el('param').hidden=!params;
     if(params){slider.max=params.length-1;slider.value=param;slider.setAttribute('aria-valuetext',params[param]);el('paramname').textContent=params[param];}
-    el('modes').hidden=id!=='csa2';el('mode-description').hidden=id!=='csa2';
+    el('modes').hidden=id!=='csa2';el('mode-intro').hidden=id!=='csa2';
     if(id==='csa2'){
       root.querySelectorAll('[data-mode]').forEach(button=>button.setAttribute('aria-pressed',String(Number(button.dataset.mode)===param)));
       el('mode-description').textContent=modes[param].description;
+      el('mode-problem').textContent=modes[param].problem;
+      el('mode-cost').textContent=modes[param].cost;
     }
     const sources=el('refs');sources.replaceChildren();
     for(const [label,url] of refs[id]){const a=document.createElement('a');a.href=url;a.textContent=label;a.target='_blank';a.rel='noopener noreferrer';sources.append(a);}
