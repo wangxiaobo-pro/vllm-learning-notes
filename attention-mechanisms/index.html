@@ -3122,10 +3122,204 @@ Object.assign(runSteps, {
   Object.assign(scenes,{mla,dsa,csa:d=&gt;v4(d,true),hca:d=&gt;v4(d,false)});
 })();
 
+(()=&gt;{
+  const unit=[[1,0],[.8,.6],[.96,.28],[0,1],[-.6,.8],[.6,-.8]];
+  const root2=Math.SQRT2,clamp=t=&gt;Math.max(0,Math.min(1,t));
+  const fmt=(x,n=3)=&gt;Number(x.toFixed(n)).toString().replace(&#x27;-&#x27;,&#x27;−&#x27;);
+  const indexFull=unit.map(v=&gt;Math.max(0,v[0]));
+  const pool=[0,1,4,5],fullIDs=[0,2],reindexIDs=[4,1];
+  function attention(ids,query,local){
+    const vectors=[...ids.map(i=&gt;unit[i]),...local,[0,0]];
+    const scores=vectors.map(v=&gt;query[0]*v[0]+query[1]*v[1]);
+    const exp=scores.map(Math.exp),den=exp.reduce((a,b)=&gt;a+b,0),alpha=exp.map(x=&gt;x/den);
+    const out=[0,1].map(axis=&gt;vectors.reduce((s,v,i)=&gt;s+alpha[i]*root2*v[axis],0));
+    return {ids,query,local,vectors,scores,exp,den,alpha,out};
+  }
+  const F=attention(fullIDs,[1,0],[[0,1],[1,0]]);
+  const R=attention(reindexIDs,[0,1],[[1,0],[0,1]]);
+  const U=attention(reindexIDs,[-1,0],[[-1,0],[0,-1]]);
+  const vector=v=&gt;&#x27;(&#x27;+v.map(x=&gt;fmt(x,4)).join(&#x27;, &#x27;)+&#x27;)&#x27;;
+  runSteps.csa2=()=&gt;[
+    {label:&#x27;看一组非重叠压缩&#x27;,value:&#x27;编码器教学 m=2。两个输入经内容门得到 ¼、¾ 的逐通道权重，原始摘要 (0.5,1.5) 经 RMSNorm 得 (0.4472,1.3416)。&#x27;},
+    {label:&#x27;Decoder Full 生成共享 KV&#x27;,value:&#x27;解码器教学 m=1。编码器输出乘 WKV 后归一化成为六条主 KV。索引 K 从旋转前的主 latent 投影并归一化得到。&#x27;},
+    {label:&#x27;Full 对六个位置打分&#x27;,value:&#x27;单索引头 qᴵ=(1,0)，分数 [1,0.8,0.96,0,0,0.6]。Top-2 为槽 1、3，供本 Full 层注意力读取。&#x27;},
+    {label:&#x27;按块最大分建立候选池&#x27;,value:&#x27;A、B、C 的最大索引分为 1、0.96、0.6。保留含最新位置的 C，再选 A，得到供后层检索的候选池 {1,2,5,6}。&#x27;},
+    {label:&#x27;Full 合并全局与局部读出&#x27;,value:&#x27;槽 1、3 与本层局部 t₅、t₆ 共用 softmax 分母，另加入 sink 的 exp(0)。主查询 (1,0) 得到 o=&#x27;+vector(F.out)+&#x27;。&#x27;},
+    {label:&#x27;Reindex 换查询、重选位置&#x27;,value:&#x27;沿用共享主 KV 与索引 K，在候选池内用 qᴵ=(0,1) 打分。选槽 5、2，以本层主 Q 与局部 KV 得到 o=&#x27;+vector(R.out)+&#x27;。&#x27;},
+    {label:&#x27;Reuse 沿用位置、重算注意力&#x27;,value:&#x27;沿用最近 Reindex 的 {5,2}。本层主查询换成 (−1,0)，局部 KV 也由本层生成。重新算权重得到 o=&#x27;+vector(U.out)+&#x27;。&#x27;},
+    {label:&#x27;各层输出交给残差路径&#x27;,value:&#x27;实际按逆 RoPE、组内低秩投影、组间输出投影返回隐藏空间。教学设逆 RoPE 与输出矩阵为单位映射，三个 y 分别为 &#x27;+[F,R,U].map(a=&gt;vector(a.out)).join(&#x27;、&#x27;)+&#x27;。&#x27;}
+  ];
+  const text=(p,x,y,s,o={})=&gt;p.text(x,y,s,{size:13,...o});
+  const mid=(p,x,y,s,o={})=&gt;text(p,x,y,s,{anchor:&#x27;middle&#x27;,...o});
+  const rect=(p,x,y,w,h,fill=&#x27;soft&#x27;,stroke=&#x27;none&#x27;)=&gt;p.rect(x,y,w,h,{fill,stroke,rx:3,sw:1});
+  const path=(p,pts,tone=&#x27;line&#x27;)=&gt;p.path(pts.map(([x,y],i)=&gt;(i?&#x27;L&#x27;:&#x27;M&#x27;)+x+&#x27; &#x27;+y).join(&#x27; &#x27;),{fill:&#x27;none&#x27;,stroke:tone,sw:1.2});
+  function arrow(p,x1,y1,x2,y2,tone=&#x27;s1&#x27;){
+    const theta=Math.atan2(y2-y1,x2-x1),a=Math.cos(theta),b=Math.sin(theta);
+    return p.path(&#x27;M&#x27;+x1+&#x27; &#x27;+y1+&#x27; L&#x27;+x2+&#x27; &#x27;+y2+&#x27; M&#x27;+(x2-5*a+3*b)+&#x27; &#x27;+(y2-5*b-3*a)+&#x27; L&#x27;+x2+&#x27; &#x27;+y2+&#x27; L&#x27;+(x2-5*a-3*b)+&#x27; &#x27;+(y2-5*b+3*a),{fill:&#x27;none&#x27;,stroke:tone,sw:1.4});
+  }
+  function row(d,p,y,label,values,tone=0,selected=[]){
+    const labelW=45,cw=(d.w-labelW-9)/values.length,cx=i=&gt;labelW+(i+.5)*cw;
+    text(p,7,y+15,label,{size:12,tone:&#x27;dim&#x27;});
+    const nodes=values.map((v,i)=&gt;{
+      rect(p,labelW+i*cw+1,y,cw-3,22,selected.includes(i)?&#x27;soft1&#x27;:tone?&#x27;soft&#x27;+tone:&#x27;soft&#x27;);
+      return mid(p,cx(i),y+15,String(v),{size:12});
+    });
+    return {nodes,cx,cw};
+  }
+  function scoreRow(d,p,stage,y,values,ids,selected){
+    const labelW=45,cw=(d.w-labelW-9)/6,cx=i=&gt;labelW+(i+.5)*cw,base=y+66;
+    text(p,7,y+15,&#x27;槽&#x27;,{size:12,tone:&#x27;dim&#x27;});
+    text(p,7,base-8,&#x27;I&#x27;,{size:12,tone:&#x27;dim&#x27;});
+    for(let j=0;j&lt;6;j++){
+      const eligible=ids.includes(j),active=selected.includes(j),col=active?&#x27;s1&#x27;:&#x27;s2&#x27;;
+      rect(p,labelW+j*cw+1,y,cw-3,22,active?&#x27;soft1&#x27;:eligible?&#x27;soft&#x27;:&#x27;none&#x27;,eligible?&#x27;none&#x27;:&#x27;line&#x27;);
+      mid(p,cx(j),y+15,String(j+1),{size:12,tone:eligible?&#x27;ink&#x27;:&#x27;dim&#x27;});
+      if(eligible){
+        const h=values[j]*27,bar=rect(p,cx(j)-Math.min(11,cw*.27),base-h,Math.min(22,cw*.54),h,col);
+        d.grow(stage,bar,&#x27;y&#x27;,{delay:j*.045,dur:.6});
+        mid(p,cx(j),base+17,fmt(values[j]),{size:12});
+      }else mid(p,cx(j),base+17,&#x27;×&#x27;,{size:12,tone:&#x27;dim&#x27;});
+    }
+    return {cx,bottom:base+24};
+  }
+  function attn(d,p,stage,y,a){
+    const centers=[d.w*.25,d.w*.75],cellWidth=Math.min(172,d.w*.43);
+    a.local.forEach((v,i)=&gt;{
+      mid(p,centers[i],y,&#x27;本层输入 h&#x27;+(i+5),{size:12,tone:&#x27;dim&#x27;});
+      rect(p,centers[i]-cellWidth/2,y+7,cellWidth,24,&#x27;soft2&#x27;);
+      mid(p,centers[i],y+24,&#x27;√2&#x27;+vector(v),{size:12});
+    });
+    text(p,8,y+50,&#x27;局部 KV=RMSNorm(h I)&#x27;,{size:12});
+    const qFormula=stage===6?&#x27;q=(h₆,₂/√2, 0)&#x27;:&#x27;q=h₆/√2&#x27;;
+    text(p,8,y+70,qFormula+&#x27; = &#x27;+vector(a.query),{size:13});
+    y+=93;
+    text(p,8,y,&#x27;z=q·KV/√2　 α=softmax([z₁,z₂,z₃,z₄,0])&#x27;,{size:d.w&lt;350?11.5:13});
+    text(p,8,y+21,&#x27;最后的 0 为 sink 分数 · 值贡献为 0&#x27;,{size:12,tone:&#x27;dim&#x27;});
+    const names=[...a.ids.map(i=&gt;&#x27;槽&#x27;+(i+1)),&#x27;局部5&#x27;,&#x27;局部6&#x27;,&#x27;sink&#x27;];
+    row(d,p,y+31,&#x27;对象&#x27;,names,0,[0,1]);
+    row(d,p,y+56,&#x27;KV₁/√2&#x27;,a.vectors.map(v=&gt;fmt(v[0])),0);
+    row(d,p,y+81,&#x27;KV₂/√2&#x27;,a.vectors.map(v=&gt;fmt(v[1])),0);
+    const labels=row(d,p,y+106,&#x27;z&#x27;,a.scores.map(s=&gt;fmt(s)),1);
+    row(d,p,y+131,&#x27;exp z&#x27;,a.exp.map(e=&gt;fmt(e,2)));
+    row(d,p,y+156,&#x27;α&#x27;,a.alpha.map(t=&gt;(100*t).toFixed(1)+&#x27;%&#x27;),0);
+    for(let j=0;j&lt;5;j++){
+      const x=labels.cx(j),width=labels.cw-5;
+      const bar=rect(p,x-width/2,y+179,width*a.alpha[j],5,j&lt;2?&#x27;s1&#x27;:j&lt;4?&#x27;s2&#x27;:&#x27;line&#x27;);
+      d.grow(stage,bar,&#x27;x&#x27;,{delay:.1+j*.045,dur:.38});
+    }
+    text(p,8,y+205,&#x27;Σ数据 exp(z)+e⁰ = &#x27;+fmt(a.den,4),{size:12,tone:&#x27;dim&#x27;});
+    const mark=text(p,8,y+228,&#x27;o = &#x27;+vector(a.out),{weight:500});
+    d.change(stage,t=&gt;{
+      const sums=[0,1].map(axis=&gt;a.vectors.reduce((sum,v,j)=&gt;sum+a.alpha[j]*root2*v[axis]*clamp(t*4-j),0));
+      mark.textContent=&#x27;o = &#x27;+vector(sums);
+    });
+    for(let j=0;j&lt;4;j++)d.travel(stage,[[labels.cx(j),y+186],[labels.cx(j),y+194],[d.w-12,y+194],[d.w-12,y+219]],{delay:j*.16,dur:.34,tone:j&lt;2?&#x27;s1&#x27;:&#x27;s2&#x27;});
+    return y+243;
+  }
+  scenes.csa2=d=&gt;{
+    const w=d.w,pad=8;
+    let p=d.stage(0,19,&#x27;独立示意 · 编码器 m=2 非重叠压缩&#x27;);
+    const cx=[w*.24,w*.74],pairW=Math.min(148,w*.42);
+    [&#x27;t₁ + t₂ → 摘要 A&#x27;,&#x27;t₃ + t₄ → 摘要 B&#x27;].forEach((s,i)=&gt;{
+      rect(p,cx[i]-pairW/2,31,pairW,25,&#x27;soft1&#x27;);mid(p,cx[i],48,s,{size:12});
+    });
+    text(p,8,77,&#x27;A 的输入　h₁=(2,0)　h₂=(0,2)&#x27;,{size:12});
+    text(p,8,97,&#x27;Cᵢ=hᵢWKV　 Zᵢ=hᵢWZ　→　通道门&#x27;,{size:12});
+    const gateY=108,gw=w-16;
+    const left=rect(p,8,gateY,gw*.25,12,&#x27;s1&#x27;),right=rect(p,8+gw*.25,gateY,gw*.75,12,&#x27;s2&#x27;);
+    d.change(0,t=&gt;{const a=.5-.25*t;left.setAttribute(&#x27;width&#x27;,gw*a);right.setAttribute(&#x27;x&#x27;,8+gw*a);right.setAttribute(&#x27;width&#x27;,gw*(1-a));});
+    mid(p,8+gw*.125,gateY+28,&#x27;¼ · h₁&#x27;,{size:12});mid(p,8+gw*.625,gateY+28,&#x27;¾ · h₂&#x27;,{size:12});
+    text(p,8,158,&#x27;¼(2,0)+¾(0,2)=(0.5,1.5)&#x27;,{size:13});
+    text(p,8,179,&#x27;RMSNorm → A=(0.4472,1.3416)&#x27;,{weight:500,size:13});
+    text(p,8,201,&#x27;WKV=I　 WZ=[[0,0],[ln3/2,ln3/2]]&#x27;,{size:12,tone:&#x27;dim&#x27;});
+    text(p,8,221,&#x27;教学　RMS γ=1、ε=0，RoPE=I，忽略量化&#x27;,{size:12,tone:&#x27;dim&#x27;});
+    let y=254;p=d.stage(1,y,&#x27;Decoder Full · m=1，生成共享缓存&#x27;);
+    text(p,pad,y+23,&#x27;编码器输出 Hsrc → C=RMSNorm(Hsrc WKV)&#x27;,{size:w&lt;350?11.5:13});
+    text(p,pad,y+44,&#x27;本例 Hsrc=C=√2 u，WKV=I&#x27;,{size:12});
+    row(d,p,y+55,&#x27;槽&#x27;,[1,2,3,4,5,6]);
+    row(d,p,y+80,&#x27;u₁&#x27;,unit.map(v=&gt;fmt(v[0])),1);
+    row(d,p,y+105,&#x27;u₂&#x27;,unit.map(v=&gt;fmt(v[1])),1);
+    const idx=row(d,p,y+143,&#x27;索引 K&#x27;,unit.map((_,i)=&gt;&#x27;k&#x27;+(i+1)),2);
+    for(let j=0;j&lt;6;j++){
+      const line=arrow(p,idx.cx(j),y+131,idx.cx(j),y+140);
+      d.trace(1,line,{delay:j*.05,dur:.5});d.move(1,idx.nodes[j],0,-13,{delay:j*.05,dur:.5});
+    }
+    text(p,8,y+187,&#x27;kᴵ=RMSNorm(C WᴵK)=C，本例 WᴵK=I&#x27;,{size:12});
+    text(p,8,y+208,&#x27;共享源 Full 层持有 C 与 kᴵ · 六槽均已可见&#x27;,{size:12,tone:&#x27;dim&#x27;});
+    y+=241;p=d.stage(2,y,&#x27;Full 索引 · 每个可见槽各算一分&#x27;);
+    text(p,8,y+24,&#x27;qᴵ=(1,0)　 Iⱼ=ReLU(qᴵ·kᴵⱼ)/√2&#x27;,{size:12});
+    const scored=scoreRow(d,p,2,y+37,indexFull,[0,1,2,3,4,5],fullIDs);
+    text(p,8,scored.bottom+15,&#x27;Full 自用 Top-2　{1,3}&#x27;,{weight:500});
+    d.travel(2,[[scored.cx(0),scored.bottom-3],[scored.cx(0),scored.bottom+3],[w-19,scored.bottom+3]],{delay:.5,dur:.5});
+    y=scored.bottom+49;p=d.stage(3,y,&#x27;块内取 max · 建立后层候选池&#x27;);
+    const bw=(w-24)/3,bx=i=&gt;8+i*(bw+4),bc=i=&gt;bx(i)+bw/2;
+    const blocks=[[&#x27;A&#x27;,&#x27;槽 1,2&#x27;,&#x27;max(1,.8)=1&#x27;],[&#x27;B&#x27;,&#x27;槽 3,4&#x27;,&#x27;max(.96,0)=.96&#x27;],[&#x27;C&#x27;,&#x27;槽 5,6&#x27;,&#x27;max(0,.6)=.6&#x27;]];
+    blocks.forEach(([name,slots,val],i)=&gt;{
+      rect(p,bx(i),y+13,bw,58,i===1?&#x27;soft&#x27;:&#x27;soft1&#x27;,i===1?&#x27;line&#x27;:&#x27;s1&#x27;);
+      mid(p,bc(i),y+29,name+&#x27; · &#x27;+slots,{size:12});mid(p,bc(i),y+49,val,{size:11});
+      mid(p,bc(i),y+65,i===2?&#x27;最新块 · 保留&#x27;:i===0?&#x27;其余最大 · 选&#x27;:&#x27;跳过&#x27;,{size:11});
+      const fill=rect(p,bx(i)+5,y+75,(bw-10)*[1,.96,.6][i],5,i===1?&#x27;line&#x27;:&#x27;s1&#x27;);d.grow(3,fill,&#x27;x&#x27;);
+    });
+    text(p,8,y+104,&#x27;候选池 P　{1,2,5,6} · 供后层重新检索&#x27;,{size:12});
+    const candidates=row(d,p,y+114,&#x27;P&#x27;,[1,2,5,6],1);
+    [0,0,2,2].forEach((src,j)=&gt;d.travel(3,[[bc(src),y+83],[bc(src),y+89],[candidates.cx(j),y+89],[candidates.cx(j),y+114]],{delay:.1*j,dur:.6}));
+    text(p,8,y+156,&#x27;Top-2 选“读谁”　候选池限定“在哪找”&#x27;,{size:12,tone:&#x27;dim&#x27;});
+    y+=190;p=d.stage(4,y,&#x27;Full · 选中的主 KV 与本层窗口一起读&#x27;);
+    y=attn(d,p,4,y+27,F)+25;
+    p=d.stage(5,y,&#x27;Reindex · 共用 C、kᴵ，换查询重选&#x27;);
+    text(p,8,y+24,&#x27;共享源 Full → C、kᴵ　新 qᴵ=(0,1)&#x27;,{size:12});
+    const scores=unit.map(v=&gt;Math.max(0,v[1]));
+    const r=scoreRow(d,p,5,y+36,scores,pool,reindexIDs);
+    text(p,8,r.bottom+16,&#x27;仅在 P 内 Top-2　{5,2} → 本层读取&#x27;,{weight:500,size:13});
+    y=attn(d,p,5,r.bottom+43,R)+25;
+    p=d.stage(6,y,&#x27;Reuse · 沿用最新选择，用本层 Q 读&#x27;);
+    const bx1=w*.24,bx2=w*.74,bww=Math.min(148,w*.42);
+    rect(p,bx1-bww/2,y+14,bww,32,&#x27;soft1&#x27;);rect(p,bx2-bww/2,y+14,bww,32,&#x27;soft2&#x27;);
+    mid(p,bx1,y+35,&#x27;Full 的共享 C&#x27;,{size:12});mid(p,bx2,y+35,&#x27;Reindex 的 {5,2}&#x27;,{size:12});
+    [bx1,bx2].forEach((x,i)=&gt;{
+      const pts=[[x,y+47],[x,y+55],[w/2,y+55],[w/2,y+61]];
+      path(p,pts,i?&#x27;s2&#x27;:&#x27;s1&#x27;);d.travel(6,pts,{tone:i?&#x27;s2&#x27;:&#x27;s1&#x27;,delay:.12*i,dur:.5});
+    });
+    mid(p,w/2,y+76,&#x27;gather(C, {5,2})&#x27;,{size:13});
+    y=attn(d,p,6,y+107,U)+25;
+    p=d.stage(7,y,&#x27;跨层共享同一份缓存 · 分别输出&#x27;);
+    const col=(w-16)/3,centers=[0,1,2].map(i=&gt;8+(i+.5)*col);
+    [&#x27;Full&#x27;,&#x27;Reindex&#x27;,&#x27;Reuse&#x27;].forEach((name,i)=&gt;{
+      mid(p,centers[i],y+24,name,{weight:500});
+      rect(p,8+i*col+1,y+35,col-3,24,&#x27;soft1&#x27;);
+      mid(p,centers[i],y+52,[&#x27;产 C,kᴵ&#x27;,&#x27;读 C,kᴵ&#x27;,&#x27;读 C&#x27;][i],{size:12});
+      rect(p,8+i*col+1,y+91,col-3,24,i===2?&#x27;soft2&#x27;:&#x27;soft&#x27;);
+      mid(p,centers[i],y+108,[&#x27;选 {1,3}&#x27;,&#x27;重选 {5,2}&#x27;,&#x27;沿用 {5,2}&#x27;][i],{size:12});
+      mid(p,centers[i],y+148,&#x27;本层 Q + SWA&#x27;,{size:11,tone:&#x27;dim&#x27;});
+      const a=[F,R,U][i];rect(p,8+i*col+1,y+158,col-3,44,&#x27;soft2&#x27;);
+      const o1=mid(p,centers[i],y+176,fmt(a.out[0],4),{size:13}),o2=mid(p,centers[i],y+194,fmt(a.out[1],4),{size:13});
+      d.move(7,o1,0,-9,{delay:i*.15,dur:.5});d.move(7,o2,0,-9,{delay:i*.15,dur:.5});
+    });
+    [1,2].forEach(i=&gt;{
+      const pts=[[centers[0],y+60],[centers[0],y+72],[centers[i],y+72],[centers[i],y+60]];
+      d.trace(7,path(p,pts,&#x27;s1&#x27;),{delay:i*.1,dur:.55});
+      arrow(p,centers[i],y+72,centers[i],y+60);
+      d.travel(7,pts,{delay:i*.1,dur:.55});
+    });
+    const copyIDs=[[centers[1],y+116],[centers[1],y+128],[centers[2],y+128],[centers[2],y+116]];
+    d.trace(7,path(p,copyIDs,&#x27;s2&#x27;),{delay:.3,dur:.5});arrow(p,centers[2],y+128,centers[2],y+116,&#x27;s2&#x27;);
+    d.travel(7,copyIDs,{delay:.3,dur:.5,tone:&#x27;s2&#x27;});
+    text(p,8,y+226,&#x27;o → 逆 RoPE → 组内 Wₒᵃ → 拼接 → Wₒᵇ → y&#x27;,{size:w&lt;350?11:13});
+    text(p,8,y+248,&#x27;教学单头，Wₒᵃ=Wₒᵇ=I，因此 y=o&#x27;,{size:12});
+    const table=[
+      [&#x27;本图&#x27;,&#x27;m=1&#x27;,&#x27;Top-2&#x27;,&#x27;池 2×2&#x27;,&#x27;窗 2&#x27;],
+      [&#x27;V4.1&#x27;,&#x27;m=1&#x27;,&#x27;Top-512&#x27;,&#x27;池 2048×8&#x27;,&#x27;窗128&#x27;]
+    ];
+    const xx=[8,w*.25,w*.46,w*.71,w*.93];
+    table.forEach((vals,i)=&gt;vals.forEach((value,j)=&gt;text(p,xx[j],y+277+i*21,value,{anchor:j?&#x27;middle&#x27;:&#x27;start&#x27;,size:11.5,tone:&#x27;dim&#x27;})));
+    d.finish(y+315);
+  };
+})();
+
     const groups=[
     [&#x27;分块与分页&#x27;,[[&#x27;flash&#x27;,&#x27;FlashAttention · 分块计算&#x27;],[&#x27;paged&#x27;,&#x27;PagedAttention · 分页寻址&#x27;]]],
     [&#x27;递推状态&#x27;,[[&#x27;ssm&#x27;,&#x27;SSM 混合架构&#x27;],[&#x27;kda&#x27;,&#x27;KDA · Kimi Delta Attention&#x27;]]],
-    [&#x27;DeepSeek&#x27;,[[&#x27;mla&#x27;,&#x27;MLA · 低维 KV 与 RoPE&#x27;],[&#x27;dsa&#x27;,&#x27;DSA · 按 token 打分&#x27;],[&#x27;csa&#x27;,&#x27;CSA · 合并后筛选&#x27;],[&#x27;hca&#x27;,&#x27;HCA · 合并后全读&#x27;]]],
+    [&#x27;DeepSeek&#x27;,[[&#x27;mla&#x27;,&#x27;MLA · 低维 KV 与 RoPE&#x27;],[&#x27;dsa&#x27;,&#x27;DSA · 按 token 打分&#x27;],[&#x27;csa&#x27;,&#x27;CSA · 合并后筛选&#x27;],[&#x27;csa2&#x27;,&#x27;CSA2 · 跨层共享与重选&#x27;],[&#x27;hca&#x27;,&#x27;HCA · 合并后全读&#x27;]]],
     [&#x27;头共享与历史窗口&#x27;,[[&#x27;base&#x27;,&#x27;普通因果注意力&#x27;],[&#x27;mha&#x27;,&#x27;MHA · 多头&#x27;],[&#x27;mqa&#x27;,&#x27;MQA · 共享 KV&#x27;],[&#x27;gqa&#x27;,&#x27;GQA · 分组共享 KV&#x27;],[&#x27;swa&#x27;,&#x27;SWA · 滑动窗口&#x27;],[&#x27;streaming&#x27;,&#x27;StreamingLLM · 起始与近期&#x27;],[&#x27;block&#x27;,&#x27;Block-Sparse · 块掩码&#x27;]]]
   ];
   for(const [name,items] of groups){
@@ -3139,6 +3333,7 @@ Object.assign(runSteps, {
     mla:[[&#x27;DeepSeek-V2 §2.1 · MLA&#x27;,&#x27;https://arxiv.org/html/2405.04434v5#S2.SS1&#x27;],[&#x27;RoFormer · 旋转位置编码&#x27;,&#x27;https://arxiv.org/abs/2104.09864&#x27;]],
     dsa:[[&#x27;DeepSeek-V3.2 §2.1 · Lightning Indexer&#x27;,&#x27;https://arxiv.org/html/2512.02556v1#S2.SS1&#x27;]],
     csa:[[&#x27;DeepSeek-V4 §2.3 · CSA / HCA&#x27;,&#x27;https://arxiv.org/html/2606.19348v1#S2.SS3&#x27;],[&#x27;V4-Flash 配置&#x27;,&#x27;https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/config.json&#x27;]],
+    csa2:[[&#x27;V4.1 · CSA2 技术报告&#x27;,&#x27;https://arxiv.org/html/2609.19969v1#S2.SS3&#x27;],[&#x27;官方压缩与索引实现&#x27;,&#x27;https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/314113f8a7dadb388215396ba5fbee2c610a04d6/inference/model.py&#x27;],[&#x27;官方配置&#x27;,&#x27;https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/314113f8a7dadb388215396ba5fbee2c610a04d6/inference/config.json&#x27;]],
     base:[[&#x27;Transformer §3.2&#x27;,&#x27;https://arxiv.org/abs/1706.03762&#x27;]],
     mqa:[[&#x27;Multi-Query Attention&#x27;,&#x27;https://arxiv.org/abs/1911.02150&#x27;]],gqa:[[&#x27;Grouped-Query Attention&#x27;,&#x27;https://aclanthology.org/2023.emnlp-main.298/&#x27;]],
     swa:[[&#x27;Mistral 7B · 滑动窗口&#x27;,&#x27;https://arxiv.org/abs/2310.06825&#x27;]],streaming:[[&#x27;StreamingLLM&#x27;,&#x27;https://hanlab.mit.edu/projects/streamingllm&#x27;]],
@@ -3151,7 +3346,7 @@ Object.assign(runSteps, {
   const parameters={mha:heads,mqa:heads,gqa:heads,paged:range(4,j=&gt;&#x27;跟踪缓存地址 · &#x27;+[&#x27;t₁&#x27;,&#x27;t₂&#x27;,&#x27;t₃&#x27;,&#x27;t₄&#x27;][j]),swa:query,streaming:query,block:range(8,j=&gt;&#x27;当前查询 q&#x27;+subs[8-j])};
   const defaults={paged:3,swa:7,streaming:7},reduce=matchMedia(&#x27;(prefers-reduced-motion: reduce)&#x27;);
   const DURATION=1800,HOLD=550;
-  let id=&#x27;paged&#x27;,param=3,steps=[],index=-1,art=null,svg=null,auto=false,paused=false,elapsed=0,raf=0,last=0,detail=false,width=0;
+  let id=&#x27;csa2&#x27;,param=0,steps=[],index=-1,art=null,svg=null,auto=false,paused=false,elapsed=0,raf=0,last=0,detail=false,width=0;
   function displayControls(){
     const end=index===steps.length-1,s=steps[index];
     el(&#x27;next&#x27;).disabled=end;el(&#x27;prev&#x27;).disabled=index&lt;0;el(&#x27;reset&#x27;).disabled=index&lt;0;
