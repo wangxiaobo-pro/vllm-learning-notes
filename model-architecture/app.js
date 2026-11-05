@@ -2,7 +2,7 @@
   'use strict';
   const $=id=>document.getElementById(id), NS='http://www.w3.org/2000/svg';
   const models=window.ARCH_MODELS;
-  const modelOrder=['deepseek_v41','glm53','kimi_k3','deepseek_v4_pro','minimax'];
+  const modelOrder=['llama','deepseek_v2','deepseek_v41','glm53','kimi_k3','deepseek_v4_pro','minimax'];
   let model,component,componentId,step=-1,selected=null,timer=null,frame=null,playing=false,first=true,trail=[];
   const reduced=matchMedia('(prefers-reduced-motion: reduce)');
   const make=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;};
@@ -17,7 +17,7 @@
   function stop(){playing=false;clearTimeout(timer);timer=null;if(frame!==null)cancelAnimationFrame(frame);frame=null;$('play').textContent='播放数据流';$('play').setAttribute('aria-pressed','false');document.querySelectorAll('.packet').forEach(p=>p.remove());}
   function readRoute(){
     const [m,c]=location.hash.slice(1).split('/').map(x=>{try{return decodeURIComponent(x);}catch{return '';}});
-    const id=models[m]?m:(models.deepseek_v41?'deepseek_v41':Object.keys(models)[0]);
+    const id=models[m]?m:(modelOrder.find(id=>models[id])||Object.keys(models)[0]);
     model=models[id];if(!model)throw new Error('模型数据未加载，请检查 data 目录。');
     componentId=model.components[c]?c:model.root;
     component=model.components[componentId];

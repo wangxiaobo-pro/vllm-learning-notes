@@ -1,4 +1,4 @@
-# 模型架构图谱：五模型 Forward
+# 模型架构图谱：七模型 Forward
 
 入口：[index.html](index.html)。从模型整体结构进入可点击组件，沿同一组 token、hidden、权重与历史状态查看输入来源、内部计算、输出以及下一消费者。
 
@@ -6,17 +6,19 @@
 
 下载或克隆整个仓库，保持目录结构，直接用浏览器打开本目录的 `index.html`，或从仓库首页的「模型基础」进入。页面为纯静态 HTML、CSS 与 JavaScript，无外部依赖、CDN、网络数据请求或构建步骤；源码链接仅在读者主动打开时访问外站。
 
-1. 切换顶部模型 Sheet，查看该模型的基线和配置。
+1. 默认从基础 Llama Sheet 开始；切换顶部模型 Sheet，查看该模型的基线和配置。已有组件链接仍直接进入对应模型。
 2. 点击带进入标记的节点，展开对应的层堆栈、Block、Attention、MoE、视觉组件或输出头；面包屑可返回上级。
 3. 先读「输入 · 从哪里来」和「输出 · 交给谁」，再看有名称的连线。悬停或用键盘聚焦节点可高亮相邻输入输出；算子详情说明它接收、计算和交出的数据。
 4. 使用「全局关系」「上一步 / 下一步」或播放，跟踪当前步骤；完整步骤列表与逐条连线可核对整体数据流。
 
 图中的权重来自模型加载，历史 KV 或递推状态来自此前执行，positions、块表与槽位来自推理框架。这些来源单独标明，不把缓存、对象成员或初始化参数误画成当前 `forward` 的函数调用。
 
-## 五个模型 Sheet
+## 七个模型 Sheet
 
 | 模型 | 本页重点 | 官方配置 | 页面数据 |
 | --- | --- | --- | --- |
+| Llama 2 7B | 基础 Decoder、MHA、RoPE、完整 K/V 缓存、RMSNorm 与 Dense SwiGLU | [Llama-2-7b-hf config](https://huggingface.co/meta-llama/Llama-2-7b-hf/blob/main/config.json) | [llama.js](data/llama.js) |
+| DeepSeek V2 | 低秩 Q / KV、解耦 RoPE、MLA 缓存、Dense / MoE 分界与专家路由 | [DeepSeek-V2 config](https://huggingface.co/deepseek-ai/DeepSeek-V2/blob/main/config.json) | [deepseek-v2.js](data/deepseek-v2.js) |
 | DeepSeek V4.1 Flash | CED、CSA2 跨层复用、mHC、Engram、MoE 与 DSpark | [DeepSeek-V4.1-Flash config](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/main/config.json) | [deepseek.js](data/deepseek.js) |
 | GLM-5.3 | MLA / DSA、Top-K 索引复用、Dense / MoE 分界与 MTP | [GLM-5.3 config](https://huggingface.co/zai-org/GLM-5.3/blob/main/config.json) | [glm53.js](data/glm53.js) |
 | Kimi K3 | KDA / gated MLA 混合主干、AttnRes、LatentMoE 与视觉路径 | [Kimi-K3 config](https://huggingface.co/moonshotai/Kimi-K3/blob/main/config.json) | [kimi-k3.js](data/kimi-k3.js) |
@@ -24,6 +26,8 @@
 | MiniMax M3.1 Flash | 全层 MSA、块索引器、Dense / MoE 分界、视觉融合与独立 DSpark | [MiniMax-M3.1-Flash config](https://huggingface.co/MiniMaxAI/MiniMax-M3.1-Flash/blob/main/config.json) | [minimax.js](data/minimax.js) |
 
 GLM Sheet 对应 **GLM-5.3**，不使用 GLM-5.3-Flash 的配置。MiniMax Sheet 对应截至本次核验的 **M3.1 Flash**；M3 家族实现中的配置分支按 M3.1 官方权重配置解释。各模型互不套用层数、共享 KV 规则、残差机制或草稿头。
+
+入门可按 [Llama 2 7B](index.html#llama/overview) → [DeepSeek V2](index.html#deepseek_v2/overview) 的顺序阅读。Llama 使用 7B 的标准多头注意力作为具体基础例子，不把 Llama 2 70B 或 Llama 3 的 GQA 配置套进来；DeepSeek V2 使用原版配置，不与 V2-Lite 混用。两者都沿 token embedding → Decoder blocks → 最终 Norm → LM head / 外部 sampler 追踪，随后比较完整 K/V 与低秩缓存、Dense FFN 与 MoE 的内部差别。
 
 表中配置链接便于查阅官方文件；本次核验的具体版本、日期、固定 revision 链接、源码文件及行号由各模型数据中的 `checked`、`revision`、`sources` 记录，并显示在页面的「源码与配置依据」中。`main` 后续变化不自动更新本地图。
 
@@ -52,18 +56,19 @@ GLM Sheet 对应 **GLM-5.3**，不使用 GLM-5.3-Flash 的配置。MiniMax Sheet
 
 | 文件 | 用途 |
 | --- | --- |
-| `index.html` | 最终浏览器入口，加载五个模型 Sheet |
+| `index.html` | 最终浏览器入口，加载七个模型 Sheet |
 | `style.css`、`app.js`、`art.js` | 页面布局、组件导航、步骤交互与图形绘制 |
+| `data/llama.js`、`data/deepseek-v2.js` | 两个基础模型的组件数据、缓存与计算区别 |
 | `data/deepseek.js`、`data/deepseek-pro.js` | DeepSeek V4.1 Flash 与 V4 Pro 的组件数据 |
 | `data/glm53.js`、`data/kimi-k3.js`、`data/minimax.js` | 其余模型的组件数据与来源 |
 | [data/SCHEMA.md](data/SCHEMA.md) | 模型、组件、节点、连线、步骤与来源的数据契约 |
 | `data/legacy-graphs.js` | 由早期图整理的内部图数据，供当前页面按需使用 |
-| `source-v41.html` | 早期 V4.1 图的历史源码快照，保留作追溯；不是当前五模型页面入口 |
+| `source-v41.html` | 早期 V4.1 图的历史源码快照，保留作追溯；不是当前七模型页面入口 |
 
 每份模型数据注册到 `window.ARCH_MODELS`。主要节点通过 `target` 指向真实组件；每条边记录生产节点、消费节点、数据名称与步骤编号。维护时同步检查组件输入输出、节点说明、连线、步骤和来源，避免图能播放但数据依赖不闭合。
 
 ## 检查修改
 
-在仓库根目录运行 `node model-architecture/validate.mjs`，检查五个模型的组件跳转、面包屑、节点说明、数据依赖、步骤及来源引用。它不加载模型权重，也不验证硬件推理。
+在仓库根目录运行 `node model-architecture/validate.mjs`，检查七个模型的组件跳转、面包屑、节点说明、数据依赖、步骤及来源引用。它不加载模型权重，也不验证硬件推理。
 
 浏览器检查应包括各 Sheet 切换、组件深入与返回、叶子算子输入输出、播放 / 暂停、验证示例两种结果，以及 320px 至 1920px 下的明暗主题。直接通过本地 `file://` 打开时也应能完整使用。

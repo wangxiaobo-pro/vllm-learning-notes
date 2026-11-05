@@ -13,7 +13,7 @@ for(const [,file] of html.matchAll(/<script src="(data\/[^\"]+\.js)"/g)){
   vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context,{filename:file});
 }
 const models=context.window.ARCH_MODELS;
-assert.deepEqual(Object.keys(models).sort(),['deepseek_v41','deepseek_v4_pro','glm53','kimi_k3','minimax'].sort());
+assert.deepEqual(Object.keys(models).sort(),['llama','deepseek_v2','deepseek_v41','deepseek_v4_pro','glm53','kimi_k3','minimax'].sort());
 const kinds=new Set(['tokens','streams','stack','gather','scatter','vision','hash','cache','router','experts','shared','sum','attention','selection','logits','sample','draft','state','verify']);
 let count=0,nodeCount=0,edgeCount=0;
 for(const [id,model] of Object.entries(models)){
