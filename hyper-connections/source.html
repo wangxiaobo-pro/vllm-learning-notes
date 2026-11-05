@@ -1,0 +1,230 @@
+<style>
+#residual-comparison { color:var(--foreground); }
+#residual-comparison .intro { display:flex; flex-direction:column; gap:calc(var(--font-size-base)*.5); margin-bottom:calc(var(--font-size-base)*1); padding-right:90px; }
+#residual-comparison .legend { display:flex; flex-wrap:wrap; align-items:center; gap:calc(var(--font-size-base)*1.25); margin:calc(var(--font-size-base)*.75) 0; }
+#residual-comparison .legend span { display:inline-flex; align-items:center; gap:6px; }
+#residual-comparison .swatch { width:18px; height:4px; display:inline-block; }
+#residual-comparison .panels { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:calc(var(--font-size-base)*1); }
+#residual-comparison .panel { min-width:0; }
+#residual-comparison .panel-head { display:flex; flex-direction:column; gap:calc(var(--font-size-base)*.25); min-height:60px; }
+#residual-comparison .scene { width:100%; display:block; overflow:visible; }
+#residual-comparison .scene text { fill:var(--foreground); font-family:inherit; font-size:var(--font-size-base); font-weight:400; }
+#residual-comparison .scene text.small { font-size:calc(var(--font-size-base)*.857143); }
+#residual-comparison .scene text.strong { font-weight:500; }
+#residual-comparison .scene .wire { fill:none; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+#residual-comparison .scene .crossing { fill:none; stroke:var(--background); stroke-width:5; stroke-linecap:round; stroke-linejoin:round; }
+#residual-comparison .scene .structure { stroke:var(--border); stroke-width:1; fill:none; }
+#residual-comparison .scene .state { fill:var(--background); stroke:var(--border); stroke-width:1; }
+#residual-comparison .scene [data-kind="conv"] { --signal:var(--viz-series-1); }
+#residual-comparison .scene [data-kind="residual"] { --signal:var(--viz-series-2); }
+#residual-comparison .scene [data-kind="add"] { --signal:var(--viz-series-3); }
+#residual-comparison .scene [data-kind="neutral"] { --signal:var(--muted-foreground); }
+#residual-comparison .scene .wire { stroke:var(--signal,var(--muted-foreground)); }
+#residual-comparison .scene .op { fill:color-mix(in srgb,var(--signal) 10%,var(--background)); stroke:var(--border); stroke-width:1; }
+#residual-comparison .scene .plus { fill:color-mix(in srgb,var(--viz-series-3) 15%,var(--background)); stroke:var(--viz-series-3); stroke-width:1.5; }
+#residual-comparison .scene .junction { fill:var(--signal); }
+#residual-comparison[data-focus="conv"] .scene [data-kind="conv"] .op,
+#residual-comparison[data-focus="residual"] .scene [data-kind="residual"] .op { fill:color-mix(in srgb,var(--signal) 24%,var(--background)); }
+#residual-comparison[data-focus="conv"] .scene [data-kind="conv"] .wire,
+#residual-comparison[data-focus="residual"] .scene [data-kind="residual"] .wire { stroke-width:3; }
+#residual-comparison[data-focus="conv"] .scene [data-kind="residual"] .wire,
+#residual-comparison[data-focus="residual"] .scene [data-kind="conv"] .wire { opacity:.3; }
+#residual-comparison[data-focus="add"] .scene .plus { fill:color-mix(in srgb,var(--viz-series-3) 32%,var(--background)); stroke-width:3; }
+#residual-comparison .status { min-height:22px; margin-top:calc(var(--font-size-base)*.5); }
+@media(max-width:900px) {
+  #residual-comparison .panels { grid-template-columns:1fr; gap:calc(var(--font-size-base)*2); }
+  #residual-comparison .panel { width:100%; max-width:460px; justify-self:center; }
+  #residual-comparison .panel-head { min-height:54px; }
+}
+</style>
+<div id="residual-comparison" data-focus="all">
+  <div class="intro">
+    <h2>Decoder 内部的计算与残差连接</h2>
+    <span class="text-small">3 层 Decoder · 每层 Attention + FFN · Pre-Norm · HC / mHC 双流示意</span>
+  </div>
+  <div class="viz-controls" role="group" aria-label="突出显示的通路">
+    <button class="btn" type="button" data-focus="all" aria-pressed="true">全部路径</button>
+    <button class="btn" type="button" data-focus="conv" aria-pressed="false">计算分支</button>
+    <button class="btn" type="button" data-focus="residual" aria-pressed="false">残差通路</button>
+    <button class="btn" type="button" data-focus="add" aria-pressed="false">相加位置</button>
+  </div>
+  <div class="legend text-small" aria-label="图例">
+    <span><i class="swatch" style="background:var(--viz-series-1)"></i>计算 / 读入 / 写回</span>
+    <span><i class="swatch" style="background:var(--viz-series-2)"></i>残差传递 / 混合</span>
+    <span><i class="swatch" style="background:var(--viz-series-3)"></i>⊕ 逐元素相加</span>
+    <span>● 分叉连接点</span>
+  </div>
+  <div class="status text-small" aria-live="polite">全部路径 · 每层先 Attention 后 FFN，各自完成一次残差更新。</div>
+  <div class="panels">
+    <section class="panel" data-model="resnet">
+      <div class="panel-head"><h3>普通残差 Decoder</h3><span class="text-small">单流 · Attention / FFN 各一次相加</span></div>
+      <svg class="scene" role="img" aria-label="三个 Pre-Norm Decoder 层，每层的 Attention 和 FFN 前分别归一化，输出分别与各自输入相加。"></svg>
+    </section>
+    <section class="panel" data-model="hc">
+      <div class="panel-head"><h3>HC</h3><span class="text-small">双流 · 残差混合无双随机约束</span></div>
+      <svg class="scene" role="img" aria-label="HC 三个 Decoder 层。Attention 和 FFN 各自执行聚合、归一化、计算和写回，并与混合后的双流残差相加。"></svg>
+    </section>
+    <section class="panel" data-model="mhc">
+      <div class="panel-head"><h3>mHC</h3><span class="text-small">双流 · 残差混合受双随机约束</span></div>
+      <svg class="scene" role="img" aria-label="mHC 三个 Decoder 层，与 HC 的计算位置相同，每个子层的残差混合矩阵非负且行列和为一。初始两条流由同一 embedding 复制得到。"></svg>
+    </section>
+  </div>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('residual-comparison');
+  const NS = 'http://www.w3.org/2000/svg';
+  const validFocus = new Set(['all','conv','residual','add']);
+  const labels = {
+    all:'全部路径 · 每层先 Attention 后 FFN，各自完成一次残差更新。',
+    conv:'计算分支 · 聚合后先 RMSNorm，再执行一次 Attention 或 FFN，最后写回。',
+    residual:'残差通路 · 普通 Decoder 直接传递；HC / mHC 在每个子层混合多条流。',
+    add:'相加位置 · Attention 后更新一次残差，FFN 后再更新一次残差。'
+  };
+  function setFocus(value, save) {
+    const focus = validFocus.has(value) ? value : 'all';
+    root.dataset.focus=focus;
+    root.querySelectorAll('button[data-focus]').forEach(button => button.setAttribute('aria-pressed',String(button.dataset.focus===focus)));
+    root.querySelector('.status').textContent=labels[focus];
+    if(save && window.openai?.setWidgetState) {
+      window.openai.setWidgetState({modelContent:{comparison:'普通残差 Decoder / HC / mHC',blocks:3,sublayersPerBlock:2,streams:2,focus},privateContent:null}).catch(()=>{});
+    }
+  }
+  root.querySelectorAll('button[data-focus]').forEach(button=>button.addEventListener('click',()=>setFocus(button.dataset.focus,true)));
+  setFocus(window.openai?.widgetState?.modelContent?.focus || 'residual',false);
+  window.addEventListener('openai:set_globals',event=>{
+    const state=event.detail?.globals?.widgetState;
+    if(state) setFocus(state.modelContent?.focus,false);
+  });
+  function el(tag, attrs, parent) {
+    const node=document.createElementNS(NS,tag);
+    Object.entries(attrs||{}).forEach(([key,value])=>node.setAttribute(key,String(value)));
+    if(parent) parent.appendChild(node);
+    return node;
+  }
+  function text(parent,x,y,value,small=false,anchor='middle',strong=false) {
+    const node=el('text',{x,y,'text-anchor':anchor,'dominant-baseline':'middle',class:(small?'small ':'')+(strong?'strong':'')},parent);
+    node.textContent=value;
+    return node;
+  }
+  function group(svg,kind) { return el('g',{'data-kind':kind},svg); }
+  function draw(svg,kind) {
+    const w=Math.round(svg.getBoundingClientRect().width);
+    if(w<200) return;
+    const H=1950;
+    svg.setAttribute('viewBox',`0 0 ${w} ${H}`);
+    svg.setAttribute('height',H);
+    svg.replaceChildren();
+    const title=el('title',{},svg); title.textContent=`${kind==='resnet'?'普通残差 Decoder':kind==='hc'?'HC':'mHC'}：3 层 Decoder、6 个子层`;
+    const desc=el('desc',{},svg); desc.textContent='展示 decoder-only 模型的 Pre-Norm 结构。每层 Attention 和 FFN 分别进行残差更新。HC 和 mHC 在每个子层各自聚合、计算、写回，参数独立。x 是层输入输出，y 是 Attention 后的中间状态；上标是残差流编号。相交线仅在实心圆处连接。省略模型末尾的归一化、流聚合和输出头。';
+    const defs=el('defs',{},svg);
+    ['conv','residual','add','neutral'].forEach((signal,index)=>{
+      const marker=el('marker',{id:`${kind}-${signal}-arrow`,viewBox:'0 0 10 10',refX:8,refY:5,markerWidth:7,markerHeight:7,orient:'auto',markerUnits:'userSpaceOnUse'},defs);
+      el('path',{d:'M1 1L8 5L1 9',fill:'none',stroke:index<3?`var(--viz-series-${index+1})`:'var(--muted-foreground)','stroke-width':1.4,'stroke-linecap':'round','stroke-linejoin':'round'},marker);
+    });
+    function path(parent,d,signal,arrow=true,bridge=false) {
+      if(bridge) el('path',{d,class:'crossing'},parent);
+      return el('path',{d,class:'wire',...(arrow?{'marker-end':`url(#${kind}-${signal}-arrow)`}:{})},parent);
+    }
+    function box(parent,x,y,bw,bh,lines,small=false) {
+      el('rect',{x,y,width:bw,height:bh,rx:5,class:'op'},parent);
+      const gap=18;
+      lines.forEach((line,index)=>text(parent,x+bw/2,y+bh/2+(index-(lines.length-1)/2)*gap,line,small));
+    }
+    function state(x,y,label) {
+      el('rect',{x:x-29,y:y-13,width:58,height:26,rx:5,class:'state'},svg);
+      text(svg,x,y,label);
+    }
+    function plus(x,y,parent) {
+      el('circle',{cx:x,cy:y,r:13,class:'plus'},parent);
+      text(parent,x,y,'+',false,'middle',true);
+    }
+    const a=Math.round(w*.12), b=Math.round(w*.34), mid=Math.round((a+b)/2);
+    const fl=Math.round(w*.55), fw=w-fl-8, fc=fl+fw/2;
+    const mleft=8, mw=Math.round(w*.46)-8;
+    const res=group(svg,'residual');
+    const conv=group(svg,'conv');
+    const add=group(svg,'add');
+    const neutr=group(svg,'neutral');
+    box(neutr,8,4,mw,28,['Embedding'],true);
+    if(kind==='resnet') {
+      path(res,`M${mid} 32 V87`,'residual');
+      text(svg,fl,52,'输入 x₀',true,'start');
+    } else {
+      path(res,`M${mid} 32 V53 H${a} V87`,'residual');
+      path(res,`M${mid} 53 H${b} V87`,'residual');
+      el('circle',{cx:mid,cy:53,r:3,class:'junction'},res);
+      text(svg,fl,46,'复制同一输入',true,'start');
+      text(svg,fl,66,'两条流初值相同',true,'start');
+    }
+    for(let block=0;block<6;block++) {
+      const y=100+block*300;
+      const layer=Math.floor(block/2)+1;
+      const attention=block%2===0;
+      text(svg,fl,y,attention?`Decoder ${layer}`:'FFN 子层',false,'start',true);
+      if(attention) el('path',{d:`M${w-3} ${y+18} V${y+575}`,class:'structure'},svg);
+      if(kind==='resnet') {
+        path(res,`M${mid} ${y+13} V${y+215}`,'residual');
+        text(res,mid+12,y+136,'恒等',true,'start');
+        text(res,mid+12,y+154,'旁路',true,'start');
+        path(conv,`M${mid} ${y+48} H${fc} V${y+86}`,'conv',true,true);
+        el('circle',{cx:mid,cy:y+48,r:3,class:'junction'},conv);
+      } else {
+        path(res,`M${a} ${y+13} V${y+84}`,'residual');
+        path(res,`M${b} ${y+13} V${y+84}`,'residual');
+        path(res,`M${a} ${y+180} V${y+241}`,'residual');
+        path(res,`M${b} ${y+180} V${y+215}`,'residual');
+        box(res,mleft,y+84,mw,96,[]);
+        text(res,mleft+mw/2,y+99,'残差混合 Hres',true,'middle',true);
+        const vals=kind==='mhc' ? [['0.8','0.2','0.2','0.8'],['0.6','0.4','0.4','0.6'],['0.7','0.3','0.3','0.7']][block%3] : ['a','b','c','d'];
+        const matLeft=mleft+mw/2-41, matTop=y+111;
+        el('path',{d:`M${matLeft+4} ${matTop} H${matLeft} V${matTop+44} H${matLeft+4} M${matLeft+78} ${matTop} H${matLeft+82} V${matTop+44} H${matLeft+78}`,class:'structure'},res);
+        vals.forEach((value,index)=>text(res,matLeft+20+(index%2)*42,matTop+11+Math.floor(index/2)*24,value,true));
+        text(res,mleft+mw/2,y+168,kind==='mhc'?'非负 · 行列和为 1':'无双随机约束',true);
+        path(conv,`M${a} ${y+23} H${fl+fw*.27} V${y+44}`,'conv',true,true);
+        path(conv,`M${b} ${y+34} H${fl+fw*.73} V${y+44}`,'conv',true,true);
+        el('circle',{cx:a,cy:y+23,r:3,class:'junction'},conv);
+        el('circle',{cx:b,cy:y+34,r:3,class:'junction'},conv);
+        box(conv,fl,y+44,fw,26,['聚合 · Hpre'],true);
+        path(conv,`M${fc} ${y+70} V${y+86}`,'conv');
+      }
+      box(conv,fl,y+86,fw,26,['RMSNorm'],true);
+      path(conv,`M${fc} ${y+112} V${y+130}`,'conv');
+      box(conv,fl,y+130,fw,36,attention?['Self-Attention','因果掩码']:['FFN / MoE','逐 token 计算'],true);
+      if(kind==='resnet') {
+        path(conv,`M${fc} ${y+166} V${y+228} H${mid+13}`,'conv');
+        plus(mid,y+228,add);
+        path(res,`M${mid} ${y+241} V${y+287}`,'residual');
+        text(svg,fl+fw,y+269,attention?'Attention 后相加':'FFN 后相加',true,'end');
+      } else {
+        path(conv,`M${fc} ${y+166} V${y+184}`,'conv');
+        box(conv,fl,y+184,fw,26,['写回 · Hpost'],true);
+        path(conv,`M${fl+fw*.68} ${y+210} V${y+228} H${b+13}`,'conv',true,true);
+        path(conv,`M${fl+fw*.32} ${y+210} V${y+254} H${a+13}`,'conv',true,true);
+        plus(a,y+254,add); plus(b,y+228,add);
+        path(res,`M${a} ${y+267} V${y+287}`,'residual');
+        path(res,`M${b} ${y+241} V${y+287}`,'residual');
+        text(conv,fl+fw,y+277,attention?'Attention 后写回':'FFN 后写回',true,'end');
+      }
+    }
+    // Draw state labels last so crossing routes never obscure the state names.
+    for(let block=0;block<=6;block++) {
+      const y=100+block*300;
+      const label=['x₀','y₀','x₁','y₁','x₂','y₂','x₃'][block];
+      if(kind==='resnet') state(mid,y,label);
+      else { state(a,y,`${label}¹`); state(b,y,`${label}²`); }
+    }
+    if(kind==='mhc') text(svg,w/2,1936,'各子层独立参数 · 矩阵数值为示例',true);
+    if(kind==='hc') text(svg,w/2,1936,'Attention 与 FFN 的混合参数独立',true);
+    if(kind==='resnet') text(svg,w/2,1936,'y：Attention 后状态；x：层间状态',true);
+  }
+  const panels=[...root.querySelectorAll('.panel')];
+  const resize = new ResizeObserver(entries=>{
+    for(const entry of entries) {
+      const panel=entry.target;
+      draw(panel.querySelector('svg'),panel.dataset.model);
+    }
+  });
+  panels.forEach(panel=>{draw(panel.querySelector('svg'),panel.dataset.model);resize.observe(panel);});
+})();
+</script>
