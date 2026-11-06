@@ -14,6 +14,7 @@ def main():
     args = parser.parse_args()
     css = (ROOT / 'assets/lesson-workbench.css').read_text(encoding='utf-8').rstrip()
     runtime = (ROOT / 'assets/lesson-workbench.js').read_text(encoding='utf-8').rstrip()
+    routing = (ROOT / 'assets/lesson-routing.js').read_text(encoding='utf-8').rstrip()
     selected = set(args.topics.split(',')) if args.topics else None
     changed, count = [], 0
     for source in sorted(ROOT.glob('*/lesson.js')):
@@ -21,7 +22,7 @@ def main():
         if selected and topic not in selected:
             continue
         definition = source.read_text(encoding='utf-8-sig').rstrip()
-        scripts = (definition + '\n' + runtime).replace('</script', '<\\/script')
+        scripts = (routing + '\n' + definition + '\n' + runtime).replace('</script', '<\\/script')
         content = START + '\n<style>\n' + css + '\n</style>\n<main class="lesson-workbench" id="lesson-workbench" data-topic="' + topic + '"></main>\n<noscript>请启用 JavaScript 查看逐步演算；源码与范围说明仍可阅读。</noscript>\n<script>\n' + scripts + '\n</script>\n' + END
         page = source.with_name('index.html')
         if page.exists():

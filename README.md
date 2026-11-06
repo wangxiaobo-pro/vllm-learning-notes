@@ -116,9 +116,9 @@ python scripts/build_learning_ui.py --check
 
 新增十个主题共用离线逐步工作台：五个基础知识主题（RoPE、采样、量化、显存预算、性能指标）直接从输入进入计算；五个框架主题（异步调度、输入打包、结构化输出、Multi-LoRA、混合 KV）先显示固定 commit 的多层调用链，再跳转到具体场景和步骤。
 
-教学数据与状态维护在各目录的 `lesson.js`，公共接口见 [assets/lesson-workbench-schema.md](assets/lesson-workbench-schema.md)。`scripts/build_lessons.py` 内联图、表、数值与交互；不依赖 CDN 或服务。源码节点跳转会重置为该节点声明的参数，避免先前探索的参数与源码场景混合。手动改参数后可继续自由探索。
+教学数据与状态维护在各目录的 `lesson.js`，公共接口见 [assets/lesson-workbench-schema.md](assets/lesson-workbench-schema.md)。连线路由维护在 `assets/lesson-routing.js`：优先邻近直连，为多路输入分配独立端口，避免共线；交叉处留出间隔。点按连线或关系列表可单独追踪生产者与消费者，窄屏自动展开完整关系说明。`scripts/build_lessons.py` 内联图、表、数值与交互；不依赖 CDN 或服务。源码节点跳转会重置为该节点声明的参数，避免先前探索的参数与源码场景混合。手动改参数后可继续自由探索。
 
-每个新主题的 `verify.mjs` 独立验证关键算式或状态守恒；`node scripts/verify_lessons.mjs` 汇总检查控件边界、步骤依赖、数据确定性、相关链接和源码节点目标。基础知识中的数值并非模型运行输出；框架主题的真实调用位置与教学 token、块号、小矩阵分别标注，源码证据固定到 vLLM `295c062db8a48ea73bbd05d1174cb37d24bf86f9`。
+`node scripts/verify_lesson_routing.mjs` 验证 Q/K 直连、独立端口、反馈线和窄屏布线。每个新主题的 `verify.mjs` 独立验证关键算式或状态守恒；`node scripts/verify_lessons.mjs` 汇总检查控件边界、步骤依赖、数据确定性、相关链接和源码节点目标。基础知识中的数值并非模型运行输出；框架主题的真实调用位置与教学 token、块号、小矩阵分别标注，源码证据固定到 vLLM `295c062db8a48ea73bbd05d1174cb37d24bf86f9`。
 
 ### 调用位置必须与源码 commit 匹配
 

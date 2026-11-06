@@ -2550,7 +2550,7 @@ function renderDeviceGraph({ svg, width, mode, step = 0, examples, training, com
   const devCount=spec.devices.length, cols=mobile?1:devCount;
   const margin=mobile?34:10, gutter=devCount===2?126:42;
   const frameW=mobile?W-2*margin:(W-2*margin-gutter*(cols-1))/cols;
-  const pad=12, cardGap=12, rowGap=24, frameHeader=48;
+  const pad=12, cardGap=12, rowGap=56, frameHeader=48;
   const fmt=v=&gt;v===null?&#x27;−∞&#x27;:Number.isInteger(v)?String(v):String(Number(Number(v).toFixed(4)));
   const measure=s=&gt;Array.from(String(s)).reduce((sum,ch)=&gt;sum+(/[\x00-\xff]/.test(ch)?6.6:12),0);
   const wrap=(s,w)=&gt;{
@@ -2708,8 +2708,8 @@ function renderDeviceGraph({ svg, width, mode, step = 0, examples, training, com
     if(type===&#x27;remote&#x27;&amp;&amp;badgeAt){
       const [bx,by]=badgeAt;
       const badge=create(&#x27;g&#x27;,{&#x27;data-edge-badge-step&#x27;:s,&#x27;data-edge-badge-from&#x27;:from,&#x27;data-edge-badge-to&#x27;:to},undefined,edgeLabels);
-      create(&#x27;circle&#x27;,{cx:bx,cy:by,r:9,fill:C.bg,stroke:active?color:C.border,&#x27;stroke-width&#x27;:1.3},undefined,badge);
-      text(bx,by+4,String(s),20,badge,{fill:active?color:C.control});
+      create(&#x27;rect&#x27;,{x:bx-15,y:by-10,width:30,height:20,rx:5,fill:C.bg,stroke:active?color:C.border,&#x27;stroke-width&#x27;:1.3},undefined,badge);
+      text(bx,by+4,String(s)+(String(from).startsWith(&#x27;bus-&#x27;)?&#x27;出&#x27;:&#x27;入&#x27;),28,badge,{fill:active?color:C.control});
     }
     if(step&gt;0&amp;&amp;step===s&amp;&amp;!reducedMotion)animated.push(p);
     return p;
@@ -2760,12 +2760,12 @@ function renderDeviceGraph({ svg, width, mode, step = 0, examples, training, com
         d=&#x27;M&#x27;+a.x+&#x27; &#x27;+exit+&#x27; H&#x27;+rail+&#x27; V&#x27;+(bus.y+bus.h+12+r*5)+&#x27; H&#x27;+(bus.x+bus.w*(r+1)/(devCount+1))+&#x27; V&#x27;+(bus.y+bus.h);
         badge=[(a.x+rail)/2,exit];
       } else if(mobile){
-        const rail=6+bi*7,exit=a.rowBottom+12;
-        d=&#x27;M&#x27;+sourceX+&#x27; &#x27;+(a.y+a.h)+&#x27; V&#x27;+exit+&#x27; H&#x27;+rail+&#x27; V&#x27;+cy+&#x27; H&#x27;+bus.x;
+        const rail=6+bi*8+r*4,exit=a.rowBottom+12;
+        d=&#x27;M&#x27;+sourceX+&#x27; &#x27;+(a.y+a.h)+&#x27; V&#x27;+exit+&#x27; H&#x27;+rail+&#x27; V&#x27;+(cy+(r-(devCount-1)/2)*12)+&#x27; H&#x27;+bus.x;
         badge=[nearPoint(sourceX,rail,28),exit];
       } else if(devCount===2){
         const near=r===0?a.device.x+a.device.w+6:a.device.x-6,exit=a.rowBottom+12,entry=r===0?bus.x:bus.x+bus.w;
-        d=&#x27;M&#x27;+sourceX+&#x27; &#x27;+(a.y+a.h)+&#x27; V&#x27;+exit+&#x27; H&#x27;+near+&#x27; V&#x27;+cy+&#x27; H&#x27;+entry;
+        d=&#x27;M&#x27;+sourceX+&#x27; &#x27;+(a.y+a.h)+&#x27; V&#x27;+exit+&#x27; H&#x27;+near+&#x27; V&#x27;+(cy-14)+&#x27; H&#x27;+entry;
         badge=[nearPoint(sourceX,near,28),exit];
       } else {
         const exit=bus.y-12;
@@ -2782,19 +2782,19 @@ function renderDeviceGraph({ svg, width, mode, step = 0, examples, training, com
         d=&#x27;M&#x27;+(bus.x+bus.w*(r+1)/(devCount+1))+&#x27; &#x27;+(bus.y+bus.h)+&#x27; V&#x27;+(bus.y+bus.h+26+r*5)+&#x27; H&#x27;+rail+&#x27; V&#x27;+entry+&#x27; H&#x27;+targetX+&#x27; V&#x27;+a.y;
         badge=[nearPoint(targetX,rail,60),entry];
       } else if(mobile){
-        const rail=W-6-bi*7;
+        const rail=W-6-bi*8-r*4;
         if(a.row===0){
           const entry=a.y+a.h/2;
-          d=&#x27;M&#x27;+(bus.x+bus.w)+&#x27; &#x27;+cy+&#x27; H&#x27;+rail+&#x27; V&#x27;+entry+&#x27; H&#x27;+(a.x+a.w);
+          d=&#x27;M&#x27;+(bus.x+bus.w)+&#x27; &#x27;+(cy+(r-(devCount-1)/2)*12)+&#x27; H&#x27;+rail+&#x27; V&#x27;+entry+&#x27; H&#x27;+(a.x+a.w);
           badge=[(rail+a.x+a.w)/2,entry];
         } else {
           const entry=a.rowTop-12;
-          d=&#x27;M&#x27;+(bus.x+bus.w)+&#x27; &#x27;+cy+&#x27; H&#x27;+rail+&#x27; V&#x27;+entry+&#x27; H&#x27;+targetX+&#x27; V&#x27;+a.y;
+          d=&#x27;M&#x27;+(bus.x+bus.w)+&#x27; &#x27;+(cy+(r-(devCount-1)/2)*12)+&#x27; H&#x27;+rail+&#x27; V&#x27;+entry+&#x27; H&#x27;+targetX+&#x27; V&#x27;+a.y;
           badge=[nearPoint(targetX,rail,60),entry];
         }
       } else if(devCount===2){
         const near=r===0?a.device.x+a.device.w+13:a.device.x-13,entry=a.rowTop-12,start=r===0?bus.x:bus.x+bus.w;
-        d=&#x27;M&#x27;+start+&#x27; &#x27;+(cy+8)+&#x27; H&#x27;+near+&#x27; V&#x27;+entry+&#x27; H&#x27;+targetX+&#x27; V&#x27;+a.y;
+        d=&#x27;M&#x27;+start+&#x27; &#x27;+(cy+14)+&#x27; H&#x27;+near+&#x27; V&#x27;+entry+&#x27; H&#x27;+targetX+&#x27; V&#x27;+a.y;
         badge=[nearPoint(targetX,near,60),entry];
       } else {
         const rail=a.device.x-10,entry=a.y+a.h/2;
@@ -2846,12 +2846,44 @@ if (typeof module !== &#x27;undefined&#x27; &amp;&amp; module.exports) module.ex
     t.value.forEach((row,r)=&gt;row.forEach((v,c)=&gt;el(&#x27;text&#x27;,{x:left+cw*(c+.5),y:top+15+r*21,&#x27;text-anchor&#x27;:&#x27;middle&#x27;,&#x27;data-matrix-cell&#x27;:true,&#x27;data-value&#x27;:v===null?&#x27;null&#x27;:v},shown?fmt(v):&#x27;·&#x27;,parent)));
   }
   function stop(){if(timer){clearInterval(timer);timer=null;}$(&#x27;#pf-play&#x27;).textContent=&#x27;播放流程&#x27;;}
+
+  // A route can be traced alone; endpoint buttons keep long mobile links navigable.
+  function installRouteTrace(){
+    let panel=root.querySelector(&#x27;#pf-route-trace&#x27;);
+    if(!panel){panel=document.createElement(&#x27;div&#x27;);panel.id=&#x27;pf-route-trace&#x27;;panel.className=&#x27;card&#x27;;panel.style.cssText=&#x27;padding:12px;margin:12px 0;display:grid;gap:8px;min-width:0&#x27;;svg.before(panel);}
+    panel.replaceChildren();
+    const edges=[...svg.querySelectorAll(&#x27;path[data-edge-from][data-edge-to]&#x27;)];
+    if(!edges.length){panel.hidden=true;return;}panel.hidden=false;
+    const nodes=[...svg.querySelectorAll(&#x27;[data-node]&#x27;)];
+    const find=id=&gt;nodes.find(n=&gt;n.dataset.node===id);
+    const name=id=&gt;{const n=find(id);if(!n)return id;const frame=[...svg.querySelectorAll(&#x27;[data-device]&#x27;)].find(f=&gt;f.dataset.device===n.dataset.nodeOwner),owner=frame?.querySelector(&#x27;text&#x27;)?.textContent||(!n.dataset.nodeOwner&amp;&amp;/[0-9]$/.test(id)?&#x27;rank &#x27;+id.slice(-1):&#x27;&#x27;);return (owner?owner+&#x27; · &#x27;:&#x27;&#x27;)+(n.querySelector(&#x27;text&#x27;)?.textContent||id);};
+    const label=document.createElement(&#x27;label&#x27;);label.textContent=&#x27;连线追踪：选择一条边，只突出其生产者 → 消费者&#x27;;
+    const select=document.createElement(&#x27;select&#x27;);select.className=&#x27;select&#x27;;select.style.cssText=&#x27;width:100%;min-width:0;min-height:36px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--background);color:var(--foreground);font:inherit;font-size:12px&#x27;;select.setAttribute(&#x27;aria-label&#x27;,&#x27;选择要追踪的连线&#x27;);
+    const all=document.createElement(&#x27;option&#x27;);all.value=&#x27;&#x27;;all.textContent=&#x27;全部连线&#x27;;select.append(all);
+    edges.forEach((e,i)=&gt;{const o=document.createElement(&#x27;option&#x27;);o.value=String(i);o.textContent=(e.dataset.edgeStep||&#x27;&#x27;)+&#x27; · &#x27;+name(e.dataset.edgeFrom)+&#x27; → &#x27;+name(e.dataset.edgeTo);select.append(o);});
+    const status=document.createElement(&#x27;div&#x27;);status.style.cssText=&#x27;overflow-wrap:anywhere;font-size:12px&#x27;;status.setAttribute(&#x27;aria-live&#x27;,&#x27;polite&#x27;);
+    const row=document.createElement(&#x27;div&#x27;);row.style.cssText=&#x27;display:flex;flex-wrap:wrap;gap:8px&#x27;;
+    const start=document.createElement(&#x27;button&#x27;),end=document.createElement(&#x27;button&#x27;),reset=document.createElement(&#x27;button&#x27;);
+    for(const b of [start,end,reset]){b.type=&#x27;button&#x27;;b.className=&#x27;btn&#x27;;row.append(b);}start.textContent=&#x27;定位生产者&#x27;;end.textContent=&#x27;定位消费者&#x27;;reset.textContent=&#x27;显示全部&#x27;;
+    function apply(){
+      const chosen=select.value===&#x27;&#x27;?null:edges[Number(select.value)],from=chosen?.dataset.edgeFrom,to=chosen?.dataset.edgeTo;
+      edges.forEach(e=&gt;{e.style.opacity=chosen&amp;&amp;e!==chosen?&#x27;.08&#x27;:&#x27;&#x27;;e.style.strokeWidth=e===chosen?&#x27;3&#x27;:&#x27;&#x27;;});
+      nodes.forEach(n=&gt;n.style.opacity=chosen&amp;&amp;n.dataset.node!==from&amp;&amp;n.dataset.node!==to?&#x27;.25&#x27;:&#x27;&#x27;);
+      svg.querySelectorAll(&#x27;[data-edge-badge-from]&#x27;).forEach(n=&gt;n.style.opacity=chosen&amp;&amp;(n.dataset.edgeBadgeFrom!==from||n.dataset.edgeBadgeTo!==to)?&#x27;.08&#x27;:&#x27;&#x27;);
+      start.disabled=end.disabled=!chosen;
+      status.textContent=chosen?&#x27;当前：&#x27;+name(from)+&#x27; → &#x27;+name(to)+&#x27;。浅色线路属于其他连接。&#x27;:&#x27;全部线路可见；橙线“入”表示进入通信，“出”表示通信结果到消费者。&#x27;;
+      const jump=id=&gt;{const target=find(id);if(target){target.scrollIntoView({block:&#x27;center&#x27;,behavior:&#x27;auto&#x27;});target.setAttribute(&#x27;tabindex&#x27;,&#x27;-1&#x27;);target.focus({preventScroll:true});}};
+      start.onclick=()=&gt;jump(from);end.onclick=()=&gt;jump(to);
+    }
+    select.onchange=apply;reset.onclick=()=&gt;{select.value=&#x27;&#x27;;apply();};label.append(select);panel.append(label,status,row);apply();
+  }
+
   function draw(animate=false){
     if(view===&#x27;device&#x27;){
       const width=Math.floor(root.getBoundingClientRect().width),reducedMotion=!animate||matchMedia(&#x27;(prefers-reduced-motion: reduce)&#x27;).matches;
       if(mode===&#x27;dptpp&#x27;)renderDPTPPP({svg,width,step,data:combinations.dptpp,reducedMotion});
       else{renderDeviceGraph({svg,width,mode:mode===&#x27;tpsp&#x27;?&#x27;sp&#x27;:mode,step,examples,training,combinations,reducedMotion});if(mode===&#x27;tpsp&#x27;){svg.setAttribute(&#x27;data-device-mode&#x27;,&#x27;tpsp&#x27;);svg.setAttribute(&#x27;aria-label&#x27;,&#x27;TP 与 SP 共用 GPU 0/1：token 分片、All-Gather、head 分片计算、SUM Reduce-Scatter&#x27;);}}
-      return;
+      installRouteTrace();return;
     }
     svg.style.removeProperty(&#x27;height&#x27;);svg.style.removeProperty(&#x27;max-width&#x27;);svg.style.removeProperty(&#x27;margin-inline&#x27;);svg.removeAttribute(&#x27;data-device-mode&#x27;);svg.removeAttribute(&#x27;width&#x27;);
     const m=modes[mode],width=Math.floor(root.getBoundingClientRect().width),cols=m.lanes.length;
@@ -2891,6 +2923,7 @@ if (typeof module !== &#x27;undefined&#x27; &amp;&amp; module.exports) module.ex
       if(n.note)label(n.cx,y+1,n.note,nw-14,&#x27;pf-muted&#x27;,g);
       if(step===0||step===n.ready)number(n.x+11,n.y+11,n.ready,&#x27;local&#x27;,g);
     }
+    installRouteTrace();
     if(animate&amp;&amp;!matchMedia(&#x27;(prefers-reduced-motion: reduce)&#x27;).matches){for(const packet of packets){const g=el(&#x27;g&#x27;,{&#x27;aria-hidden&#x27;:&#x27;true&#x27;,&#x27;data-packet&#x27;:true,visibility:&#x27;hidden&#x27;});el(&#x27;rect&#x27;,{x:-15,y:-9,width:30,height:18,rx:3,fill:colors[packet.type]},undefined,g);el(&#x27;text&#x27;,{x:0,y:4,&#x27;text-anchor&#x27;:&#x27;middle&#x27;,style:&#x27;fill:var(--background)&#x27;},packet.type===&#x27;control&#x27;?&#x27;控制&#x27;:&#x27;张量&#x27;,g);const start=performance.now()+packet.delay,length=packet.path.getTotalLength();const tick=now=&gt;{if(!g.isConnected)return;if(now&lt;start){requestAnimationFrame(tick);return;}g.setAttribute(&#x27;visibility&#x27;,&#x27;visible&#x27;);const p=Math.min(1,(now-start)/(packet.delay?650:1000)),v=packet.path.getPointAtLength(p*length);g.setAttribute(&#x27;transform&#x27;,`translate(${v.x},${v.y})`);if(p&lt;1)requestAnimationFrame(tick);else g.remove();};requestAnimationFrame(tick);}}
   }
   function render(animate=false){const m=modes[mode];$(&#x27;#pf-title&#x27;).textContent=m.title;$(&#x27;#pf-scope&#x27;).textContent=m.scope;$(&#x27;#pf-counter&#x27;).textContent=step?`${step} / ${m.steps.length} · ${m.steps[step-1].name}`:`0 / ${m.steps.length} · 全局关系：沿箭头查看完整数值流`;

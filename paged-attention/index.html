@@ -2179,7 +2179,9 @@ html&gt;body{padding:0}&lt;/style&gt;
     for(const [e,active] of labels){
       const prefix=e.number&amp;&amp;(!step||e.number===step)?ordinal(e.number)+&#x27; &#x27;:&#x27;&#x27;;
       const label=step&amp;&amp;ready.get(e.b)&gt;step?&#x27;·&#x27;:prefix+e.label;
-      svgText(label,e.at[0],e.at[1],{&#x27;data-edge-label&#x27;:e.a+&#x27;-&#x27;+e.b,&#x27;paint-order&#x27;:&#x27;stroke&#x27;,&#x27;stroke-linejoin&#x27;:&#x27;round&#x27;,stroke:palette.paper,&#x27;stroke-width&#x27;:4,opacity:active?1:.47});
+      const labelNode=svgText(label,e.at[0],e.at[1],{&#x27;data-edge-label&#x27;:e.a+&#x27;-&#x27;+e.b,&#x27;paint-order&#x27;:&#x27;stroke&#x27;,&#x27;stroke-linejoin&#x27;:&#x27;round&#x27;,stroke:palette.paper,&#x27;stroke-width&#x27;:4,opacity:active?1:.47});
+      const labelHalf=labelNode.getComputedTextLength()/2;
+      labelNode.setAttribute(&#x27;x&#x27;,Math.max(labelHalf+5,Math.min(W-labelHalf-5,e.at[0])));
     }
   }
   function apply(save=false){

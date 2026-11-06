@@ -53,3 +53,9 @@ EAGLE 用前移一位的 token 配合目标特征预测后续特征，原论文�
 新增子调用展开 EAGLE/EAGLE3/MTP/DFlash 草稿主干与层、DFlash context KV 注入，以及 _sample → rejection_sample 的条件分支。普通方法的草稿采样实际走 _sample_draft_from_logits；compute_draft_token_ids 在此位置属于未展示的 DFlash2 selector。Medusa.forward 与 compute_logits 是 Proposer 内的兄弟调用，ResidualBlock 才是 forward 的子调用。
 
 新增子调用复用已有图的适用输入/输出边界，入口明确标为“原图未单列此调用”，不声称每个 Python/C++ 函数都有独立动画。旧节点 ID 保持不变，编号随真实父子关系更新；跨进程消费者与后续独立采样继续保留为独立根。
+
+## 连线复核补充（2026-11-06）
+
+主页面覆盖 EAGLE、EAGLE3、MTP、独立草稿、Medusa、DFlash 和 n-gram 的全局关系与逐步状态；两页面均检查第 1 位失败、中间失败、全部接受三种情形。Medusa 的三个头仍读取同一个 Hₜ；三个独立候选输出现使用各自的右侧通道与入端口，避免误读为一条串联输出。DFlash 上下文 K/V 旁路、草稿递推回路和候选送验证路径保持各自含义。
+
+复核尺寸为 320 / 736 / 1440px，包含明暗主题；关键截图检查 Medusa 候选汇总、EAGLE3 多层特征、DFlash K/V 与查询块、comparison 页 MTP/DFlash 两种流程。页面中用于复制同一数据的分支与三份不同输出的汇总分别处理，不能仅根据线条交叉推断合流。

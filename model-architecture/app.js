@@ -68,37 +68,64 @@
     document.querySelectorAll('[data-edge-id]').forEach(el=>el.classList.toggle('pinned',selectedEdge!==null&&Number(el.dataset.edgeId)===selectedEdge));
   }
   function showEdge(index){stop();selectedEdge=index;paintEdgeSelection();}
-  function buildRouter(boxes,W,H){
-    const xs=new Set([9,W-9]),ys=new Set([7,H-7]);
-    const ports=b=>({top:{p:[b.x+b.w/2,b.y],q:[b.x+b.w/2,b.y-10]},bottom:{p:[b.x+b.w/2,b.y+b.h],q:[b.x+b.w/2,b.y+b.h+10]},left:{p:[b.x,b.y+b.h/2],q:[b.x-10,b.y+b.h/2]},right:{p:[b.x+b.w,b.y+b.h/2],q:[b.x+b.w+10,b.y+b.h/2]}});
-    boxes.forEach(b=>Object.values(ports(b)).forEach(p=>{xs.add(p.q[0]);ys.add(p.q[1]);}));
+  function buildRouter(boxes,W,H,edges){
+    // Give every dependency its own endpoint. Shared data does not imply a shared wire.
+    const byId=new Map(boxes.map(b=>[b.id,b])),used=[],plans=[];
+    const sides=(a,b)=>b.y>a.y?['bottom','top']:b.y<a.y?['top','bottom']:b.x>a.x?['right','left']:['left','right'];
+    edges.forEach(e=>{const a=byId.get(e.from),b=byId.get(e.to);const [fromSide,toSide]=sides(a,b);plans.push({a,b,fromSide,toSide});});
+    const port=(box,side,index,count)=>{
+      const fraction=.2+.6*(index+1)/(count+1);
+      const horizontal=side==='top'||side==='bottom';
+      const x=horizontal?box.x+box.w*fraction:side==='left'?box.x:box.x+box.w;
+      const y=horizontal?(side==='top'?box.y:box.y+box.h):box.y+box.h*fraction;
+      return {p:[x,y],q:[x+(side==='left'?-12:side==='right'?12:0),y+(side==='top'?-12:side==='bottom'?12:0)]};
+    };
+    const endpoints=plans.flatMap(plan=>[{plan,key:'start',box:plan.a,side:plan.fromSide},{plan,key:'end',box:plan.b,side:plan.toSide}]);
+    endpoints.forEach(endpoint=>{
+      // Feedback and forward dependencies may meet the same side of a box.
+      const peers=endpoints.filter(p=>p.box.id===endpoint.box.id&&p.side===endpoint.side);
+      endpoint.plan[endpoint.key]=port(endpoint.box,endpoint.side,peers.indexOf(endpoint),peers.length);
+    });
+    const xs=new Set([7,W-7]),ys=new Set([7,H-7]);
+    for(const b of boxes){
+      for(const d of [8,16,24,32]){if(b.x-d>3)xs.add(b.x-d);if(b.x+b.w+d<W-3)xs.add(b.x+b.w+d);}
+      for(const d of [12,28,44]){if(b.y-d>3)ys.add(b.y-d);if(b.y+b.h+d<H-3)ys.add(b.y+b.h+d);}
+    }
+    for(const p of plans)for(const point of [p.start.q,p.end.q]){xs.add(point[0]);ys.add(point[1]);}
     const X=[...xs].sort((a,b)=>a-b),Y=[...ys].sort((a,b)=>a-b),cache=new Map();
     const blocked=(a,b)=>{
       const key=a.join(',')+'|'+b.join(',');if(cache.has(key))return cache.get(key);
-      const hit=boxes.some(r=>a[0]===b[0]?a[0]>r.x-2&&a[0]<r.x+r.w+2&&Math.max(a[1],b[1])>r.y-2&&Math.min(a[1],b[1])<r.y+r.h+2:a[1]>r.y-2&&a[1]<r.y+r.h+2&&Math.max(a[0],b[0])>r.x-2&&Math.min(a[0],b[0])<r.x+r.w+2);
+      const hit=boxes.some(r=>a[0]===b[0]?a[0]>r.x-3&&a[0]<r.x+r.w+3&&Math.max(a[1],b[1])>r.y-3&&Math.min(a[1],b[1])<r.y+r.h+3:a[1]>r.y-3&&a[1]<r.y+r.h+3&&Math.max(a[0],b[0])>r.x-3&&Math.min(a[0],b[0])<r.x+r.w+3);
       cache.set(key,hit);return hit;
+    };
+    const congestion=(a,b)=>{
+      let cost=0;const vertical=a[0]===b[0];
+      for(const [c,d]of used){const other=c[0]===d[0];
+        if(vertical===other){const axis=vertical?0:1,along=1-axis;
+          if(Math.abs(a[axis]-c[axis])<5)cost+=40*Math.max(0,Math.min(Math.max(a[along],b[along]),Math.max(c[along],d[along]))-Math.max(Math.min(a[along],b[along]),Math.min(c[along],d[along])));
+        }else {const v=vertical?[a,b]:[c,d],h=vertical?[c,d]:[a,b];if(v[0][0]>Math.min(h[0][0],h[1][0])&&v[0][0]<Math.max(h[0][0],h[1][0])&&h[0][1]>Math.min(v[0][1],v[1][1])&&h[0][1]<Math.max(v[0][1],v[1][1]))cost+=18;}
+      }return cost;
     };
     function search(start,end){
       const si=X.indexOf(start[0]),sj=Y.indexOf(start[1]),ei=X.indexOf(end[0]),ej=Y.indexOf(end[1]);
-      const key=(x,y)=>x+','+y,begin=key(si,sj),finish=key(ei,ej),open=[{x:si,y:sj,g:0,f:0}],dist=new Map([[begin,0]]),prev=new Map();
-      while(open.length){
-        open.sort((a,b)=>b.f-a.f);const current=open.pop(),ck=key(current.x,current.y);
-        if(current.g!==dist.get(ck))continue;
-        if(ck===finish){const result=[];let k=finish;while(k){const [x,y]=k.split(',').map(Number);result.push([X[x],Y[y]]);k=prev.get(k);}return result.reverse();}
-        for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      const key=(x,y,dir)=>(x*Y.length+y)*3+dir,begin=key(si,sj,0),dist=new Map([[begin,0]]),prev=new Map(),heap=[];
+      const push=v=>{let i=heap.length;heap.push(v);while(i){const p=(i-1)>>1;if(heap[p].f<=v.f)break;heap[i]=heap[p];i=p;}heap[i]=v;};
+      const pop=()=>{const first=heap[0],last=heap.pop();if(heap.length){let i=0;while(i*2+1<heap.length){let c=i*2+1;if(c+1<heap.length&&heap[c+1].f<heap[c].f)c++;if(last.f<=heap[c].f)break;heap[i]=heap[c];i=c;}heap[i]=last;}return first;};
+      push({x:si,y:sj,dir:0,g:0,f:0,k:begin});
+      while(heap.length){const current=pop();if(current.g!==dist.get(current.k))continue;
+        if(current.x===ei&&current.y===ej){const result=[];let k=current.k;while(k!==undefined){const xy=Math.floor(k/3),x=Math.floor(xy/Y.length),y=xy%Y.length;result.push([X[x],Y[y]]);k=prev.get(k);}return result.reverse();}
+        for(const [dx,dy]of [[1,0],[-1,0],[0,1],[0,-1]]){
           const x=current.x+dx,y=current.y+dy;if(x<0||y<0||x>=X.length||y>=Y.length)continue;
           const a=[X[current.x],Y[current.y]],b=[X[x],Y[y]];if(blocked(a,b))continue;
-          const nk=key(x,y),g=current.g+Math.abs(a[0]-b[0])+Math.abs(a[1]-b[1])+1;
-          if(g>=(dist.get(nk)??Infinity))continue;dist.set(nk,g);prev.set(nk,ck);open.push({x,y,g,f:g+Math.abs(b[0]-end[0])+Math.abs(b[1]-end[1])});
+          const dir=dx?1:2,nk=key(x,y,dir),g=current.g+Math.abs(a[0]-b[0])+Math.abs(a[1]-b[1])+(current.dir&&current.dir!==dir?24:0)+congestion(a,b);
+          if(g>=(dist.get(nk)??Infinity))continue;dist.set(nk,g);prev.set(nk,current.k);push({x,y,dir,k:nk,g,f:g+Math.abs(b[0]-end[0])+Math.abs(b[1]-end[1])});
         }
-      }
-      return null;
+      }throw new Error('无法为数据依赖分配避让路径');
     }
-    return (a,b)=>{
-      const ap=ports(a),bp=ports(b),down=b.y>a.y,up=b.y<a.y,right=b.x>a.x;
-      const pairs=down?[['bottom','top'],[right?'right':'left',right?'left':'right']]:up?[['top','bottom'],[right?'right':'left',right?'left':'right']]:[[right?'right':'left',right?'left':'right'],['bottom','bottom']];
-      for(const [pa,pb] of pairs){const route=search(ap[pa].q,bp[pb].q);if(route){const pts=[ap[pa].p,...route,bp[pb].p];return pts.filter((p,i)=>i===0||i===pts.length-1||!((pts[i-1][0]===p[0]&&p[0]===pts[i+1][0])||(pts[i-1][1]===p[1]&&p[1]===pts[i+1][1])));}}
-      return [ap.bottom.p,[ap.bottom.p[0],H-7],[bp.bottom.p[0],H-7],bp.bottom.p];
+    return index=>{
+      const {start,end}=plans[index],route=search(start.q,end.q),pts=[start.p,...route,end.p];
+      const simplified=pts.filter((p,i)=>i===0||i===pts.length-1||!((pts[i-1][0]===p[0]&&p[0]===pts[i+1][0])||(pts[i-1][1]===p[1]&&p[1]===pts[i+1][1])));
+      simplified.slice(1).forEach((p,i)=>used.push([simplified[i],p]));return simplified;
     };
   }
   function renderGraph(){
@@ -109,11 +136,11 @@
       container.classList.toggle('tracing',!!id);
       container.querySelectorAll('.edge,.edge-label').forEach(el=>el.classList.toggle('trace',!!id&&(el.dataset.from===id||el.dataset.to===id)));
     }
-    const maxCol=Math.max(...component.nodes.map(n=>n.col||0)),cols=narrow?1:maxCol+1,pad=narrow?20:28,gap=cols===3?32:64,nodeW=(W-2*pad-(cols-1)*gap)/cols;
+    const maxCol=Math.max(...component.nodes.map(n=>n.col||0)),cols=narrow?1:maxCol+1,pad=narrow?44:28,gap=cols===3?32:64,nodeW=(W-2*pad-(cols-1)*gap)/cols;
     const nodes=[...component.nodes].sort((a,b)=>a.row-b.row||(a.col||0)-(b.col||0));
     const rowHeights=new Map(),buttons=new Map();
     nodes.forEach((n,i)=>{
-      const row=narrow?i:n.row,button=make('button','graph-node'+(cols===3&&nodeW<245?' compact-node':''));button.type='button';button.dataset.node=n.id;button.dataset.target=n.target||'';button.style.width=nodeW+'px';button.style.left=(pad+(narrow?0:n.col||0)*(nodeW+gap))+'px';
+      const row=narrow?i:n.row,button=make('button','graph-node'+((cols===3&&nodeW<245)||narrow?' compact-node':''));button.type='button';button.dataset.node=n.id;button.dataset.target=n.target||'';button.style.width=nodeW+'px';button.style.left=(pad+(narrow?0:n.col||0)*(nodeW+gap))+'px';
       const art=svg('svg',{class:'node-art',viewBox:'0 0 100 82','aria-hidden':'true'});window.ARCH_ART.draw(art,n,0,0,100);
       const copy=make('span','node-copy');copy.append(make('span','node-title',n.label),make('span','node-desc',n.detail||''),make('span','node-action',n.target?'进入组件 ↗':'查看输入 / 输出'));
       button.append(art,copy);button.setAttribute('aria-label',`${n.label}，${n.target?'进入内部结构':'查看输入输出'}`);
@@ -122,17 +149,18 @@
       button.addEventListener('focus',()=>traceNode(n.id));button.addEventListener('blur',()=>traceNode(null));
       rowHeights.set(row,Math.max(rowHeights.get(row)||0,button.getBoundingClientRect().height,104));
     });
-    const rows=[...rowHeights.keys()].sort((a,b)=>a-b),rowY=new Map();let y=24;rows.forEach(r=>{rowY.set(r,y);y+=rowHeights.get(r)+88;});const H=y-38;
+    const rows=[...rowHeights.keys()].sort((a,b)=>a-b),rowY=new Map();let y=24;rows.forEach(r=>{rowY.set(r,y);y+=rowHeights.get(r)+104;});const H=y-38;
     container.style.height=H+'px';const boxes=[];
     nodes.forEach((n,i)=>{const row=narrow?i:n.row,b=buttons.get(n.id),box={id:n.id,x:parseFloat(b.style.left),y:rowY.get(row),w:nodeW,h:rowHeights.get(row)};b.style.top=box.y+'px';b.style.height=box.h+'px';boxes.push(box);});
     const wires=svg('svg',{class:'wires',viewBox:`0 0 ${W} ${H}`,role:'group','aria-label':'可选择箭头查看完整数据依赖'}),defs=svg('defs',{},wires),marker=svg('marker',{id:'arrowhead',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:6,markerHeight:6,orient:'auto'},defs);svg('path',{d:'M1 1 L9 5 L1 9',fill:'none',stroke:'context-stroke','stroke-width':1.5},marker);
     container.prepend(wires);
-    const route=buildRouter(boxes,W,H),labelPositions=[];
+    const route=buildRouter(boxes,W,H,component.edges),labelPositions=[];
     $('edge-overflow-list').replaceChildren();$('edge-overflow').hidden=true;
     component.edges.forEach((e,i)=>{
       const a=boxes.find(b=>b.id===e.from),b=boxes.find(b=>b.id===e.to);if(!a||!b)return;
-      const points=route(a,b),d=points.map((p,i)=>(i?'L':'M')+p.join(' ')).join(' ');
+      const points=route(i),d=points.map((p,i)=>(i?'L':'M')+p.join(' ')).join(' ');
       const attributes={'data-step':e.step,'data-from':e.from,'data-to':e.to,'data-edge-id':i};
+      svg('path',{d,class:'edge-halo',...attributes},wires);
       const p=svg('path',{d,class:'edge'+(e.optional?' optional':''),'marker-end':'url(#arrowhead)',...attributes},wires);
       const hit=svg('path',{d,class:'edge-hit',...attributes,tabindex:0,role:'button','aria-label':edgeText(i)},wires);
       hit.addEventListener('click',()=>showEdge(i));hit.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();showEdge(i);}});
@@ -158,6 +186,8 @@
       svg('title',{},p).textContent=edgeText(i);
 
     });
+    // Draw captions above every route halo; a later crossing must not erase letters.
+    wires.append(...wires.querySelectorAll('.edge-label'));
     container.prepend(wires);updateStep(false);paintEdgeSelection();
   }
   function showNode(node){

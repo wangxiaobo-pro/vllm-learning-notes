@@ -2265,8 +2265,8 @@ body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !importan
       path.style.fill=type===&#x27;inactive&#x27;?&#x27;var(--border)&#x27;:&#x27;var(--viz-series-&#x27;+(i+1)+&#x27;)&#x27;;
     });
     const isActive=id=&gt;!current||steps[current-1].edge===id;
-    const path=(id,d,both=false)=&gt;{const e=edges[id];const active=isActive(id);const type=active?e.type:&#x27;inactive&#x27;;const p=elem(&#x27;path&#x27;,{d,class:&#x27;edge-path &#x27;+e.type+(active?&#x27;&#x27;:&#x27; inactive&#x27;),&#x27;marker-end&#x27;:&#x27;url(#asf-arrow-&#x27;+type+&#x27;)&#x27;,&#x27;data-edge&#x27;:id});if(both)p.setAttribute(&#x27;marker-start&#x27;,&#x27;url(#asf-arrow-&#x27;+type+&#x27;)&#x27;);};
-    const edgeLabel=(id,x,y)=&gt;{if(!isActive(id))return;const e=edges[id];label(current?current+&#x27; · &#x27;+(id===&#x27;commands&#x27;?(current===6?&#x27;启动 Worker&#x27;:&#x27;RPC 下发&#x27;):id===&#x27;replies&#x27;?(current===12?&#x27;Worker READY&#x27;:&#x27;RPC 返回&#x27;):id===&#x27;tp&#x27;?&#x27;TP [0,1]&#x27;:id===&#x27;spawnCore&#x27;?&#x27;启动&#x27;:&#x27;READY&#x27;):e.label,x,y,W-12);};
+    const path=(id,d,both=false)=&gt;{const e=edges[id];const active=isActive(id);const type=active?e.type:&#x27;inactive&#x27;;elem(&#x27;path&#x27;,{d,fill:&#x27;none&#x27;,stroke:&#x27;var(--background)&#x27;,&#x27;stroke-width&#x27;:5,&#x27;pointer-events&#x27;:&#x27;none&#x27;});const p=elem(&#x27;path&#x27;,{d,class:&#x27;edge-path &#x27;+e.type+(active?&#x27;&#x27;:&#x27; inactive&#x27;),&#x27;marker-end&#x27;:&#x27;url(#asf-arrow-&#x27;+type+&#x27;)&#x27;,&#x27;data-edge&#x27;:id});if(both)p.setAttribute(&#x27;marker-start&#x27;,&#x27;url(#asf-arrow-&#x27;+type+&#x27;)&#x27;);};
+    const edgeLabel=(id,x,y)=&gt;{if(!isActive(id))return;const e=edges[id];const prefix=compact?(id===&#x27;commands&#x27;?&#x27;左轨下发 ↓ · &#x27;:id===&#x27;replies&#x27;?&#x27;右轨返回 ↑ · &#x27;:&#x27;&#x27;):&#x27;&#x27;;label(prefix+(current?current+&#x27; · &#x27;+(id===&#x27;commands&#x27;?(current===6?&#x27;启动 Worker&#x27;:&#x27;RPC 下发&#x27;):id===&#x27;replies&#x27;?(current===12?&#x27;Worker READY&#x27;:&#x27;RPC 返回&#x27;):id===&#x27;tp&#x27;?&#x27;TP [0,1]&#x27;:id===&#x27;spawnCore&#x27;?&#x27;启动&#x27;:&#x27;READY&#x27;):e.label),x,y,W-12);};
     const A=boxes.api,C=boxes.core,F=boxes.w0,S=boxes.w1;
     const cx=W/2;
     if(compact){
@@ -2279,6 +2279,9 @@ body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !importan
         path(&#x27;commands&#x27;,`M ${C.x} ${C.y+C.h-30} H ${left} V ${B.y+34} H ${B.x}`);
         path(&#x27;replies&#x27;,`M ${B.x+B.w} ${B.y+64} H ${right} V ${C.y+C.h-62} H ${C.x+C.w}`);
       }
+      // Filled dots mark genuine shared-bus junctions; crossings have no dot.
+      elem(&#x27;circle&#x27;,{cx:left,cy:F.y+34,r:2.6,fill:isActive(&#x27;commands&#x27;)?&#x27;var(--viz-series-1)&#x27;:&#x27;var(--border)&#x27;});
+      elem(&#x27;circle&#x27;,{cx:right,cy:F.y+64,r:2.6,fill:isActive(&#x27;replies&#x27;)?&#x27;var(--viz-series-2)&#x27;:&#x27;var(--border)&#x27;});
       edgeLabel(&#x27;commands&#x27;,cx,C.y+C.h+47);
       edgeLabel(&#x27;replies&#x27;,cx,C.y+C.h+87);
       path(&#x27;tp&#x27;,`M ${cx} ${F.y+F.h} V ${S.y}`,true);
@@ -2293,6 +2296,8 @@ body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !importan
       const f=F.x+F.w/2,s=S.x+S.w/2;
       for(const dest of [f-20,s-20])path(&#x27;commands&#x27;,`M ${cLeft} ${C.y+C.h} V ${downY} H ${dest} V ${F.y}`);
       for(const src of [f+20,s+20])path(&#x27;replies&#x27;,`M ${src} ${F.y} V ${upY} H ${cRight} V ${C.y+C.h}`);
+      elem(&#x27;circle&#x27;,{cx:cLeft,cy:downY,r:2.6,fill:isActive(&#x27;commands&#x27;)?&#x27;var(--viz-series-1)&#x27;:&#x27;var(--border)&#x27;});
+      elem(&#x27;circle&#x27;,{cx:cRight,cy:upY,r:2.6,fill:isActive(&#x27;replies&#x27;)?&#x27;var(--viz-series-2)&#x27;:&#x27;var(--border)&#x27;});
       edgeLabel(&#x27;commands&#x27;,cx,downY);
       edgeLabel(&#x27;replies&#x27;,cx,upY);
       path(&#x27;tp&#x27;,`M ${f} ${F.y+F.h} V ${groupY} H ${s} V ${S.y+S.h}`,true);

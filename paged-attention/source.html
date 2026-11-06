@@ -270,7 +270,9 @@
     for(const [e,active] of labels){
       const prefix=e.number&&(!step||e.number===step)?ordinal(e.number)+' ':'';
       const label=step&&ready.get(e.b)>step?'·':prefix+e.label;
-      svgText(label,e.at[0],e.at[1],{'data-edge-label':e.a+'-'+e.b,'paint-order':'stroke','stroke-linejoin':'round',stroke:palette.paper,'stroke-width':4,opacity:active?1:.47});
+      const labelNode=svgText(label,e.at[0],e.at[1],{'data-edge-label':e.a+'-'+e.b,'paint-order':'stroke','stroke-linejoin':'round',stroke:palette.paper,'stroke-width':4,opacity:active?1:.47});
+      const labelHalf=labelNode.getComputedTextLength()/2;
+      labelNode.setAttribute('x',Math.max(labelHalf+5,Math.min(W-labelHalf-5,e.at[0])));
     }
   }
   function apply(save=false){

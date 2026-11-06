@@ -503,6 +503,52 @@
   const steps = { overview:0, feedback:0, placement:0, timeline:0,
     'choice-original':0, 'choice-counter':0, 'choice-tie':0 };
   const key = () => mode === 'choice' ? 'choice-' + preset : mode;
+  // Keep each opposing flow in its own direct lane. Labels follow that lane.
+  function routeFlowConnections(frame) {
+    const svg = frame?.querySelector('.flow-svg');
+    if (!svg || !['overview','feedback'].includes(frame.dataset.mode)) return;
+    const w=svg.getBoundingClientRect().width;
+    if(!w)return;
+    const box=id=>svg.querySelector('[data-node="'+id+'"] rect')?.getBBox();
+    const edge=(id,x,y1,y2)=>{
+      const pieces=[...svg.querySelectorAll('[data-edge="'+id+'"]')];
+      if(!pieces.length)return;
+      const first=pieces[0], marker=pieces.find(p=>p.hasAttribute('marker-end'))?.getAttribute('marker-end');
+      const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('class',first.getAttribute('class'));path.dataset.edge=id;
+      path.setAttribute('d',`M ${x} ${y1} V ${y2}`);
+      if(marker)path.setAttribute('marker-end',marker);
+      first.parentNode.insertBefore(path,first);pieces.forEach(p=>p.remove());
+    };
+    const label=(id,x,y)=>{
+      const g=svg.querySelector('[data-edge-label="'+id+'"]');if(!g)return;
+      const texts=[...g.querySelectorAll('text')];if(!texts.length)return;
+      const oldY=Number(texts[0].getAttribute('y'));
+      texts.forEach(t=>{t.setAttribute('x',x);t.setAttribute('y',Number(t.getAttribute('y'))-oldY+y);});
+      const boxes=texts.map(t=>t.getBBox()),left=Math.min(...boxes.map(b=>b.x)),top=Math.min(...boxes.map(b=>b.y));
+      const right=Math.max(...boxes.map(b=>b.x+b.width)),bottom=Math.max(...boxes.map(b=>b.y+b.height));
+      const bg=g.querySelector('rect');if(bg){bg.removeAttribute('transform');for(const [k,v]of Object.entries({x:left-5,y:top-3,width:right-left+10,height:bottom-top+6}))bg.setAttribute(k,v);}
+    };
+    if(frame.dataset.mode==='overview'){
+      const api=box('lb'),dp=box('dp1'),moe=box('moe');if(!api||!dp||!moe)return;
+      const qNote=[...svg.querySelectorAll('text')].find(t=>t.textContent==='Q 的激活也参与 EP'||t.dataset.qParticipation==='true');
+      if(qNote){
+        qNote.dataset.qParticipation='true';qNote.replaceChildren();
+        const words=w<550?['Q 的激活','也参与 EP']:['Q 的激活也参与 EP'];
+        words.forEach((word,i)=>{const line=document.createElementNS('http://www.w3.org/2000/svg','tspan');line.setAttribute('x',w*.257);line.setAttribute('y',dp.y+dp.height+36+i*18);line.textContent=word;qNote.append(line);});
+      }
+      edge('route',w*.60,api.y+api.height,dp.y);label('route',w*.60,api.y+api.height+55);
+      edge('result',w*.82,dp.y,api.y+api.height);label('result',w*.82,api.y+api.height+22);
+      edge('dispatch',w*.63,dp.y+dp.height,moe.y);label('dispatch',w*.63-Math.min(24,w*.07),dp.y+dp.height+48);
+      edge('combine',w*.85,moe.y,dp.y+dp.height);label('combine',w*.85,dp.y+dp.height+28);
+    }else{
+      const api=box('api'),dp0=box('dp0'),dp1=box('dp1'),coord=box('coord');if(!api||!dp0||!dp1||!coord)return;
+      edge('add',w*.60,api.y+api.height,dp1.y);label('add',w*.60,api.y+api.height+65);
+      edge('output',w*.82,dp1.y,api.y+api.height);label('output',w*.82,api.y+api.height+28);
+      edge('s0',w*.30,dp0.y+dp0.height,coord.y);label('s0',w*.30,dp0.y+dp0.height+36);
+      edge('s1',w*.70,dp1.y+dp1.height,coord.y);label('s1',w*.70,dp1.y+dp1.height+36);
+    }
+  }
   function restore(state) {
     const saved = state && state.privateContent;
     if (!saved || saved.namespace !== 'eplb-dplb-complete' || saved.schema !== 1 ||
@@ -524,6 +570,7 @@
       Number(frame.dataset.step) === step);
     if (!selected) return;
     frames.forEach(frame => { frame.hidden = frame !== selected; });
+    routeFlowConnections(selected);
     query('mode').value = mode;
     query('preset').value = preset;
     query('scenario').hidden = mode !== 'choice';
@@ -571,6 +618,7 @@
     const state = event.detail && event.detail.globals && event.detail.globals.widgetState;
     if (state) { restore(state); render(); }
   });
+  new ResizeObserver(() => routeFlowConnections(frames.find(frame=>!frame.hidden))).observe(root);
   restore(window.openai && window.openai.widgetState);
   render();
 })();

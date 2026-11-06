@@ -2146,7 +2146,7 @@ body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !importan
   function updateOverview() {
     overview.hidden=step!==0;
     if(step!==0)return;
-    flowNote.textContent=(version===&#x27;v1&#x27;?&#x27;P / D 并行推进；编号为讲解步骤，展示一种合法交错顺序。&#x27;:&#x27;本例按先 P 后 D 展示。&#x27;)+&#x27;同号对应同一步，节点内序号表示本地动作。&#x27;;
+    flowNote.textContent=(version===&#x27;v1&#x27;?&#x27;P / D 并行推进；编号为讲解步骤，展示一种合法交错顺序。&#x27;:&#x27;本例按先 P 后 D 展示。&#x27;)+&#x27;同号对应同一步，节点内序号表示本地动作。Worker 下方三条连线的位置不表示先后，请按编号阅读。&#x27;;
     flowList.replaceChildren();
     overviewFlows[version].forEach(([actor,action],index)=&gt;{
       const item=document.createElement(&#x27;li&#x27;);
@@ -2183,7 +2183,7 @@ body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !importan
     const compact=width&lt;560;
     const pad=compact?4:12, gap=compact?18:52, nw=(width-pad*2-gap)/2;
     const px=pad, dx=pad+nw+gap, pc=px+nw/2, dc=dx+nw/2;
-    const sy=136, sh=compact?184:126, wy=sy+sh+114, wh=compact?214:160, height=wy+wh+84;
+    const sy=136, sh=compact?184:126, wy=sy+sh+114, wh=compact?214:160, height=wy+wh+176;
     svg.replaceChildren(); svg.setAttribute(&#x27;viewBox&#x27;,`0 0 ${width} ${height}`); svg.style.height=height+&#x27;px&#x27;;
     el(&#x27;title&#x27;,{},svg,`vLLM ${version.toUpperCase()} Mooncake PD，第 ${step} 步：${stages[step].name}`);
     el(&#x27;desc&#x27;,{},svg,&#x27;左右分别是 P、D，上排是 Scheduler 控制状态，下排是 Worker 持有设备 KV。虚线是元数据，实线是 KV 数据。&#x27;);
@@ -2206,11 +2206,15 @@ body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !importan
     edge(&#x27;ddown&#x27;,`M ${dc-24} ${sy+sh} V ${wy}`);
     edge(&#x27;pup&#x27;,`M ${pc+24} ${wy} V ${sy+sh}`);
     edge(&#x27;dup&#x27;,`M ${dc+24} ${wy} V ${sy+sh}`);
-    const midY=sy+sh+43;
+    // Separate downward plans and upward results instead of masking both lanes together.
+    const midY=sy+sh+46;
     [pc,dc].forEach(c=&gt;{
-      el(&#x27;rect&#x27;,{x:c-51,y:midY-15,width:102,height:38,fill:&#x27;var(--background)&#x27;,stroke:&#x27;none&#x27;});
-      label(c,midY,version===&#x27;v0&#x27;?&#x27;↓ 普通模型输入&#x27;:&#x27;↓ 调度元数据&#x27;,&#x27;vmp-subtle&#x27;);
-      label(c,midY+18,version===&#x27;v0&#x27;?&#x27;↑ 普通模型输出&#x27;:&#x27;↑ 结果 / 完成&#x27;,&#x27;vmp-subtle&#x27;);
+      const captions=version===&#x27;v0&#x27;?[[&#x27;模型&#x27;,&#x27;输入&#x27;],[&#x27;模型&#x27;,&#x27;输出&#x27;]]:[[&#x27;调度&#x27;,&#x27;元数据&#x27;],[&#x27;结果&#x27;,&#x27;完成&#x27;]];
+      captions.forEach((words,i)=&gt;{
+        const x=c+(i===0?-24:24);
+        el(&#x27;rect&#x27;,{x:x-22,y:midY-14,width:44,height:36,fill:&#x27;var(--background)&#x27;,stroke:&#x27;none&#x27;});
+        words.forEach((word,j)=&gt;label(x,midY+j*17,word,&#x27;vmp-subtle&#x27;));
+      });
     });
     const schedSub=version===&#x27;v0&#x27;?&#x27;CPU · 普通调度&#x27;:&#x27;CPU · Connector 调度侧&#x27;;
     const workerSub=version===&#x27;v0&#x27;?&#x27;ModelRunner / SimpleConnector&#x27;:&#x27;CPU 控制 + GPU KV&#x27;;
@@ -2221,18 +2225,18 @@ body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !importan
     blocks(px,wy+wh-52,nw,&#x27;p&#x27;); blocks(dx,wy+wh-52,nw,&#x27;d&#x27;);
     label(pc,wy+wh-11,version===&#x27;v0&#x27;?(compact?&#x27;查找缓冲副本&#x27;:&#x27;副本：K / V / hidden / tokens、ROI&#x27;):(step===9?&#x27;本请求引用已释放&#x27;:(compact?&#x27;P 物理 block IDs&#x27;:&#x27;P 本地物理 block IDs&#x27;)),&#x27;vmp-subtle&#x27;);
     label(dc,wy+wh-11,version===&#x27;v0&#x27;?(compact?&#x27;D 物理 block IDs&#x27;:&#x27;D 本地物理 block IDs&#x27;):(compact?&#x27;20 本地；其余远端&#x27;:&#x27;20 本地命中；31–33 远端 KV&#x27;),&#x27;vmp-subtle&#x27;);
-    edge(&#x27;request&#x27;,`M ${dx+nw-10} ${wy+15} V ${wy-25} H ${px+10} V ${wy+15}`);
-    label(width/2,wy-10,version===&#x27;v0&#x27;?&#x27;D → P：tokens + ROI 查询&#x27;:&#x27;D → P：取数请求 + 目标地址&#x27;,&#x27;vmp-subtle&#x27;);
-    edge(&#x27;data&#x27;,`M ${pc} ${wy+wh} V ${wy+wh+37} H ${dc} V ${wy+wh}`,&#x27;data&#x27;);
-    label(width/2,wy+wh+65,version===&#x27;v0&#x27;?(compact?&#x27;P → D：D 发起 READ&#x27;:&#x27;P → D：MooncakePipe · D 发起 READ&#x27;):(compact?&#x27;P → D：Mooncake WRITE&#x27;:&#x27;P → D：Mooncake Transfer Engine · WRITE&#x27;),&#x27;vmp-node-title&#x27;);
-    if(version===&#x27;v1&#x27;) edge(&#x27;complete&#x27;,`M ${px+nw-8} ${wy+wh-5} V ${wy+wh+18} H ${dx+8} V ${wy+wh-5}`);
-    else edge(&#x27;complete&#x27;,`M ${dx+8} ${wy+wh-5} V ${wy+wh+18} H ${px+nw-8} V ${wy+wh-5}`);
-    if(step===0||(version===&#x27;v1&#x27;&amp;&amp;step===8)||(version===&#x27;v0&#x27;&amp;&amp;step===6)) label(width/2-48,wy+wh+21,version===&#x27;v0&#x27;?&#x27;ACK&#x27;:&#x27;完成响应&#x27;,&#x27;vmp-subtle&#x27;);
+    edge(&#x27;request&#x27;,`M ${dx+nw-10} ${wy+wh} V ${wy+wh+130} H ${px+10} V ${wy+wh}`);
+    label(width/2,wy+wh+154,version===&#x27;v0&#x27;?&#x27;D → P：tokens + ROI 查询&#x27;:&#x27;D → P：取数请求 + 目标地址&#x27;,&#x27;vmp-subtle&#x27;);
+    edge(&#x27;data&#x27;,`M ${pc} ${wy+wh} V ${wy+wh+80} H ${dc} V ${wy+wh}`,&#x27;data&#x27;);
+    label(width/2,wy+wh+103,version===&#x27;v0&#x27;?(compact?&#x27;P → D：D 发起 READ&#x27;:&#x27;P → D：MooncakePipe · D 发起 READ&#x27;):(compact?&#x27;P → D：Mooncake WRITE&#x27;:&#x27;P → D：Mooncake Transfer Engine · WRITE&#x27;),&#x27;vmp-node-title&#x27;);
+    if(version===&#x27;v1&#x27;) edge(&#x27;complete&#x27;,`M ${px+nw-16} ${wy+wh} V ${wy+wh+26} H ${dx+16} V ${wy+wh}`);
+    else edge(&#x27;complete&#x27;,`M ${dx+16} ${wy+wh} V ${wy+wh+26} H ${px+nw-16} V ${wy+wh}`);
+    if(step===0||(version===&#x27;v1&#x27;&amp;&amp;step===8)||(version===&#x27;v0&#x27;&amp;&amp;step===6)) label(width/2,wy+wh+48,version===&#x27;v0&#x27;?&#x27;D → P：ACK&#x27;:&#x27;P → D：完成响应&#x27;,&#x27;vmp-subtle&#x27;);
     const badgePositions={
       routeP:[(width/2-42+pc)/2,76],routeD:[(width/2+42+dc)/2,76],
-      pdown:[pc-24,sy+sh+12],pup:[pc+24,sy+sh+12],
-      ddown:[dc-24,sy+sh+12],dup:[dc+24,sy+sh+12],
-      request:[px+10,wy-25],data:[pc+(dc-pc)*.25,wy+wh+37],complete:[width/2,wy+wh+18]
+      pdown:[pc-24,sy+sh+20],pup:[pc+24,sy+sh+20],
+      ddown:[dc-24,sy+sh+20],dup:[dc+24,sy+sh+20],
+      request:[width/2,wy+wh+130],data:[pc+(dc-pc)*.25,wy+wh+80],complete:[width/2,wy+wh+26]
     };
     Object.entries(badgePositions).forEach(([id,[x,y]])=&gt;numberBadge(x,y,edgeSteps[version][id],id));
     const nodePositions={ps:[px,sy],ds:[dx,sy],pw:[px,wy],dw:[dx,wy]};
@@ -2242,7 +2246,7 @@ body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !importan
     });
     if(step===(version===&#x27;v0&#x27;?6:7)&amp;&amp;!window.matchMedia(&#x27;(prefers-reduced-motion: reduce)&#x27;).matches) {
       const dot=el(&#x27;circle&#x27;,{r:4,fill:&#x27;var(--viz-series-2)&#x27;});
-      const motion=el(&#x27;animateMotion&#x27;,{dur:&#x27;1.1s&#x27;,repeatCount:1,fill:&#x27;freeze&#x27;,path:`M ${pc} ${wy+wh} V ${wy+wh+37} H ${dc} V ${wy+wh}`},dot);
+      const motion=el(&#x27;animateMotion&#x27;,{dur:&#x27;1.1s&#x27;,repeatCount:1,fill:&#x27;freeze&#x27;,path:`M ${pc} ${wy+wh} V ${wy+wh+80} H ${dc} V ${wy+wh}`},dot);
       motion.beginElement?.();
     }
     counter.textContent=`${step} / 9 · ${stages[step].name}`;

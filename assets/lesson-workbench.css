@@ -30,6 +30,19 @@
 .lw-figure { margin:0; border:1px solid var(--lesson-line); border-radius:12px; background:var(--lesson-panel); padding:10px; }
 .lw-figure svg { display:block; width:100%; height:auto; overflow:visible; font-family:system-ui,"Microsoft YaHei",sans-serif; }
 .lw-figure figcaption { padding:5px 5px 8px; color:var(--lesson-muted); font-size:11px; }
+.lw-trace { display:flex; gap:12px; align-items:center; padding:8px 10px 12px; border-bottom:1px solid var(--lesson-line); color:var(--lesson-muted); font-size:12px; }
+.lw-trace p { flex:1; overflow-wrap:anywhere; }
+.lw-trace button { padding:5px 8px; border:1px solid var(--lesson-line); border-radius:5px; background:var(--lesson-panel); font-size:12px; }
+.lw-figure path[role=button] { cursor:pointer; }
+.lw-figure path[role=button]:focus-visible { outline:none; stroke:var(--lesson-amber); stroke-width:5; stroke-opacity:.4; }
+.lw-connections { margin:8px 5px; border-top:1px solid var(--lesson-line); padding-top:10px; font-size:12px; }
+.lw-connections summary { cursor:pointer; color:var(--lesson-green); }
+.lw-connections>div { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr)); gap:8px; margin-top:10px; }
+.lw-connection { display:grid; grid-template-columns:40px minmax(0,1fr); gap:3px 8px; text-align:left; padding:9px; border:1px solid var(--lesson-line); border-left:3px solid var(--edge-color); border-radius:5px; background:var(--lesson-panel); overflow-wrap:anywhere; }
+.lw-connection b { grid-row:span 2; color:var(--edge-color); }
+.lw-connection strong { font-size:12px; }
+.lw-connection span { font-size:11px; color:var(--lesson-muted); }
+.lw-connection[aria-pressed=true] { background:var(--lesson-mint); border-color:var(--edge-color); }
 .lw-equation { margin-top:16px; padding:12px; border:1px solid var(--lesson-line); border-radius:7px; background:var(--lesson-mint); font:13px/1.8 ui-monospace,Consolas,"Microsoft YaHei",monospace; overflow-wrap:anywhere; white-space:pre-wrap; }
 .lw-details { display:grid; gap:16px; margin:16px 0; }
 .lw-table-card,.lw-plot { min-width:0; padding:14px; border:1px solid var(--lesson-line); background:var(--lesson-panel); border-radius:9px; }

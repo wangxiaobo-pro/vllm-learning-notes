@@ -58,3 +58,7 @@ V0 的 `drop_select()` 在匹配后取走缓冲条目；未匹配时等待缓冲
 V0 调用链区分 Connector 委托、buffer 匹配和 Mooncake transport 线程中的同步 READ；V1 区分 Connector facade 的 Scheduler/Worker 所有权、receiver_loop/sender_loop 任务入口、`send_kv_to_decode()` 提交发送线程，以及完成集合经过模型回报后才被 Scheduler 消费。异步入口保留独立根或明确标为任务提交边界，不把 P/D 的时间先后画成同步函数嵌套。
 
 子调用复用原图中对应阶段的入口；没有独立快照时，节点注明只定位所属阶段。调用编号可随展开调整，原节点 ID 保持稳定；源码证据的调用点与实现均以场景声明的完整 commit 为准。
+
+## 连线可读性
+
+Scheduler→Worker 调度与 Worker→Scheduler 回报有独立标签及可见箭头。Worker 之间的查询、字节传输、完成响应采用三条分离的底部通道，避免元数据横线穿过四条调度/回报连线。通道位置不表示执行先后，应结合步骤编号阅读。V0/V1 的全局与九步均验证 320、736、1440px 暗色布局。

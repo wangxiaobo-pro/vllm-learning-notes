@@ -176,7 +176,9 @@
     if(narrow){
       const ax=A.x+A.w*.35,cLeft=C.x+C.w*.22,cRight=C.x+C.w*.73,bx=B.x+B.w*.7;
       edge([[ax,A.y+A.h],[ax,299],[cLeft,299],[cLeft,C.y]],'copy',2,'D2H',[ax,287],animate);
-      edge([[cRight,C.y],[cRight,314],[bx,314],[bx,B.y+B.h]],'copy',5,'H2D',[bx,298],animate);
+      // Return through the outer gutter: the old vertical path crossed B's Attention card.
+      const returnRail=W-7, returnPortY=B.y+28;
+      edge([[cRight,C.y],[cRight,314],[returnRail,314],[returnRail,returnPortY],[B.x+B.w,returnPortY]],'copy',5,'H2D',[cRight,298],animate);
       edge([[B.x+B.w/2,B.y+B.h],[B.x+B.w/2,F.y]],'local',7,'',null,animate);
       const mid=W/2;
       edge([[mid-62,S.y],[mid-62,T.y+T.h]],'ctrl',4,'load job',[mid-62,710],animate);

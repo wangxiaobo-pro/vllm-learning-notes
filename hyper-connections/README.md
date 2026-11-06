@@ -30,3 +30,7 @@
 - [mHC: Manifold-Constrained Hyper-Connections](https://arxiv.org/abs/2512.24880)
 
 [返回项目目录](../README.md)
+
+## 连线复核补充（2026-11-06）
+
+检查原残差、HC、mHC 三张主图的全部路径 / 计算分支 / 残差通路 / 相加位置四种聚焦，以及 HC/mHC 各两种输入的六步数值展开。复核 320 / 736 / 1440px 和明暗主题：圆点表示实际分支，跨线留白不表示相连；Hpre 聚合、Hres 混合与 Hpost 写回的端点保持清楚。本轮未改动源图，`node hyper-connections/sync-source.mjs --check` 校验可编辑源与离线导出一致。

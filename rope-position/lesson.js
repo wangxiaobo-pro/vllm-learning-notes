@@ -48,12 +48,12 @@
     ];
     const edges=[
       {id:'positions',from:'policy',to:'angles',label:'有效位置 × 每对频率 → 旋转角',steps:[2,3]},
-      {id:'qinput',from:'q',to:'qr',label:'相邻两维 Q[2i:2i+2]',steps:[4]},
+      {id:'qinput',from:'q',to:'qr',label:'相邻两维 Q[2i:2i+2]',steps:[4],group:'query'},
       {id:'qangle',from:'angles',to:'qr',label:'cos(mθᵢ)、sin(mθᵢ)',steps:[4]},
-      {id:'kinput',from:'k',to:'kr',label:'相邻两维 K[2i:2i+2]',steps:[5]},
+      {id:'kinput',from:'k',to:'kr',label:'相邻两维 K[2i:2i+2]',steps:[5],group:'key'},
       {id:'kangle',from:'angles',to:'kr',label:'cos(nθᵢ)、sin(nθᵢ)',steps:[5]},
-      {id:'qscore',from:'qr',to:'dot',label:'旋转后的 Q′ 各维',steps:[6]},
-      {id:'kscore',from:'kr',to:'dot',label:'旋转后的 K′ 各维',steps:[6]},
+      {id:'qscore',from:'qr',to:'dot',label:'旋转后的 Q′ 各维',steps:[6],group:'query'},
+      {id:'kscore',from:'kr',to:'dot',label:'旋转后的 K′ 各维',steps:[6],group:'key'},
       {id:'scaled',from:'dot',to:'logit',label:'点积除以 √d → 一个 key 的 logit',steps:[7]}
     ];
     const steps=[

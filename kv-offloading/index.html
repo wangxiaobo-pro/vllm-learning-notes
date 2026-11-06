@@ -2085,7 +2085,9 @@ html&gt;body{padding:0}&lt;/style&gt;
     if(narrow){
       const ax=A.x+A.w*.35,cLeft=C.x+C.w*.22,cRight=C.x+C.w*.73,bx=B.x+B.w*.7;
       edge([[ax,A.y+A.h],[ax,299],[cLeft,299],[cLeft,C.y]],&#x27;copy&#x27;,2,&#x27;D2H&#x27;,[ax,287],animate);
-      edge([[cRight,C.y],[cRight,314],[bx,314],[bx,B.y+B.h]],&#x27;copy&#x27;,5,&#x27;H2D&#x27;,[bx,298],animate);
+      // Return through the outer gutter: the old vertical path crossed B&#x27;s Attention card.
+      const returnRail=W-7, returnPortY=B.y+28;
+      edge([[cRight,C.y],[cRight,314],[returnRail,314],[returnRail,returnPortY],[B.x+B.w,returnPortY]],&#x27;copy&#x27;,5,&#x27;H2D&#x27;,[cRight,298],animate);
       edge([[B.x+B.w/2,B.y+B.h],[B.x+B.w/2,F.y]],&#x27;local&#x27;,7,&#x27;&#x27;,null,animate);
       const mid=W/2;
       edge([[mid-62,S.y],[mid-62,T.y+T.h]],&#x27;ctrl&#x27;,4,&#x27;load job&#x27;,[mid-62,710],animate);

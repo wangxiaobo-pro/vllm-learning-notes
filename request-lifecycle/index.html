@@ -2090,9 +2090,9 @@ html&gt;body{padding:0}&lt;/style&gt;
     [&#x27;control&#x27;,&#x27;data&#x27;,&#x27;result&#x27;].forEach(kind=&gt;{const m=el(&#x27;marker&#x27;,{id:`life-arrow-${kind}`,viewBox:&#x27;0 0 8 8&#x27;,refX:7,refY:4,markerWidth:7,markerHeight:7,orient:&#x27;auto-start-reverse&#x27;});m.append(el(&#x27;path&#x27;,{d:&#x27;M 0 0 L 8 4 L 0 8 z&#x27;,fill:kind===&#x27;data&#x27;?&#x27;var(--viz-series-2)&#x27;:kind===&#x27;result&#x27;?&#x27;var(--viz-series-3)&#x27;:&#x27;var(--muted-foreground)&#x27;}));defs.append(m);});diagram.append(defs);
     diagram.append(el(&#x27;title&#x27;,{},s?`${s.id}. ${s.title}`:&#x27;完整请求流程：前端 → EngineCore → GPU → 前端 → 客户端&#x27;));
     const nodes={};
-    const nh=116, gap=narrow?86:112, nw=narrow?w-32:(w-132)/2;
+    const nh=116, gap=narrow?86:112, nw=narrow?w-32:(w-152)/2;
     if(narrow) participants.forEach((p,i)=&gt;nodes[p.id]={x:16,y:32+i*(nh+gap),w:nw,h:nh});
-    else {const positions={C:[0,0],H:[1,0],S:[0,1],A:[1,1],W:[0,2],G:[1,2]};participants.forEach(p=&gt;{const [col,row]=positions[p.id];nodes[p.id]={x:16+col*(nw+100),y:32+row*(nh+gap),w:nw,h:nh};});}
+    else {const positions={C:[0,0],H:[1,0],S:[0,1],A:[1,1],W:[0,2],G:[1,2]};participants.forEach(p=&gt;{const [col,row]=positions[p.id];nodes[p.id]={x:16+col*(nw+120),y:32+row*(nh+gap),w:nw,h:nh};});}
     const height=narrow?32+6*nh+5*gap+10:32+3*nh+2*gap+10;diagram.setAttribute(&#x27;viewBox&#x27;,`0 0 ${w} ${height}`);diagram.style.height=`${height}px`;
     if(!narrow){
       const h=nodes.H,a=nodes.A,sc=nodes.S,wo=nodes.W;
@@ -2106,7 +2106,7 @@ html&gt;body{padding:0}&lt;/style&gt;
       const n1=nodes[e.from],n2=nodes[e.to];let path,labelX,labelY,contentY;
       if(!narrow &amp;&amp; n1.y===n2.y){
         const right=n2.x&gt;n1.x, yy=n1.y+(e.kind===&#x27;result&#x27;?82:35), x1=right?n1.x+n1.w:n1.x, x2=right?n2.x:n2.x+n2.w;
-        path=`M ${x1} ${yy} L ${x2} ${yy}`;labelX=(x1+x2)/2;labelY=yy-9;contentY=yy+19;
+        path=`M ${x1} ${yy} L ${x2} ${yy}`;labelX=(x1+x2)/2;labelY=yy-28;contentY=yy-11;
       }else{
         const down=n2.y&gt;n1.y, off=e.kind===&#x27;result&#x27;?54:-54,xx=n1.x+n1.w/2+off;
         const y1=down?n1.y+n1.h:n1.y, y2=down?n2.y:n2.y+n2.h;
@@ -2115,7 +2115,7 @@ html&gt;body{padding:0}&lt;/style&gt;
       const g=el(&#x27;g&#x27;,{class:active?&#x27;&#x27;:&#x27;inactive&#x27;}), p=el(&#x27;path&#x27;,{d:path,class:`edge ${e.kind}${s&amp;&amp;active?&#x27; active&#x27;:&#x27;&#x27;}`,&#x27;marker-end&#x27;:`url(#life-arrow-${e.kind})`});g.append(p);
       if(active){
         const number=s?String(s.id):ids.join(&#x27;·&#x27;);const tw=Math.max(number.length*7.5,e.label.length*11)+10;
-        g.append(el(&#x27;rect&#x27;,{x:labelX-tw/2,y:labelY-14,width:tw,height:38,rx:3,class:&#x27;edge-label-bg&#x27;}));
+        g.append(el(&#x27;rect&#x27;,{x:labelX-tw/2,y:labelY-14,width:tw,height:(!narrow&amp;&amp;n1.y===n2.y?34:38),rx:3,class:&#x27;edge-label-bg&#x27;}));
         addText(g,number,labelX,labelY,{&#x27;text-anchor&#x27;:&#x27;middle&#x27;,class:&#x27;text-small tabular-nums&#x27;});
         addText(g,e.label,labelX,contentY,{&#x27;text-anchor&#x27;:&#x27;middle&#x27;,class:&#x27;text-small&#x27;});
       }

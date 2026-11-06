@@ -2152,6 +2152,20 @@ body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !importan
       #llm-map .timeline &gt; div:last-child { border-bottom: 0 !important; }
     }
 
+
+    /* Arrows show tensor dependencies; separate rails are never implicit junctions. */
+    #llm-map .dependency-flow { position:relative; display:grid; gap:36px; max-width:700px; margin:0 auto; padding:6px 38px; isolation:isolate; }
+    #llm-map .dependency-flow &gt; .internal-node { width:100%; max-width:none; min-width:0; box-sizing:border-box; position:relative; z-index:1; }
+    #llm-map .dependency-source { display:block; margin-top:7px; font-size:.78em; color:var(--soft); line-height:1.55; }
+    #llm-map .dependency-wires, #llm-map .block-residual-wires { position:absolute; inset:0; width:100%; height:100%; overflow:visible; pointer-events:none; }
+    #llm-map .dependency-wires { z-index:0; }
+    #llm-map .dependency-wire { fill:none; stroke:var(--ink); stroke-width:1.6; stroke-linejoin:round; }
+    #llm-map .wire-halo { fill:none; stroke:var(--background); stroke-width:5; }
+    #llm-map #panel-single &gt; .diagram { position:relative; padding-inline:27px; }
+    #llm-map .block-residual-wires { z-index:2; }
+    #llm-map .residual-wire { fill:none; stroke:var(--ink); stroke-width:1.8; stroke-dasharray:6 4; stroke-linejoin:round; }
+    #llm-map .wire-legend { max-width:700px; margin:8px auto 14px; font-size:.83em; color:var(--soft); line-height:1.6; }
+
     /* 竖向阅读布局：主数据流由上到下，节点右侧固定显示张量形状。 */
     #llm-map .diagram .flow,
     #llm-map .diagram .full-flow,
@@ -2304,6 +2318,7 @@ body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !importan
       &lt;span class=&quot;subtle&quot;&gt;点击节点，进入这个模块的内部流程。&lt;/span&gt;
     &lt;/div&gt;
 
+    &lt;p class=&quot;wire-legend&quot;&gt;实线向下传递子层结果；左侧虚线保留 X → 第一次相加，右侧虚线保留 H₁ → 第二次相加。交叉处不合流。&lt;/p&gt;
     &lt;div class=&quot;diagram&quot; aria-label=&quot;单层 Transformer Block 数据流&quot;&gt;
       &lt;div class=&quot;flow&quot;&gt;
         &lt;button class=&quot;node io selected&quot; type=&quot;button&quot; data-step=&quot;x&quot;&gt;&lt;span class=&quot;name&quot;&gt;输入表示 X&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[B,T,d] = [2,3,8]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;当前 B 条句子 × 3 个 token × 8 维&lt;/span&gt;&lt;/button&gt;
@@ -2318,7 +2333,7 @@ body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !importan
       &lt;/div&gt;
       &lt;div class=&quot;section-label&quot;&gt;第二个子层：输入来自第一次残差后的 H₁&lt;/div&gt;
       &lt;div class=&quot;flow&quot;&gt;
-        &lt;button class=&quot;node norm&quot; type=&quot;button&quot; data-step=&quot;norm2&quot;&gt;&lt;span class=&quot;name&quot;&gt;RMSNorm（输入 H₁）&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,3,8]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;H₁ = X + Attention(X)，再缩放每行&lt;/span&gt;&lt;/button&gt;
+        &lt;button class=&quot;node norm&quot; type=&quot;button&quot; data-step=&quot;norm2&quot;&gt;&lt;span class=&quot;name&quot;&gt;RMSNorm（输入 H₁）&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,3,8]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;H₁ = X + Attention(Norm₁(X))，再缩放每行&lt;/span&gt;&lt;/button&gt;
         &lt;span class=&quot;arrow&quot; aria-hidden=&quot;true&quot;&gt;→&lt;/span&gt;
         &lt;button class=&quot;node mlp&quot; type=&quot;button&quot; data-step=&quot;mlp&quot;&gt;&lt;span class=&quot;name&quot;&gt;SwiGLU / MLP&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;8 → 16 → 8&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;每个位置扩宽再压回&lt;/span&gt;&lt;/button&gt;
         &lt;span class=&quot;arrow&quot; aria-hidden=&quot;true&quot;&gt;→&lt;/span&gt;
@@ -2674,8 +2689,12 @@ const ToyEngine = (() =&gt; {
     };
     definitions.norm2=definitions.norm1.map(step=&gt;step.slice());
     if(key===&#x27;norm2&#x27;){definitions.norm2[0][0]=&#x27;输入 H₁&#x27;;definitions.norm2.at(-1)[2]=&#x27;直接交给 MLP&#x27;;}
+    if(key===&#x27;qkv&#x27;)definitions.qkv.push([&#x27;交给 Attention：Q′、K′、V&#x27;,&#x27;各 [B,2,3,4]&#x27;,&#x27;Q/K 取旋转结果；V 直接来自 V 投影&#x27;]);
+    if(key===&#x27;attn&#x27;)definitions.attn.splice(2,0,[&#x27;Value 输入（head 0）&#x27;,b.v[0][head].map((v,t)=&gt;&#x27;t&#x27;+t+&#x27;=&#x27;+vector(v)).join(&#x27;；&#x27;),&#x27;来自 QKV 页；读取三个历史位置的 Value&#x27;]);
     const nodes=definitions[key]||definitions.x;
-    return {title:&#x27;Block &#x27;+(b.index+1)+&#x27; · batch[0] 位置 2 · &#x27;+(details[key]||details.x)[0],nodes,rows:nodes.map(([label,value])=&gt;[label,value])};
+    const dependencies={norm1:[[0,1],[1,2],[0,4],[2,4],[3,4]],norm2:[[0,1],[1,2],[0,4],[2,4],[3,4]],qkv:[[0,1],[0,2],[0,3],[1,4],[2,4],[3,5],[4,5]],attn:[[0,1],[1,3],[2,3],[3,4],[4,5]],add1:[[0,2],[1,2]],add2:[[0,2],[1,2]]};
+    const edges=dependencies[key]||nodes.slice(1).map((_,i)=&gt;[i,i+1]);
+    return {edges,title:&#x27;Block &#x27;+(b.index+1)+&#x27; · batch[0] 位置 2 · &#x27;+(details[key]||details.x)[0],nodes,rows:nodes.map(([label,value])=&gt;[label,value])};
   }
   const internalWhy = {
     x: &#x27;先把每个位置表示成同宽向量，后续所有模块才能在统一的 d=8 主干上协作。&#x27;,
@@ -2701,10 +2720,54 @@ const ToyEngine = (() =&gt; {
   function internalNode(cls, title, formula, tiny) {
     return &#x27;&lt;div class=&quot;internal-node &#x27; + (cls || &#x27;&#x27;) + &#x27;&quot;&gt;&lt;strong&gt;&#x27; + title + &#x27;&lt;/strong&gt;&#x27; + (formula ? &#x27;&lt;span class=&quot;formula&quot;&gt;&#x27; + formula + &#x27;&lt;/span&gt;&#x27; : &#x27;&#x27;) + (tiny ? &#x27;&lt;span class=&quot;tiny&quot;&gt;&#x27; + tiny + &#x27;&lt;/span&gt;&#x27; : &#x27;&#x27;) + &#x27;&lt;/div&gt;&#x27;;
   }
+  function dependencyFlow(c) {
+    return &#x27;&lt;p class=&quot;wire-legend&quot;&gt;箭头表示实际输入依赖；编号用于对应来源，不表示每个节点必须串行执行。无箭头相连的输入互相独立。&lt;/p&gt;&lt;div class=&quot;dependency-flow&quot; data-dependencies=&quot;&#x27;+c.edges.map(e=&gt;e.join(&#x27;:&#x27;)).join(&#x27;,&#x27;)+&#x27;&quot;&gt;&#x27;+c.nodes.map(([label,value,note],i)=&gt;{
+      const inputs=c.edges.filter(e=&gt;e[1]===i).map(e=&gt;&#x27;[&#x27;+(e[0]+1)+&#x27;] &#x27;+c.nodes[e[0]][0]);
+      return &#x27;&lt;div class=&quot;internal-node io&quot; data-dep-node=&quot;&#x27;+i+&#x27;&quot;&gt;&lt;strong&gt;[&#x27;+(i+1)+&#x27;] &#x27;+label+&#x27;&lt;/strong&gt;&lt;span class=&quot;formula&quot;&gt;&#x27;+value+&#x27;&lt;/span&gt;&lt;span class=&quot;tiny&quot;&gt;&#x27;+note+&#x27;&lt;/span&gt;&lt;span class=&quot;dependency-source&quot;&gt;输入来自：&#x27;+(inputs.length?inputs.join(&#x27;；&#x27;):&#x27;模块外部（&#x27;+note+&#x27;）&#x27;)+&#x27;&lt;/span&gt;&lt;/div&gt;&#x27;;
+    }).join(&#x27;&#x27;)+&#x27;&lt;/div&gt;&#x27;;
+  }
+  function drawDependencyWires() {
+    root.querySelectorAll(&#x27;.dependency-flow&#x27;).forEach((flow,fi)=&gt;{
+      const frame=flow.getBoundingClientRect();if(!frame.width)return;
+      const edges=flow.dataset.dependencies.split(&#x27;,&#x27;).filter(Boolean).map(s=&gt;s.split(&#x27;:&#x27;).map(Number));
+      const boxes=[...flow.querySelectorAll(&#x27;[data-dep-node]&#x27;)].map(el=&gt;{const r=el.getBoundingClientRect();return {l:r.left-frame.left,r:r.right-frame.left,t:r.top-frame.top,b:r.bottom-frame.top,w:r.width,h:r.height};});
+      const marker=&#x27;dependency-arrow-&#x27;+fi;
+      let body=&#x27;&lt;defs&gt;&lt;marker id=&quot;&#x27;+marker+&#x27;&quot; markerWidth=&quot;7&quot; markerHeight=&quot;7&quot; refX=&quot;6&quot; refY=&quot;3.5&quot; orient=&quot;auto&quot; markerUnits=&quot;userSpaceOnUse&quot;&gt;&lt;path d=&quot;M0 0L7 3.5L0 7Z&quot; fill=&quot;var(--ink)&quot;/&gt;&lt;/marker&gt;&lt;/defs&gt;&#x27;,rail=0;
+      edges.forEach(([from,to],ei)=&gt;{
+        const a=boxes[from],b=boxes[to];let d;
+        if(to===from+1){const x=a.l+a.w/2;d=&#x27;M&#x27;+x+&#x27;,&#x27;+a.b+&#x27;V&#x27;+b.t;}
+        else {
+          const side=rail%2,level=Math.floor(rail++/2),x=side?a.r+10+level*8:a.l-10-level*8;
+          const outgoing=edges.filter(e=&gt;e[0]===from&amp;&amp;e[1]!==from+1),incoming=edges.filter(e=&gt;e[1]===to&amp;&amp;e[1]!==e[0]+1);
+          const ay=a.t+a.h*(.35+.3*(outgoing.findIndex(e=&gt;e[1]===to)+1)/(outgoing.length+1));
+          const by=b.t+b.h*(.35+.3*(incoming.findIndex(e=&gt;e[0]===from)+1)/(incoming.length+1));
+          d=&#x27;M&#x27;+(side?a.r:a.l)+&#x27;,&#x27;+ay+&#x27;H&#x27;+x+&#x27;V&#x27;+by+&#x27;H&#x27;+(side?b.r:b.l);
+        }
+        body+=&#x27;&lt;path class=&quot;wire-halo&quot; d=&quot;&#x27;+d+&#x27;&quot;/&gt;&lt;path class=&quot;dependency-wire&quot; data-from=&quot;&#x27;+from+&#x27;&quot; data-to=&quot;&#x27;+to+&#x27;&quot; d=&quot;&#x27;+d+&#x27;&quot; marker-end=&quot;url(#&#x27;+marker+&#x27;)&quot;&gt;&lt;title&gt;[&#x27;+(from+1)+&#x27;] → [&#x27;+(to+1)+&#x27;]&lt;/title&gt;&lt;/path&gt;&#x27;;
+      });
+      let svg=flow.querySelector(&#x27;.dependency-wires&#x27;);if(!svg){svg=document.createElementNS(&#x27;http://www.w3.org/2000/svg&#x27;,&#x27;svg&#x27;);svg.setAttribute(&#x27;class&#x27;,&#x27;dependency-wires&#x27;);svg.setAttribute(&#x27;aria-hidden&#x27;,&#x27;true&#x27;);flow.prepend(svg);}
+      svg.setAttribute(&#x27;viewBox&#x27;,&#x27;0 0 &#x27;+frame.width+&#x27; &#x27;+frame.height);svg.innerHTML=body;
+    });
+    const diagram=root.querySelector(&#x27;#panel-single &gt; .diagram&#x27;),frame=diagram.getBoundingClientRect();
+    if(!frame.width)return;
+    const box=key=&gt;{const r=diagram.querySelector(&#x27;[data-step=&quot;&#x27;+key+&#x27;&quot;]&#x27;).getBoundingClientRect();return {l:r.left-frame.left,r:r.right-frame.left,cy:r.top-frame.top+r.height/2};};
+    const marker=&#x27;block-residual-arrow&#x27;;let body=&#x27;&lt;defs&gt;&lt;marker id=&quot;&#x27;+marker+&#x27;&quot; markerWidth=&quot;7&quot; markerHeight=&quot;7&quot; refX=&quot;6&quot; refY=&quot;3.5&quot; orient=&quot;auto&quot; markerUnits=&quot;userSpaceOnUse&quot;&gt;&lt;path d=&quot;M0 0L7 3.5L0 7Z&quot; fill=&quot;var(--ink)&quot;/&gt;&lt;/marker&gt;&lt;/defs&gt;&#x27;;
+    [[&#x27;x&#x27;,&#x27;add1&#x27;,false],[&#x27;add1&#x27;,&#x27;add2&#x27;,true]].forEach(([from,to,right])=&gt;{
+      const a=box(from),b=box(to),x=right?Math.max(a.r,b.r)+17:Math.min(a.l,b.l)-17;
+      const d=&#x27;M&#x27;+(right?a.r:a.l)+&#x27;,&#x27;+a.cy+&#x27;H&#x27;+x+&#x27;V&#x27;+b.cy+&#x27;H&#x27;+(right?b.r:b.l);
+      body+=&#x27;&lt;path class=&quot;residual-wire&quot; data-from=&quot;&#x27;+from+&#x27;&quot; data-to=&quot;&#x27;+to+&#x27;&quot; d=&quot;&#x27;+d+&#x27;&quot; marker-end=&quot;url(#&#x27;+marker+&#x27;)&quot;/&gt;&#x27;;
+    });
+    let svg=diagram.querySelector(&#x27;.block-residual-wires&#x27;);if(!svg){svg=document.createElementNS(&#x27;http://www.w3.org/2000/svg&#x27;,&#x27;svg&#x27;);svg.setAttribute(&#x27;class&#x27;,&#x27;block-residual-wires&#x27;);svg.setAttribute(&#x27;aria-hidden&#x27;,&#x27;true&#x27;);diagram.append(svg);}
+    svg.setAttribute(&#x27;viewBox&#x27;,&#x27;0 0 &#x27;+frame.width+&#x27; &#x27;+frame.height);svg.innerHTML=body;
+  }
+  let wireFrame=0;
+  function scheduleDependencyWires(){cancelAnimationFrame(wireFrame);wireFrame=requestAnimationFrame(drawDependencyWires);}
+  new ResizeObserver(scheduleDependencyWires).observe(root);
+
   function renderInternal(key, target) {
     const c=calculation(key);
     if(!target)root.querySelector(&#x27;#internal-step-name&#x27;).textContent=c.title;
-    let output=&#x27;&lt;div class=&quot;internal-flow&quot;&gt;&#x27;+c.nodes.map(([label,value,note],i)=&gt;(i?&#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27;:&#x27;&#x27;)+internalNode(&#x27;io&#x27;,label,value,note)).join(&#x27;&#x27;)+&#x27;&lt;/div&gt;&#x27;;
+    let output=dependencyFlow(c);
     if(key===&#x27;attn&#x27;){
       const rows=currentBlock().attention[0][0];
       output+=&#x27;&lt;div class=&quot;matrix-wrap attention-matrix-module&quot;&gt;&lt;table class=&quot;matrix&quot;&gt;&lt;caption&gt;同一 Block / head 0 的因果权重&lt;/caption&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;Q / K&lt;/th&gt;&#x27;+tokens.map(token=&gt;&#x27;&lt;th&gt;&#x27;+token+&#x27;&lt;/th&gt;&#x27;).join(&#x27;&#x27;)+&#x27;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&#x27;+rows.map((row,r)=&gt;&#x27;&lt;tr&gt;&lt;th&gt;&#x27;+tokens[r]+&#x27;&lt;/th&gt;&#x27;+row.map((v,c)=&gt;&#x27;&lt;td class=&quot;&#x27;+(c&lt;=r?&#x27;allowed&#x27;:&#x27;masked&#x27;)+&#x27;&quot;&gt;&#x27;+(c&lt;=r?formatNumber(v):&#x27;—&#x27;)+&#x27;&lt;/td&gt;&#x27;).join(&#x27;&#x27;)+&#x27;&lt;/tr&gt;&#x27;).join(&#x27;&#x27;)+&#x27;&lt;/tbody&gt;&lt;/table&gt;&lt;/div&gt;&#x27;;
@@ -2713,6 +2776,7 @@ const ToyEngine = (() =&gt; {
     output+=&#x27;&lt;div class=&quot;internal-why&quot;&gt;&lt;strong&gt;为什么这样做：&lt;/strong&gt;&#x27;+(internalWhy[key]||internalWhy.x)+&#x27;&lt;/div&gt;&#x27;;
     const canvas=root.querySelector(target&amp;&amp;target.canvas?target.canvas:&#x27;#internal-canvas&#x27;),text=root.querySelector(target&amp;&amp;target.text?target.text:&#x27;#internal-text-flow&#x27;);
     if(canvas)canvas.innerHTML=output;
+    scheduleDependencyWires();
     if(text)text.innerHTML=c.nodes.map(([label,value,note])=&gt;&#x27;&lt;li&gt;&lt;strong&gt;&#x27;+label+&#x27;&lt;/strong&gt; → &#x27;+value+&#x27;；&#x27;+note+&#x27;&lt;/li&gt;&#x27;).join(&#x27;&#x27;);
   }
   const fullDetails = {
@@ -2902,6 +2966,7 @@ const ToyEngine = (() =&gt; {
     tabs.forEach(btn =&gt; { const on = btn.dataset.tab === highLevelTab; btn.classList.toggle(&#x27;active&#x27;, on); btn.setAttribute(&#x27;aria-selected&#x27;, String(on)); });
     Object.entries(panels).forEach(([key, panel]) =&gt; { const on = key === name; panel.classList.toggle(&#x27;active&#x27;, on); panel.hidden = !on; });
     updatePath();
+    scheduleDependencyWires();
     if (!opts.auto) save();
   }
   function navigateTo(name, opts) {

@@ -578,7 +578,8 @@ methods.dflash = {
     const width = svg.getBoundingClientRect().width;
     if (width < 50) return;
     const compact = width < 520, margin = 2, gap = compact ? 13 : 66;
-    const pad = compact ? 10 : 21, lane = (width - gap) / 2 - margin;
+    // Medusa's three distinct candidate outputs need three rails, not a shared bus.
+    const pad = method==='medusa' ? (compact ? 26 : 30) : (compact ? 10 : 21), lane = (width - gap) / 2 - margin;
     const boxW = lane - 2 * pad;
     const left = margin + pad, right = width - margin - lane + pad;
     const words = ['吃', '火', '锅'];
@@ -757,9 +758,13 @@ methods.dflash = {
       if(e.route==='across')pts=[[a.r,a.cy],[b.x-1,y]];
       else if(e.route==='fan'){const mid=(a.r+b.x)/2;pts=[[a.r,a.cy],[mid,a.cy],[mid,y],[b.x-1,y]];}
       else if(e.route==='return'||e.route==='right-bypass'){
-        const rail=a.r+pad*.62;
+        const siblings=edges.filter(other=>other.route===e.route&&other.to===e.to);
+        const index=siblings.indexOf(e), multiple=siblings.length>1;
+        const rail=a.r+(multiple?7+(siblings.length-1-index)*7:pad*.62);
+        const entryY=multiple?b.y+b.height*(siblings.length-index)/(siblings.length+1):b.cy;
         // A return edge starts at the lower output, then re-enters the compute block.
-        pts=[[a.r,a.cy],[rail,a.cy],[rail,b.cy],[b.r+1,b.cy]];
+        // For a fan-in, earlier sources use outer rails and lower destination ports.
+        pts=[[a.r,a.cy],[rail,a.cy],[rail,entryY],[b.r+1,entryY]];
       }else pts=[[a.cx,a.b],[b.cx,b.y-1]];
       const wire=el('path',{d:pts.map(([x,y],i)=>(i?'L':'M')+x+' '+y).join(' '),fill:'none',stroke:colors[e.signal],
         'stroke-width':active?2.4:1.4,'stroke-linejoin':'round','stroke-dasharray':e.signal==='state'||e.signal==='kv'?'4 3':'none',

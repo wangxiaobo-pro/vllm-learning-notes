@@ -2301,7 +2301,7 @@ return: output[0], output[3], output[2]
    const attnLabel=&#x27;FX 的 opaque Attention 内部：KV 写入 + 事件 + FIA&#x27;;
    let attnLabelY=0;
    ops.forEach((op,i)=&gt;{
-     if(i===4){attnLabelY=y+4;y+=lines(attnLabel,w-dx-6,true).length*sizes().lh+24;}
+     if(i===4){attnLabelY=y+4;y+=lines(attnLabel,nw,true).length*sizes().lh+24;}
      if(narrow){
        const replayLabel=i===0?&#x27;graph.replay()&#x27;:i===5?&#x27;update_stream：参数更新 + record&#x27;:null;
        const call=mode===&#x27;capture&#x27;?op.call:replayLabel;
@@ -2322,16 +2322,20 @@ return: output[0], output[3], output[2]
    const returnY=bottom+46, returnH=bh(nw,&#x27;返回两个引用（无相加）&#x27;,&#x27;(m, r₂)&#x27;,&#x27;下一层开头才执行 m + r₂&#x27;);
    path(svg,`M${a.x+a.w},${a.y+a.h/2}H${rail}V${b.y+b.h/2}H${b.x+b.w}`,&#x27;line residual&#x27;);
    label(svg,&#x27;r₁&#x27;,rail-18,a.y+a.h/2+30,30,true);
+   label(svg,&#x27;r₁&#x27;,rail-18,b.y+b.h/2-18,30,true);
    path(svg,`M${b.x+b.w},${b.y+b.h/2+18}H${rail}V${returnY+returnH/2}H${c.x+c.w}`,&#x27;line residual&#x27;);
    label(svg,&#x27;r₂&#x27;,rail-18,b.y+b.h/2+50,30,true);
+   label(svg,&#x27;r₂&#x27;,rail-18,returnY+returnH/2-18,30,true);
    // V skips RoPE and joins the cache write; Q and K take the central path.
    const vRail=w-39, vs=boxes[2], vt=boxes[4];
    path(svg,`M${vs.x+vs.w},${vs.y+vs.h/2}H${vRail}V${vt.y+vt.h/2}H${vt.x+vt.w}`,&#x27;line&#x27;);
    label(svg,&#x27;V&#x27;,vRail-7,vs.y+vs.h/2+30,20,true);
+   label(svg,&#x27;V&#x27;,vRail-7,vt.y+vt.h/2-18,20,true);
     // Q is a separate FIA input; cache writes only consume K/V and slots.
     const qRail=w-53,qs=boxes[3],qt=boxes[6];
     path(svg,`M${qs.x+qs.w},${qs.y+qs.h/2}H${qRail}V${qt.y+qt.h/2}H${qt.x+qt.w}`,&#x27;line tensor&#x27;);
     label(svg,&#x27;Q&#x27;,qRail-5,qs.y+qs.h/2+27,18,true);
+    label(svg,&#x27;Q&#x27;,qRail-5,qt.y+qt.h/2-18,18,true);
    if(!narrow){
      if(mode===&#x27;capture&#x27;)boxes.forEach((b,i)=&gt;{
        let cy=b.y+30;text(svg,ops[i].call,2,cy,hostW,true);
@@ -2353,7 +2357,7 @@ return: output[0], output[3], output[2]
    }
    callRows.forEach(r=&gt;label(svg,r.value,r.x,r.y,r.w,true,&#x27;secondary&#x27;));
    boxes.forEach((b,i)=&gt;box(svg,b,ops[i].title,ops[i].api,ops[i].data,ops[i].tag+(current===i?&#x27; active&#x27;:&#x27;&#x27;),i));
-   label(svg,attnLabel,dx,attnLabelY,w-dx-6,true);
+   label(svg,attnLabel,dx,attnLabelY,nw,true);
    path(svg,`M${dx+nw/2},${bottom}V${returnY}`);
    box(svg,{x:dx,y:returnY,w:nw,h:returnH},&#x27;返回两个引用（无相加）&#x27;,&#x27;(m, r₂)&#x27;,&#x27;下一层开头才执行 m + r₂&#x27;,&#x27;view&#x27;);
    y=returnY+returnH+39;

@@ -2386,6 +2386,52 @@ html&gt;body{padding:0}&lt;/style&gt;
   const steps = { overview:0, feedback:0, placement:0, timeline:0,
     &#x27;choice-original&#x27;:0, &#x27;choice-counter&#x27;:0, &#x27;choice-tie&#x27;:0 };
   const key = () =&gt; mode === &#x27;choice&#x27; ? &#x27;choice-&#x27; + preset : mode;
+  // Keep each opposing flow in its own direct lane. Labels follow that lane.
+  function routeFlowConnections(frame) {
+    const svg = frame?.querySelector(&#x27;.flow-svg&#x27;);
+    if (!svg || ![&#x27;overview&#x27;,&#x27;feedback&#x27;].includes(frame.dataset.mode)) return;
+    const w=svg.getBoundingClientRect().width;
+    if(!w)return;
+    const box=id=&gt;svg.querySelector(&#x27;[data-node=&quot;&#x27;+id+&#x27;&quot;] rect&#x27;)?.getBBox();
+    const edge=(id,x,y1,y2)=&gt;{
+      const pieces=[...svg.querySelectorAll(&#x27;[data-edge=&quot;&#x27;+id+&#x27;&quot;]&#x27;)];
+      if(!pieces.length)return;
+      const first=pieces[0], marker=pieces.find(p=&gt;p.hasAttribute(&#x27;marker-end&#x27;))?.getAttribute(&#x27;marker-end&#x27;);
+      const path=document.createElementNS(&#x27;http://www.w3.org/2000/svg&#x27;,&#x27;path&#x27;);
+      path.setAttribute(&#x27;class&#x27;,first.getAttribute(&#x27;class&#x27;));path.dataset.edge=id;
+      path.setAttribute(&#x27;d&#x27;,`M ${x} ${y1} V ${y2}`);
+      if(marker)path.setAttribute(&#x27;marker-end&#x27;,marker);
+      first.parentNode.insertBefore(path,first);pieces.forEach(p=&gt;p.remove());
+    };
+    const label=(id,x,y)=&gt;{
+      const g=svg.querySelector(&#x27;[data-edge-label=&quot;&#x27;+id+&#x27;&quot;]&#x27;);if(!g)return;
+      const texts=[...g.querySelectorAll(&#x27;text&#x27;)];if(!texts.length)return;
+      const oldY=Number(texts[0].getAttribute(&#x27;y&#x27;));
+      texts.forEach(t=&gt;{t.setAttribute(&#x27;x&#x27;,x);t.setAttribute(&#x27;y&#x27;,Number(t.getAttribute(&#x27;y&#x27;))-oldY+y);});
+      const boxes=texts.map(t=&gt;t.getBBox()),left=Math.min(...boxes.map(b=&gt;b.x)),top=Math.min(...boxes.map(b=&gt;b.y));
+      const right=Math.max(...boxes.map(b=&gt;b.x+b.width)),bottom=Math.max(...boxes.map(b=&gt;b.y+b.height));
+      const bg=g.querySelector(&#x27;rect&#x27;);if(bg){bg.removeAttribute(&#x27;transform&#x27;);for(const [k,v]of Object.entries({x:left-5,y:top-3,width:right-left+10,height:bottom-top+6}))bg.setAttribute(k,v);}
+    };
+    if(frame.dataset.mode===&#x27;overview&#x27;){
+      const api=box(&#x27;lb&#x27;),dp=box(&#x27;dp1&#x27;),moe=box(&#x27;moe&#x27;);if(!api||!dp||!moe)return;
+      const qNote=[...svg.querySelectorAll(&#x27;text&#x27;)].find(t=&gt;t.textContent===&#x27;Q 的激活也参与 EP&#x27;||t.dataset.qParticipation===&#x27;true&#x27;);
+      if(qNote){
+        qNote.dataset.qParticipation=&#x27;true&#x27;;qNote.replaceChildren();
+        const words=w&lt;550?[&#x27;Q 的激活&#x27;,&#x27;也参与 EP&#x27;]:[&#x27;Q 的激活也参与 EP&#x27;];
+        words.forEach((word,i)=&gt;{const line=document.createElementNS(&#x27;http://www.w3.org/2000/svg&#x27;,&#x27;tspan&#x27;);line.setAttribute(&#x27;x&#x27;,w*.257);line.setAttribute(&#x27;y&#x27;,dp.y+dp.height+36+i*18);line.textContent=word;qNote.append(line);});
+      }
+      edge(&#x27;route&#x27;,w*.60,api.y+api.height,dp.y);label(&#x27;route&#x27;,w*.60,api.y+api.height+55);
+      edge(&#x27;result&#x27;,w*.82,dp.y,api.y+api.height);label(&#x27;result&#x27;,w*.82,api.y+api.height+22);
+      edge(&#x27;dispatch&#x27;,w*.63,dp.y+dp.height,moe.y);label(&#x27;dispatch&#x27;,w*.63-Math.min(24,w*.07),dp.y+dp.height+48);
+      edge(&#x27;combine&#x27;,w*.85,moe.y,dp.y+dp.height);label(&#x27;combine&#x27;,w*.85,dp.y+dp.height+28);
+    }else{
+      const api=box(&#x27;api&#x27;),dp0=box(&#x27;dp0&#x27;),dp1=box(&#x27;dp1&#x27;),coord=box(&#x27;coord&#x27;);if(!api||!dp0||!dp1||!coord)return;
+      edge(&#x27;add&#x27;,w*.60,api.y+api.height,dp1.y);label(&#x27;add&#x27;,w*.60,api.y+api.height+65);
+      edge(&#x27;output&#x27;,w*.82,dp1.y,api.y+api.height);label(&#x27;output&#x27;,w*.82,api.y+api.height+28);
+      edge(&#x27;s0&#x27;,w*.30,dp0.y+dp0.height,coord.y);label(&#x27;s0&#x27;,w*.30,dp0.y+dp0.height+36);
+      edge(&#x27;s1&#x27;,w*.70,dp1.y+dp1.height,coord.y);label(&#x27;s1&#x27;,w*.70,dp1.y+dp1.height+36);
+    }
+  }
   function restore(state) {
     const saved = state &amp;&amp; state.privateContent;
     if (!saved || saved.namespace !== &#x27;eplb-dplb-complete&#x27; || saved.schema !== 1 ||
@@ -2407,6 +2453,7 @@ html&gt;body{padding:0}&lt;/style&gt;
       Number(frame.dataset.step) === step);
     if (!selected) return;
     frames.forEach(frame =&gt; { frame.hidden = frame !== selected; });
+    routeFlowConnections(selected);
     query(&#x27;mode&#x27;).value = mode;
     query(&#x27;preset&#x27;).value = preset;
     query(&#x27;scenario&#x27;).hidden = mode !== &#x27;choice&#x27;;
@@ -2454,6 +2501,7 @@ html&gt;body{padding:0}&lt;/style&gt;
     const state = event.detail &amp;&amp; event.detail.globals &amp;&amp; event.detail.globals.widgetState;
     if (state) { restore(state); render(); }
   });
+  new ResizeObserver(() =&gt; routeFlowConnections(frames.find(frame=&gt;!frame.hidden))).observe(root);
   restore(window.openai &amp;&amp; window.openai.widgetState);
   render();
 })();

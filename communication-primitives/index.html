@@ -2409,6 +2409,46 @@ if(typeof module!==&#x27;undefined&#x27;&amp;&amp;module.exports)module.exports=
       const marker=element(&#x27;marker&#x27;,{id:&#x27;cp-arrow-&#x27;+type,viewBox:&#x27;0 0 10 10&#x27;,refX:9,refY:5,markerWidth:5,markerHeight:5,orient:&#x27;auto&#x27;},defs);
       element(&#x27;path&#x27;,{d:&#x27;M 0 1 L 9 5 L 0 9 Z&#x27;,fill:stageStyle(type).stroke},marker);
     });
+    if(operation===&#x27;allgather&#x27;||operation===&#x27;alltoall&#x27;){
+      // A K3,3 drawing necessarily crosses. Repeat the same producer views per
+      // destination instead, so each contribution has a short unambiguous edge.
+      const columns=width&gt;=720?3:1,panelGap=16,panelW=(width-12-panelGap*(columns-1))/columns;
+      const panelH=260,totalH=50+Math.ceil(3/columns)*(panelH+panelGap);
+      svg.setAttribute(&#x27;viewBox&#x27;,&#x27;0 0 &#x27;+width+&#x27; &#x27;+totalH);svg.style.height=totalH+&#x27;px&#x27;;
+      label(width/2,16,&#x27;每个面板只追踪一个接收者&#x27;,&#x27;cp-title&#x27;);
+      label(width/2,35,&#x27;重复的发送端是同一份输入视图&#x27;,&#x27;cp-muted&#x27;);
+      [0,1,2].forEach(to=&gt;{
+        const px=6+(to%columns)*(panelW+panelGap),py=50+Math.floor(to/columns)*(panelH+panelGap);
+        element(&#x27;rect&#x27;,{x:px,y:py,width:panelW,height:panelH,rx:8,fill:&#x27;none&#x27;,stroke:&#x27;var(--border)&#x27;});
+        label(px+panelW/2,py+21,&#x27;目标 rank &#x27;+to,&#x27;cp-title&#x27;);
+        const sourceW=(panelW-24-12)/3,sourceY=py+35,sourceH=82,outY=py+182;
+        [0,1,2].forEach(from=&gt;{
+          const x=px+12+from*(sourceW+6),cx=x+sourceW/2;
+          const inputPaint=stageStyle(stageStatus([1]));
+          const g=element(&#x27;g&#x27;,{&#x27;data-rank&#x27;:from,&#x27;data-side&#x27;:&#x27;input&#x27;,&#x27;data-destination&#x27;:to});
+          element(&#x27;rect&#x27;,{x,y:sourceY,width:sourceW,height:sourceH,rx:6,fill:inputPaint.fill,stroke:&#x27;var(--border)&#x27;},g);
+          label(cx,sourceY+20,&#x27;rank &#x27;+from,&#x27;cp-title&#x27;,&#x27;middle&#x27;,g);
+          label(cx,sourceY+41,operation===&#x27;alltoall&#x27;?&#x27;第 &#x27;+to+&#x27; 段&#x27;:&#x27;完整分片&#x27;,&#x27;cp-muted&#x27;,&#x27;middle&#x27;,g);
+          const payload=operation===&#x27;alltoall&#x27;?[config.inputs[from][to]]:config.inputs[from];
+          arrayLabel(cx,sourceY+65,payload,sourceW-8,g);
+          const link=config.links.find(e=&gt;e.from===from&amp;&amp;e.to===to),state=stageStatus([link.step]),paint=stageStyle(state);
+          const route=&#x27;M &#x27;+cx+&#x27; &#x27;+(sourceY+sourceH)+&#x27; V &#x27;+outY;
+          const path=element(&#x27;path&#x27;,{d:route,fill:&#x27;none&#x27;,stroke:paint.stroke,&#x27;stroke-width&#x27;:state===&#x27;active&#x27;?2:1.5,&#x27;stroke-dasharray&#x27;:from===to?&#x27;4 3&#x27;:&#x27;none&#x27;,&#x27;marker-end&#x27;:&#x27;url(#cp-arrow-&#x27;+state+&#x27;)&#x27;,&#x27;data-edge&#x27;:&#x27;flow-&#x27;+from+&#x27;-&#x27;+to,&#x27;data-edge-kind&#x27;:from===to?&#x27;local&#x27;:&#x27;remote&#x27;,&#x27;data-step&#x27;:link.step,&#x27;data-stage-state&#x27;:state});
+          element(&#x27;title&#x27;,{},path,&#x27;rank &#x27;+from+&#x27; → rank &#x27;+to+&#x27;：&#x27;+JSON.stringify(payload));
+          if(step===0||step===link.step)badge(cx,sourceY+sourceH+14,link.step,&#x27;flow-&#x27;+from+&#x27;-&#x27;+to);
+          const text=label(cx,outY-12,from===to?&#x27;本地保留&#x27;:&#x27;r&#x27;+from+&#x27; → r&#x27;+to,&#x27;cp-muted&#x27;);
+          text.setAttribute(&#x27;paint-order&#x27;,&#x27;stroke&#x27;);text.setAttribute(&#x27;stroke&#x27;,&#x27;var(--background)&#x27;);text.setAttribute(&#x27;stroke-width&#x27;,&#x27;4&#x27;);
+        });
+        const output=visibleOutput(config,to),paint=stageStyle(stageStatus([...config.links.filter(e=&gt;e.to===to).map(e=&gt;e.step),config.flows.length]));
+        const g=element(&#x27;g&#x27;,{&#x27;data-rank&#x27;:to,&#x27;data-side&#x27;:&#x27;output&#x27;});
+        element(&#x27;rect&#x27;,{x:px+12,y:outY,width:panelW-24,height:64,rx:6,fill:paint.fill,stroke:paint.stroke},g);
+        label(px+panelW/2,outY+21,&#x27;rank &#x27;+to+&#x27; 接收结果&#x27;,&#x27;cp-title&#x27;,&#x27;middle&#x27;,g);
+        arrayLabel(px+panelW/2,outY+47,output,panelW-36,g);
+      });
+      updateControls(config);
+      root.querySelector(&#x27;#cp-stage-hint&#x27;).textContent+=&#x27; 按目标拆开连线；每个发送端视图仍代表同一个rank，实线跨rank，虚线本地保留。&#x27;;
+      return;
+    }
     label(left+boxWidth/2,18,&#x27;原始输入&#x27;,&#x27;cp-title&#x27;);
     label(right+boxWidth/2,18,&#x27;接收 / 输出&#x27;,&#x27;cp-title&#x27;);
     const arrowBadges=[];

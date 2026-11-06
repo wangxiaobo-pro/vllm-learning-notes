@@ -484,7 +484,7 @@ const ToyEngine = (() => {
       html='<div class="view-title"><h2>层与层之间</h2><div class="controls"><label>Block 层数 <input id="layers" type="range" min="2" max="6" step="1" value="'+state.layers+'"><output>'+state.layers+'</output></label></div><p class="muted">上一层的输出矩阵，原样传入下一层。点击某层进入内部。</p></div><div class="flow">';
       for(let l=1;l<=state.layers;l++){const d=describe('block',l),s=sequence()[state.step];html+=(l>1?'<span class="flow-arrow">↓</span>':'')+rowHTML(d,{input:inputVisible('block',l),output:visible('block',l),current:!!s&&s.layer===l&&(s.kind==='stack'||s.kind==='single')});}
       html+='</div>';
-    }else if(state.route==='single')html='<div class="view-title"><h2>Block '+state.layer+'</h2><p class="muted">第二个子层输入来自第一次残差 H₁。每个矩阵都属于当前这一层。</p></div>'+flowHTML(singleKeys);
+    }else if(state.route==='single')html='<div class="view-title"><h2>Block '+state.layer+'</h2><p class="muted">向下箭头表示模块执行顺序；每行的“输入”列展示完整数据来源。X 与 H₁ 会保留到对应残差相加，权重与 γ 来自当前层参数，并非全部由上一模块生成。第二个子层读取第一次残差 H₁。</p></div>'+flowHTML(singleKeys);
     else{
       const d=describe(state.key),prefix=singleKeys.includes(state.key)?'Block '+state.layer+' · ':'';
       html='<div class="view-title"><h2>'+escape(prefix+d.title)+(state.route==='calc'?' · 逐步计算':state.route==='params'?' · 参数矩阵':'')+'</h2></div>';
