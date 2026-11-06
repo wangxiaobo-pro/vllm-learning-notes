@@ -37,10 +37,14 @@
 
 ## 真实捕获与回放调用链
 
-[call-chain.json](call-chain.json) 分为首次捕获和命中图后回放，共 20 个节点。捕获链从已完成预热的 `ACLGraphWrapper.__call__` 进入模型，追踪 Attention 的 custom-op 分派、`forward_impl` 的互斥选择、FIA 任务注册及图保存。固定 FIA、`sinks=None`，不把 PagedAttention 或 FIA-v2 混入同一次执行。
+[call-chain.json](call-chain.json) 分为首次捕获和命中图后回放，共 44 个节点。捕获链从已完成预热的 `ACLGraphWrapper.__call__` 进入模型，追踪 Attention 的 custom-op 分派、`forward_impl` 的互斥选择、FIA 任务注册及图保存。固定 FIA、`sinks=None`，不把 PagedAttention 或 FIA-v2 混入同一次执行。
 
 回放链固定非 ENPU FULL updatable graph：解析本轮参数，提交 `replay`，再提交更新并记录 event。ENPU 的 update→replay 是另一分支。函数返回输出 buffer 引用、ACL 异步提交与设备计算完成分别说明；没有从静态代码推断实际 kernel 数量或性能。
 
 [call-chain-adapter.js](call-chain-adapter.js) 实际切换 Capture/Replay、阶段步骤和展开算子，读取计数器验证状态。完整固定基线：vLLM `295c062db8a48ea73bbd05d1174cb37d24bf86f9`、vLLM-Ascend `94e3e25f836d79b5ee5c1aed257999ee61d10875`、torch_npu `62b9115da8019f002da386f8866839121aff89af`。
 
 返回[项目导航](../index.html)。
+
+新增子调用展开 Python/C++ capture begin/end、Attention 层与 backend 分派、FIA task group 登记、Ascend 未量化 Linear，以及 replay 参数 provider/bind/update。捕获、参数更新、异步提交和设备完成仍分别说明；配套 op-plugin/CANN 内部保持明确边界。
+
+新增子调用复用已有图的适用输入/输出边界，入口明确标为“原图未单列此调用”，不声称每个 Python/C++ 函数都有独立动画。旧节点 ID 保持不变，编号随真实父子关系更新；跨进程消费者与后续独立采样继续保留为独立根。

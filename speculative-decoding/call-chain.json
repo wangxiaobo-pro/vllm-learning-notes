@@ -23,7 +23,7 @@
         {
           "id": "select",
           "parent": null,
-          "number": "P1",
+          "number": "1",
           "kind": "分支",
           "title": "get_spec_decode_method() [初始化一次]",
           "summary": "配置决定 proposer 类型，不是每轮都加载草稿。",
@@ -55,7 +55,7 @@
         {
           "id": "runner",
           "parent": null,
-          "number": "1",
+          "number": "2",
           "kind": "调用",
           "title": "NPUModelRunner.propose_draft_token_ids()",
           "summary": "上轮 target 采样/验证后开始准备下一轮候选。",
@@ -87,7 +87,7 @@
         {
           "id": "propose",
           "parent": "runner",
-          "number": "1.1",
+          "number": "2.1",
           "kind": "调用",
           "title": "AscendSpecDecodeBaseProposer._propose()",
           "summary": "LLM proposer 的公共执行入口。",
@@ -126,7 +126,7 @@
         {
           "id": "inputs",
           "parent": "propose",
-          "number": "1.1.2",
+          "number": "2.1.1",
           "kind": "调用",
           "title": "AscendSpecDecodeBaseProposer.set_inputs_first_pass()",
           "summary": "对齐首轮 token、positions 与 hidden。",
@@ -158,7 +158,7 @@
         {
           "id": "draftloop",
           "parent": "propose",
-          "number": "1.1.3",
+          "number": "2.1.2",
           "kind": "调用",
           "title": "AscendSpecDecodeBaseProposer._run_merged_draft()",
           "summary": "_runnable 的实际内容；FULL 模式外有 ACLGraphWrapper。",
@@ -204,7 +204,7 @@
         {
           "id": "model",
           "parent": "draftloop",
-          "number": "1.1.3.2",
+          "number": "2.1.2.1",
           "kind": "调用",
           "title": "EagleLlamaForCausalLM.forward()",
           "summary": "Llama 草稿融合词嵌入与 target/递推 hidden。",
@@ -241,30 +241,115 @@
           ]
         },
         {
+          "id": "draft-model-body",
+          "parent": "model",
+          "number": "2.1.2.1.1",
+          "kind": "调用",
+          "title": "LlamaModel.forward()",
+          "summary": "包装器进入所选方法专用草稿主干。",
+          "input": "候选查询 token IDs、positions、方法规定的 hidden/context。",
+          "changes": "embedding 与 target/上一草稿 hidden 拼接，经 fc 后逐层执行；返回 residual 相加结果。",
+          "output": "草稿输出 hidden 或双 hidden 元组。",
+          "resume": "返回草稿 wrapper，再回 _run_merged_draft 的输出拆分。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama_eagle.py",
+              "line": 185,
+              "end": 185,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama_eagle.py",
+              "line": 123,
+              "end": 139,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "eagle",
+                "step": 2,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "draft-layer",
+          "parent": "draft-model-body",
+          "number": "2.1.2.1.1.1",
+          "kind": "调用",
+          "title": "LlamaDecoderLayer.forward()",
+          "summary": "草稿网络自己的 decoder；不是 target 的下一层。",
+          "input": "该草稿层 hidden、residual、positions；EAGLE3 首层另接 embeds。",
+          "changes": "按草稿层定义完成 Norm、Attention、残差和 MLP。",
+          "output": "下一草稿层 hidden/residual。",
+          "resume": "返回草稿 Model 层循环。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama_eagle.py",
+              "line": 133,
+              "end": 135,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 313,
+              "end": 330,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama_eagle.py",
+              "line": 43,
+              "end": 61,
+              "label": "继承 BaseLlamaDecoderLayer，首层可关闭 input norm"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "eagle",
+                "step": 2,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
           "id": "draftsample",
           "parent": "draftloop",
-          "number": "1.1.3.3",
+          "number": "2.1.2.2",
           "kind": "调用",
-          "title": "compute_draft_token_ids() / _sample_draft_from_logits()",
-          "summary": "将草稿 hidden 投影并选择候选 ID。",
-          "input": "草稿采样 hidden 与 sampling_metadata。",
-          "changes": "compute_logits 后按 greedy 或 configured probabilistic draft 采样。",
+          "title": "AscendSpecDecodeBaseProposer._sample_draft_from_logits()",
+          "summary": "当前五条普通路径先 model.compute_logits，再调用该采样接口；不混入 DFlash2 selector。",
+          "input": "草稿 LM head 产生的 logits、sampling_metadata。",
+          "changes": "metadata 缺失用 argmax；否则转调父类 _sample_from_logits。",
           "output": "draft_token_ids 与可选 draft_probs。",
-          "resume": "DFlash parallel_drafting 直接返回 K 个；串行方法进入后续循环。",
+          "resume": "回到 _run_merged_draft；串行方法继续下一候选，DFlash 并行返回。",
           "evidence": [
             {
               "repo": "ascend",
               "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
-              "line": 1423,
-              "label": "实际实现",
-              "end": 1449
+              "line": 1762,
+              "end": 1764,
+              "label": "实际调用位置"
             },
             {
               "repo": "ascend",
               "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
-              "line": 1616,
-              "label": "实际实现",
-              "end": 1643
+              "line": 1397,
+              "end": 1421,
+              "label": "实际实现"
             }
           ],
           "targets": [
@@ -280,9 +365,48 @@
           ]
         },
         {
+          "id": "draft-sampling-policy",
+          "parent": "draftsample",
+          "number": "2.1.2.2.1",
+          "kind": "分支",
+          "title": "SpecDecodeBaseProposer._sample_from_logits()",
+          "summary": "复用上游草稿采样策略，固定本页 greedy 场景。",
+          "input": "logits、sampling metadata、probabilistic 配置。",
+          "changes": "未开启概率导出或 all_greedy 时 argmax；随机路径另行计算概率/Gumbel。",
+          "output": "候选 ID，greedy 时 draft_probs=None。",
+          "resume": "返回 Ascend helper，再回 merged draft。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1421,
+              "end": 1421,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/spec_decode/llm_base_proposer.py",
+              "line": 450,
+              "end": 476,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "eagle",
+                "step": 4,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
           "id": "return",
           "parent": "draftloop",
-          "number": "1.1.3.4",
+          "number": "2.1.2.3",
           "kind": "循环",
           "title": "for draft_index in range(K−1)",
           "summary": "每次把前一个候选及草稿递推 hidden 喂回，位置前移。",
@@ -314,7 +438,7 @@
         {
           "id": "target",
           "parent": null,
-          "number": "2",
+          "number": "3",
           "kind": "边界",
           "title": "NPUModelRunner.execute_model() [下一轮 target]",
           "summary": "调度器把草稿加入 target 本轮输入，跨轮交给 Runner。",
@@ -346,9 +470,9 @@
         {
           "id": "sample",
           "parent": null,
-          "number": "3",
+          "number": "4",
           "kind": "调用",
-          "title": "NPUModelRunner.sample_tokens() → _sample()",
+          "title": "NPUModelRunner.sample_tokens()",
           "summary": "消费 target forward 保存的输出状态。",
           "input": "target logits、SpecDecodeMetadata、可选 draft_probs。",
           "changes": "_sample 在存在 spec metadata 时调用 rejection_sampler。",
@@ -383,9 +507,48 @@
           ]
         },
         {
-          "id": "verify",
+          "id": "sample-dispatch",
           "parent": "sample",
-          "number": "3.1",
+          "number": "4.1",
+          "kind": "调用",
+          "title": "NPUModelRunner._sample()",
+          "summary": "采样入口按是否有 speculative metadata 选择 sampler。",
+          "input": "本轮 logits、SpecDecodeMetadata、sampling metadata。",
+          "changes": "有 draft metadata 时调用 rejection_sampler；普通解码走 sampler。",
+          "output": "SamplerOutput。",
+          "resume": "返回 sample_tokens，再做 bookkeeping/ModelRunnerOutput。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2898,
+              "end": 2900,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3058,
+              "end": 3079,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "eagle",
+                "step": 6,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "verify",
+          "parent": "sample-dispatch",
+          "number": "4.1.1",
           "kind": "调用",
           "title": "AscendRejectionSampler.forward()",
           "summary": "对齐候选、target logits 与 bonus 位置。",
@@ -394,6 +557,13 @@
           "output": "有效接受前缀 + correction / bonus，其他槽位是占位。",
           "resume": "返回 _sample，再回 sample_tokens。",
           "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3073,
+              "end": 3075,
+              "label": "实际调用位置"
+            },
             {
               "repo": "ascend",
               "path": "vllm_ascend/sample/rejection_sampler.py",
@@ -424,9 +594,127 @@
           ]
         },
         {
+          "id": "reject-dispatch",
+          "parent": "verify",
+          "number": "4.1.1.1",
+          "kind": "调用",
+          "title": "rejection_sample()",
+          "summary": "Target logits 的预处理完成后才进入接受/纠正逻辑。",
+          "input": "draft IDs、每请求候选数、cu_num_draft_tokens、target logits、bonus IDs。",
+          "changes": "分配输出；greedy 路径求 target argmax，按 HAS_TRITON 选择实现。",
+          "output": "每请求有效前缀、correction/bonus 和剩余无效槽。",
+          "resume": "返回 AscendRejectionSampler.forward 包装 SamplerOutput。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 224,
+              "end": 226,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 378,
+              "end": 683,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "eagle",
+                "step": 6,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "reject-triton",
+          "parent": "reject-dispatch",
+          "number": "4.1.1.1.1",
+          "kind": "分支",
+          "title": "rejection_greedy_sample_with_triton() [HAS_TRITON]",
+          "summary": "当前教学 all-greedy、K=3 的 Triton 路径。",
+          "input": "draft IDs、target_argmax、bonus IDs、长度与输出 buffer。",
+          "changes": "按最大候选长度选择/启动 greedy 接受 kernel。",
+          "output": "写入接受前缀及首次纠正/bonus。",
+          "resume": "返回 rejection_sample；不是模型重新 forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 513,
+              "end": 515,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/triton/reject_sample.py",
+              "line": 426,
+              "end": 469,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "eagle",
+                "step": 6,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ],
+          "note": "与 PyTorch fallback 互斥；原图展示相同 greedy 接受语义，不代表选择了该硬件 kernel。"
+        },
+        {
+          "id": "reject-pytorch",
+          "parent": "reject-dispatch",
+          "number": "4.1.1.1.2",
+          "kind": "分支",
+          "title": "rejection_greedy_sample_pytorch() [无 Triton，K>1]",
+          "summary": "同一接受规则的 PyTorch fallback。",
+          "input": "draft IDs、target_argmax、bonus IDs、每请求长度。",
+          "changes": "逐候选比较，累计首次不匹配位置，写入纠正与有效前缀。",
+          "output": "与当前教学规则相符的输出 IDs。",
+          "resume": "返回 rejection_sample；K=1 专用函数是另一个分支。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 540,
+              "end": 542,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 825,
+              "end": 894,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "eagle",
+                "step": 6,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
           "id": "commit",
           "parent": "sample",
-          "number": "3.2",
+          "number": "4.2",
           "kind": "返回",
           "title": "sample_tokens 的 bookkeeping / ModelRunnerOutput",
           "summary": "只有有效输出追加到请求状态。",
@@ -487,7 +775,7 @@
         {
           "id": "select",
           "parent": null,
-          "number": "P1",
+          "number": "1",
           "kind": "分支",
           "title": "get_spec_decode_method() [初始化一次]",
           "summary": "配置决定 proposer 类型，不是每轮都加载草稿。",
@@ -519,7 +807,7 @@
         {
           "id": "runner",
           "parent": null,
-          "number": "1",
+          "number": "2",
           "kind": "调用",
           "title": "NPUModelRunner.propose_draft_token_ids()",
           "summary": "上轮 target 采样/验证后开始准备下一轮候选。",
@@ -551,7 +839,7 @@
         {
           "id": "propose",
           "parent": "runner",
-          "number": "1.1",
+          "number": "2.1",
           "kind": "调用",
           "title": "AscendSpecDecodeBaseProposer._propose()",
           "summary": "LLM proposer 的公共执行入口。",
@@ -590,7 +878,7 @@
         {
           "id": "combine",
           "parent": "propose",
-          "number": "1.1.1",
+          "number": "2.1.1",
           "kind": "调用",
           "title": "Eagle3LlamaForCausalLM.combine_hidden_states()",
           "summary": "合并 target 配置要求的辅助隐藏层。",
@@ -629,7 +917,7 @@
         {
           "id": "inputs",
           "parent": "propose",
-          "number": "1.1.2",
+          "number": "2.1.2",
           "kind": "调用",
           "title": "AscendSpecDecodeBaseProposer.set_inputs_first_pass()",
           "summary": "对齐首轮 token、positions 与 hidden。",
@@ -661,7 +949,7 @@
         {
           "id": "draftloop",
           "parent": "propose",
-          "number": "1.1.3",
+          "number": "2.1.3",
           "kind": "调用",
           "title": "AscendSpecDecodeBaseProposer._run_merged_draft()",
           "summary": "_runnable 的实际内容；FULL 模式外有 ACLGraphWrapper。",
@@ -707,7 +995,7 @@
         {
           "id": "model",
           "parent": "draftloop",
-          "number": "1.1.3.2",
+          "number": "2.1.3.1",
           "kind": "调用",
           "title": "Eagle3LlamaForCausalLM.forward()",
           "summary": "EAGLE-3 草稿返回采样 hidden 与递推 hidden。",
@@ -744,30 +1032,108 @@
           ]
         },
         {
+          "id": "draft-model-body",
+          "parent": "model",
+          "number": "2.1.3.1.1",
+          "kind": "调用",
+          "title": "LlamaModel.forward()",
+          "summary": "包装器进入所选方法专用草稿主干。",
+          "input": "候选查询 token IDs、positions、方法规定的 hidden/context。",
+          "changes": "embedding 与已融合 target 特征分别传入层；末端返回 logits hidden 与供下一步复用的辅助 hidden。",
+          "output": "草稿输出 hidden 或双 hidden 元组。",
+          "resume": "返回草稿 wrapper，再回 _run_merged_draft 的输出拆分。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama_eagle3.py",
+              "line": 371,
+              "end": 371,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama_eagle3.py",
+              "line": 261,
+              "end": 288,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "eagle3",
+                "step": 3,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "draft-layer",
+          "parent": "draft-model-body",
+          "number": "2.1.3.1.1.1",
+          "kind": "调用",
+          "title": "LlamaDecoderLayer.forward()",
+          "summary": "草稿网络自己的 decoder；不是 target 的下一层。",
+          "input": "该草稿层 hidden、residual、positions；EAGLE3 首层另接 embeds。",
+          "changes": "按草稿层定义完成 Norm、Attention、残差和 MLP。",
+          "output": "下一草稿层 hidden/residual。",
+          "resume": "返回草稿 Model 层循环。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama_eagle3.py",
+              "line": 277,
+              "end": 279,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama_eagle3.py",
+              "line": 124,
+              "end": 151,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "eagle3",
+                "step": 3,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
           "id": "draftsample",
           "parent": "draftloop",
-          "number": "1.1.3.3",
+          "number": "2.1.3.2",
           "kind": "调用",
-          "title": "compute_draft_token_ids() / _sample_draft_from_logits()",
-          "summary": "将草稿 hidden 投影并选择候选 ID。",
-          "input": "草稿采样 hidden 与 sampling_metadata。",
-          "changes": "compute_logits 后按 greedy 或 configured probabilistic draft 采样。",
+          "title": "AscendSpecDecodeBaseProposer._sample_draft_from_logits()",
+          "summary": "当前五条普通路径先 model.compute_logits，再调用该采样接口；不混入 DFlash2 selector。",
+          "input": "草稿 LM head 产生的 logits、sampling_metadata。",
+          "changes": "metadata 缺失用 argmax；否则转调父类 _sample_from_logits。",
           "output": "draft_token_ids 与可选 draft_probs。",
-          "resume": "DFlash parallel_drafting 直接返回 K 个；串行方法进入后续循环。",
+          "resume": "回到 _run_merged_draft；串行方法继续下一候选，DFlash 并行返回。",
           "evidence": [
             {
               "repo": "ascend",
               "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
-              "line": 1423,
-              "label": "实际实现",
-              "end": 1449
+              "line": 1762,
+              "end": 1764,
+              "label": "实际调用位置"
             },
             {
               "repo": "ascend",
               "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
-              "line": 1616,
-              "label": "实际实现",
-              "end": 1643
+              "line": 1397,
+              "end": 1421,
+              "label": "实际实现"
             }
           ],
           "targets": [
@@ -783,9 +1149,48 @@
           ]
         },
         {
+          "id": "draft-sampling-policy",
+          "parent": "draftsample",
+          "number": "2.1.3.2.1",
+          "kind": "分支",
+          "title": "SpecDecodeBaseProposer._sample_from_logits()",
+          "summary": "复用上游草稿采样策略，固定本页 greedy 场景。",
+          "input": "logits、sampling metadata、probabilistic 配置。",
+          "changes": "未开启概率导出或 all_greedy 时 argmax；随机路径另行计算概率/Gumbel。",
+          "output": "候选 ID，greedy 时 draft_probs=None。",
+          "resume": "返回 Ascend helper，再回 merged draft。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1421,
+              "end": 1421,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/spec_decode/llm_base_proposer.py",
+              "line": 450,
+              "end": 476,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "eagle3",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
           "id": "return",
           "parent": "draftloop",
-          "number": "1.1.3.4",
+          "number": "2.1.3.3",
           "kind": "循环",
           "title": "for draft_index in range(K−1)",
           "summary": "每次把前一个候选及草稿递推 hidden 喂回，位置前移。",
@@ -817,7 +1222,7 @@
         {
           "id": "target",
           "parent": null,
-          "number": "2",
+          "number": "3",
           "kind": "边界",
           "title": "NPUModelRunner.execute_model() [下一轮 target]",
           "summary": "调度器把草稿加入 target 本轮输入，跨轮交给 Runner。",
@@ -849,9 +1254,9 @@
         {
           "id": "sample",
           "parent": null,
-          "number": "3",
+          "number": "4",
           "kind": "调用",
-          "title": "NPUModelRunner.sample_tokens() → _sample()",
+          "title": "NPUModelRunner.sample_tokens()",
           "summary": "消费 target forward 保存的输出状态。",
           "input": "target logits、SpecDecodeMetadata、可选 draft_probs。",
           "changes": "_sample 在存在 spec metadata 时调用 rejection_sampler。",
@@ -886,9 +1291,48 @@
           ]
         },
         {
-          "id": "verify",
+          "id": "sample-dispatch",
           "parent": "sample",
-          "number": "3.1",
+          "number": "4.1",
+          "kind": "调用",
+          "title": "NPUModelRunner._sample()",
+          "summary": "采样入口按是否有 speculative metadata 选择 sampler。",
+          "input": "本轮 logits、SpecDecodeMetadata、sampling metadata。",
+          "changes": "有 draft metadata 时调用 rejection_sampler；普通解码走 sampler。",
+          "output": "SamplerOutput。",
+          "resume": "返回 sample_tokens，再做 bookkeeping/ModelRunnerOutput。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2898,
+              "end": 2900,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3058,
+              "end": 3079,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "eagle3",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "verify",
+          "parent": "sample-dispatch",
+          "number": "4.1.1",
           "kind": "调用",
           "title": "AscendRejectionSampler.forward()",
           "summary": "对齐候选、target logits 与 bonus 位置。",
@@ -897,6 +1341,13 @@
           "output": "有效接受前缀 + correction / bonus，其他槽位是占位。",
           "resume": "返回 _sample，再回 sample_tokens。",
           "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3073,
+              "end": 3075,
+              "label": "实际调用位置"
+            },
             {
               "repo": "ascend",
               "path": "vllm_ascend/sample/rejection_sampler.py",
@@ -927,9 +1378,127 @@
           ]
         },
         {
+          "id": "reject-dispatch",
+          "parent": "verify",
+          "number": "4.1.1.1",
+          "kind": "调用",
+          "title": "rejection_sample()",
+          "summary": "Target logits 的预处理完成后才进入接受/纠正逻辑。",
+          "input": "draft IDs、每请求候选数、cu_num_draft_tokens、target logits、bonus IDs。",
+          "changes": "分配输出；greedy 路径求 target argmax，按 HAS_TRITON 选择实现。",
+          "output": "每请求有效前缀、correction/bonus 和剩余无效槽。",
+          "resume": "返回 AscendRejectionSampler.forward 包装 SamplerOutput。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 224,
+              "end": 226,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 378,
+              "end": 683,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "eagle3",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "reject-triton",
+          "parent": "reject-dispatch",
+          "number": "4.1.1.1.1",
+          "kind": "分支",
+          "title": "rejection_greedy_sample_with_triton() [HAS_TRITON]",
+          "summary": "当前教学 all-greedy、K=3 的 Triton 路径。",
+          "input": "draft IDs、target_argmax、bonus IDs、长度与输出 buffer。",
+          "changes": "按最大候选长度选择/启动 greedy 接受 kernel。",
+          "output": "写入接受前缀及首次纠正/bonus。",
+          "resume": "返回 rejection_sample；不是模型重新 forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 513,
+              "end": 515,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/triton/reject_sample.py",
+              "line": 426,
+              "end": 469,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "eagle3",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ],
+          "note": "与 PyTorch fallback 互斥；原图展示相同 greedy 接受语义，不代表选择了该硬件 kernel。"
+        },
+        {
+          "id": "reject-pytorch",
+          "parent": "reject-dispatch",
+          "number": "4.1.1.1.2",
+          "kind": "分支",
+          "title": "rejection_greedy_sample_pytorch() [无 Triton，K>1]",
+          "summary": "同一接受规则的 PyTorch fallback。",
+          "input": "draft IDs、target_argmax、bonus IDs、每请求长度。",
+          "changes": "逐候选比较，累计首次不匹配位置，写入纠正与有效前缀。",
+          "output": "与当前教学规则相符的输出 IDs。",
+          "resume": "返回 rejection_sample；K=1 专用函数是另一个分支。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 540,
+              "end": 542,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 825,
+              "end": 894,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "eagle3",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
           "id": "commit",
           "parent": "sample",
-          "number": "3.2",
+          "number": "4.2",
           "kind": "返回",
           "title": "sample_tokens 的 bookkeeping / ModelRunnerOutput",
           "summary": "只有有效输出追加到请求状态。",
@@ -990,7 +1559,7 @@
         {
           "id": "select",
           "parent": null,
-          "number": "P1",
+          "number": "1",
           "kind": "分支",
           "title": "get_spec_decode_method() [初始化一次]",
           "summary": "配置决定 proposer 类型，不是每轮都加载草稿。",
@@ -1022,7 +1591,7 @@
         {
           "id": "runner",
           "parent": null,
-          "number": "1",
+          "number": "2",
           "kind": "调用",
           "title": "NPUModelRunner.propose_draft_token_ids()",
           "summary": "上轮 target 采样/验证后开始准备下一轮候选。",
@@ -1054,7 +1623,7 @@
         {
           "id": "propose",
           "parent": "runner",
-          "number": "1.1",
+          "number": "2.1",
           "kind": "调用",
           "title": "AscendSpecDecodeBaseProposer._propose()",
           "summary": "LLM proposer 的公共执行入口。",
@@ -1093,7 +1662,7 @@
         {
           "id": "inputs",
           "parent": "propose",
-          "number": "1.1.2",
+          "number": "2.1.1",
           "kind": "调用",
           "title": "AscendSpecDecodeBaseProposer.set_inputs_first_pass()",
           "summary": "对齐首轮 token、positions 与 hidden。",
@@ -1125,7 +1694,7 @@
         {
           "id": "draftloop",
           "parent": "propose",
-          "number": "1.1.3",
+          "number": "2.1.2",
           "kind": "调用",
           "title": "AscendSpecDecodeBaseProposer._run_merged_draft()",
           "summary": "_runnable 的实际内容；FULL 模式外有 ACLGraphWrapper。",
@@ -1171,7 +1740,7 @@
         {
           "id": "model",
           "parent": "draftloop",
-          "number": "1.1.3.2",
+          "number": "2.1.2.1",
           "kind": "调用",
           "title": "DeepSeekMTP.forward()",
           "summary": "MTP 由位置选择预测层，将 token embedding 与 hidden 融合。",
@@ -1208,30 +1777,147 @@
           ]
         },
         {
+          "id": "mtp-predictor",
+          "parent": "model",
+          "number": "2.1.2.1.1",
+          "kind": "调用",
+          "title": "DeepSeekMultiTokenPredictor.forward()",
+          "summary": "spec_step_idx 选择配套的 MTP 层。",
+          "input": "input_ids、positions、上一 hidden、可选 embedding。",
+          "changes": "补 embedding；current_step_idx=spec_step_idx % num_mtp_layers，再调用选定层。",
+          "output": "该 MTP 层的 logits hidden 与 recycle hidden。",
+          "resume": "返回 DeepSeekMTP.forward，交给 proposer 拆分。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_mtp.py",
+              "line": 288,
+              "end": 290,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_mtp.py",
+              "line": 207,
+              "end": 224,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "mtp",
+                "step": 3,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "mtp-predictor-layer",
+          "parent": "mtp-predictor",
+          "number": "2.1.2.1.1.1",
+          "kind": "调用",
+          "title": "DeepSeekMultiTokenPredictorLayer.forward()",
+          "summary": "对齐 token embedding 与前一步 hidden 的实际处理。",
+          "input": "inputs_embeds、previous_hidden_states、positions。",
+          "changes": "position=0 mask；enorm/hnorm；concat → eh_proj → mtp_block；构造双 hidden 输出。",
+          "output": "pre-final-norm hidden 与 shared_head 归一化后的 recycle hidden。",
+          "resume": "返回 predictor；head 与下轮状态各只归一化一次。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_mtp.py",
+              "line": 218,
+              "end": 220,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_mtp.py",
+              "line": 113,
+              "end": 144,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "mtp",
+                "step": 3,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "mtp-block",
+          "parent": "mtp-predictor-layer",
+          "number": "2.1.2.1.1.1.1",
+          "kind": "调用",
+          "title": "DeepseekV2DecoderLayer.forward() [MTP block]",
+          "summary": "MTP 复用真实 DeepSeek decoder 实现，而不是多次重复 LM head。",
+          "input": "eh_proj 融合结果、positions、residual=None。",
+          "changes": "Attention 与 FFN 双子层更新。",
+          "output": "hidden/residual。",
+          "resume": "返回 predictor layer，先相加再生成 recycle hidden。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_mtp.py",
+              "line": 131,
+              "end": 133,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1352,
+              "end": 1423,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "mtp",
+                "step": 3,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
           "id": "draftsample",
           "parent": "draftloop",
-          "number": "1.1.3.3",
+          "number": "2.1.2.2",
           "kind": "调用",
-          "title": "compute_draft_token_ids() / _sample_draft_from_logits()",
-          "summary": "将草稿 hidden 投影并选择候选 ID。",
-          "input": "草稿采样 hidden 与 sampling_metadata。",
-          "changes": "compute_logits 后按 greedy 或 configured probabilistic draft 采样。",
+          "title": "AscendSpecDecodeBaseProposer._sample_draft_from_logits()",
+          "summary": "当前五条普通路径先 model.compute_logits，再调用该采样接口；不混入 DFlash2 selector。",
+          "input": "草稿 LM head 产生的 logits、sampling_metadata。",
+          "changes": "metadata 缺失用 argmax；否则转调父类 _sample_from_logits。",
           "output": "draft_token_ids 与可选 draft_probs。",
-          "resume": "DFlash parallel_drafting 直接返回 K 个；串行方法进入后续循环。",
+          "resume": "回到 _run_merged_draft；串行方法继续下一候选，DFlash 并行返回。",
           "evidence": [
             {
               "repo": "ascend",
               "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
-              "line": 1423,
-              "label": "实际实现",
-              "end": 1449
+              "line": 1762,
+              "end": 1764,
+              "label": "实际调用位置"
             },
             {
               "repo": "ascend",
               "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
-              "line": 1616,
-              "label": "实际实现",
-              "end": 1643
+              "line": 1397,
+              "end": 1421,
+              "label": "实际实现"
             }
           ],
           "targets": [
@@ -1247,9 +1933,48 @@
           ]
         },
         {
+          "id": "draft-sampling-policy",
+          "parent": "draftsample",
+          "number": "2.1.2.2.1",
+          "kind": "分支",
+          "title": "SpecDecodeBaseProposer._sample_from_logits()",
+          "summary": "复用上游草稿采样策略，固定本页 greedy 场景。",
+          "input": "logits、sampling metadata、probabilistic 配置。",
+          "changes": "未开启概率导出或 all_greedy 时 argmax；随机路径另行计算概率/Gumbel。",
+          "output": "候选 ID，greedy 时 draft_probs=None。",
+          "resume": "返回 Ascend helper，再回 merged draft。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1421,
+              "end": 1421,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/spec_decode/llm_base_proposer.py",
+              "line": 450,
+              "end": 476,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "mtp",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
           "id": "return",
           "parent": "draftloop",
-          "number": "1.1.3.4",
+          "number": "2.1.2.3",
           "kind": "循环",
           "title": "for draft_index in range(K−1)",
           "summary": "每次把前一个候选及草稿递推 hidden 喂回，位置前移。",
@@ -1281,7 +2006,7 @@
         {
           "id": "target",
           "parent": null,
-          "number": "2",
+          "number": "3",
           "kind": "边界",
           "title": "NPUModelRunner.execute_model() [下一轮 target]",
           "summary": "调度器把草稿加入 target 本轮输入，跨轮交给 Runner。",
@@ -1313,9 +2038,9 @@
         {
           "id": "sample",
           "parent": null,
-          "number": "3",
+          "number": "4",
           "kind": "调用",
-          "title": "NPUModelRunner.sample_tokens() → _sample()",
+          "title": "NPUModelRunner.sample_tokens()",
           "summary": "消费 target forward 保存的输出状态。",
           "input": "target logits、SpecDecodeMetadata、可选 draft_probs。",
           "changes": "_sample 在存在 spec metadata 时调用 rejection_sampler。",
@@ -1350,9 +2075,48 @@
           ]
         },
         {
-          "id": "verify",
+          "id": "sample-dispatch",
           "parent": "sample",
-          "number": "3.1",
+          "number": "4.1",
+          "kind": "调用",
+          "title": "NPUModelRunner._sample()",
+          "summary": "采样入口按是否有 speculative metadata 选择 sampler。",
+          "input": "本轮 logits、SpecDecodeMetadata、sampling metadata。",
+          "changes": "有 draft metadata 时调用 rejection_sampler；普通解码走 sampler。",
+          "output": "SamplerOutput。",
+          "resume": "返回 sample_tokens，再做 bookkeeping/ModelRunnerOutput。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2898,
+              "end": 2900,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3058,
+              "end": 3079,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "mtp",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "verify",
+          "parent": "sample-dispatch",
+          "number": "4.1.1",
           "kind": "调用",
           "title": "AscendRejectionSampler.forward()",
           "summary": "对齐候选、target logits 与 bonus 位置。",
@@ -1361,6 +2125,13 @@
           "output": "有效接受前缀 + correction / bonus，其他槽位是占位。",
           "resume": "返回 _sample，再回 sample_tokens。",
           "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3073,
+              "end": 3075,
+              "label": "实际调用位置"
+            },
             {
               "repo": "ascend",
               "path": "vllm_ascend/sample/rejection_sampler.py",
@@ -1391,9 +2162,127 @@
           ]
         },
         {
+          "id": "reject-dispatch",
+          "parent": "verify",
+          "number": "4.1.1.1",
+          "kind": "调用",
+          "title": "rejection_sample()",
+          "summary": "Target logits 的预处理完成后才进入接受/纠正逻辑。",
+          "input": "draft IDs、每请求候选数、cu_num_draft_tokens、target logits、bonus IDs。",
+          "changes": "分配输出；greedy 路径求 target argmax，按 HAS_TRITON 选择实现。",
+          "output": "每请求有效前缀、correction/bonus 和剩余无效槽。",
+          "resume": "返回 AscendRejectionSampler.forward 包装 SamplerOutput。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 224,
+              "end": 226,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 378,
+              "end": 683,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "mtp",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "reject-triton",
+          "parent": "reject-dispatch",
+          "number": "4.1.1.1.1",
+          "kind": "分支",
+          "title": "rejection_greedy_sample_with_triton() [HAS_TRITON]",
+          "summary": "当前教学 all-greedy、K=3 的 Triton 路径。",
+          "input": "draft IDs、target_argmax、bonus IDs、长度与输出 buffer。",
+          "changes": "按最大候选长度选择/启动 greedy 接受 kernel。",
+          "output": "写入接受前缀及首次纠正/bonus。",
+          "resume": "返回 rejection_sample；不是模型重新 forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 513,
+              "end": 515,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/triton/reject_sample.py",
+              "line": 426,
+              "end": 469,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "mtp",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ],
+          "note": "与 PyTorch fallback 互斥；原图展示相同 greedy 接受语义，不代表选择了该硬件 kernel。"
+        },
+        {
+          "id": "reject-pytorch",
+          "parent": "reject-dispatch",
+          "number": "4.1.1.1.2",
+          "kind": "分支",
+          "title": "rejection_greedy_sample_pytorch() [无 Triton，K>1]",
+          "summary": "同一接受规则的 PyTorch fallback。",
+          "input": "draft IDs、target_argmax、bonus IDs、每请求长度。",
+          "changes": "逐候选比较，累计首次不匹配位置，写入纠正与有效前缀。",
+          "output": "与当前教学规则相符的输出 IDs。",
+          "resume": "返回 rejection_sample；K=1 专用函数是另一个分支。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 540,
+              "end": 542,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 825,
+              "end": 894,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "mtp",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
           "id": "commit",
           "parent": "sample",
-          "number": "3.2",
+          "number": "4.2",
           "kind": "返回",
           "title": "sample_tokens 的 bookkeeping / ModelRunnerOutput",
           "summary": "只有有效输出追加到请求状态。",
@@ -1454,7 +2343,7 @@
         {
           "id": "select",
           "parent": null,
-          "number": "P1",
+          "number": "1",
           "kind": "分支",
           "title": "get_spec_decode_method() [初始化一次]",
           "summary": "配置决定 proposer 类型，不是每轮都加载草稿。",
@@ -1486,7 +2375,7 @@
         {
           "id": "runner",
           "parent": null,
-          "number": "1",
+          "number": "2",
           "kind": "调用",
           "title": "NPUModelRunner.propose_draft_token_ids()",
           "summary": "上轮 target 采样/验证后开始准备下一轮候选。",
@@ -1518,7 +2407,7 @@
         {
           "id": "propose",
           "parent": "runner",
-          "number": "1.1",
+          "number": "2.1",
           "kind": "调用",
           "title": "AscendSpecDecodeBaseProposer._propose()",
           "summary": "LLM proposer 的公共执行入口。",
@@ -1557,7 +2446,7 @@
         {
           "id": "combine",
           "parent": "propose",
-          "number": "1.1.1",
+          "number": "2.1.1",
           "kind": "调用",
           "title": "DFlashQwen3ForCausalLM.combine_hidden_states()",
           "summary": "合并 target 配置要求的辅助隐藏层。",
@@ -1596,7 +2485,7 @@
         {
           "id": "inputs",
           "parent": "propose",
-          "number": "1.1.2",
+          "number": "2.1.2",
           "kind": "调用",
           "title": "AscendDflashProposer.set_inputs_first_pass()",
           "summary": "DFlash 查询块和 target 上下文分开准备。",
@@ -1628,7 +2517,7 @@
         {
           "id": "draftloop",
           "parent": "propose",
-          "number": "1.1.3",
+          "number": "2.1.3",
           "kind": "调用",
           "title": "AscendSpecDecodeBaseProposer._run_merged_draft()",
           "summary": "_runnable 的实际内容；FULL 模式外有 ACLGraphWrapper。",
@@ -1674,7 +2563,7 @@
         {
           "id": "contextkv",
           "parent": "draftloop",
-          "number": "1.1.3.1",
+          "number": "2.1.3.1",
           "kind": "调用",
           "title": "AscendDflashProposer.build_model_inputs_first_pass()",
           "summary": "草稿查询前把上下文特征写成草稿侧 K/V。",
@@ -1704,9 +2593,87 @@
           ]
         },
         {
+          "id": "context-wrapper",
+          "parent": "contextkv",
+          "number": "2.1.3.1.1",
+          "kind": "调用",
+          "title": "DFlashQwen3ForCausalLM.precompute_and_store_context_kv()",
+          "summary": "独立于查询块 forward 的 target 特征注入入口。",
+          "input": "融合后的 target hidden、context positions、context slot mapping。",
+          "changes": "转调 self.model.precompute_and_store_context_kv。",
+          "output": "草稿各层 context KV 的副作用。",
+          "resume": "返回 AscendDflashProposer，再执行查询块 model.forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/dflash_proposer.py",
+              "line": 320,
+              "end": 322,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/qwen3_dflash.py",
+              "line": 853,
+              "end": 862,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dflash",
+                "step": 4,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "context-model",
+          "parent": "context-wrapper",
+          "number": "2.1.3.1.1.1",
+          "kind": "分支",
+          "title": "DFlashQwen3Model.precompute_and_store_context_kv()",
+          "summary": "按配置选择堆叠投影或逐层 context KV 处理。",
+          "input": "target hidden、positions、写槽。",
+          "changes": "对各草稿层生成 context K/V、归一化/位置处理，再写对应 KV cache。",
+          "output": "可供查询块读取的各层 context KV。",
+          "resume": "返回 wrapper；不会把 target 特征当成本轮 MASK 查询。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/qwen3_dflash.py",
+              "line": 860,
+              "end": 862,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/qwen3_dflash.py",
+              "line": 651,
+              "end": 726,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dflash",
+                "step": 4,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
           "id": "model",
           "parent": "draftloop",
-          "number": "1.1.3.2",
+          "number": "2.1.3.2",
           "kind": "调用",
           "title": "DFlashQwen3ForCausalLM.forward()",
           "summary": "一次草稿前向处理 anchor 与多个 MASK 查询位置。",
@@ -1743,30 +2710,108 @@
           ]
         },
         {
+          "id": "draft-model-body",
+          "parent": "model",
+          "number": "2.1.3.2.1",
+          "kind": "调用",
+          "title": "DFlashQwen3Model.forward()",
+          "summary": "包装器进入所选方法专用草稿主干。",
+          "input": "候选查询 token IDs、positions、方法规定的 hidden/context。",
+          "changes": "查询块 embedding 逐层执行；上下文 KV 已在独立接口注入，不在这里重新计算 target。",
+          "output": "草稿输出 hidden 或双 hidden 元组。",
+          "resume": "返回草稿 wrapper，再回 _run_merged_draft 的输出拆分。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/qwen3_dflash.py",
+              "line": 826,
+              "end": 826,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/qwen3_dflash.py",
+              "line": 728,
+              "end": 747,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dflash",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "draft-layer",
+          "parent": "draft-model-body",
+          "number": "2.1.3.2.1.1",
+          "kind": "调用",
+          "title": "DFlashQwen3DecoderLayer.forward()",
+          "summary": "草稿网络自己的 decoder；不是 target 的下一层。",
+          "input": "该草稿层 hidden、residual、positions；EAGLE3 首层另接 embeds。",
+          "changes": "按草稿层定义完成 Norm、Attention、残差和 MLP。",
+          "output": "下一草稿层 hidden/residual。",
+          "resume": "返回草稿 Model 层循环。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/qwen3_dflash.py",
+              "line": 741,
+              "end": 743,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/qwen3_dflash.py",
+              "line": 390,
+              "end": 409,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dflash",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
           "id": "draftsample",
           "parent": "draftloop",
-          "number": "1.1.3.3",
+          "number": "2.1.3.3",
           "kind": "调用",
-          "title": "compute_draft_token_ids() / _sample_draft_from_logits()",
-          "summary": "将草稿 hidden 投影并选择候选 ID。",
-          "input": "草稿采样 hidden 与 sampling_metadata。",
-          "changes": "compute_logits 后按 greedy 或 configured probabilistic draft 采样。",
+          "title": "AscendSpecDecodeBaseProposer._sample_draft_from_logits()",
+          "summary": "当前五条普通路径先 model.compute_logits，再调用该采样接口；不混入 DFlash2 selector。",
+          "input": "草稿 LM head 产生的 logits、sampling_metadata。",
+          "changes": "metadata 缺失用 argmax；否则转调父类 _sample_from_logits。",
           "output": "draft_token_ids 与可选 draft_probs。",
-          "resume": "DFlash parallel_drafting 直接返回 K 个；串行方法进入后续循环。",
+          "resume": "回到 _run_merged_draft；串行方法继续下一候选，DFlash 并行返回。",
           "evidence": [
             {
               "repo": "ascend",
               "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
-              "line": 1423,
-              "label": "实际实现",
-              "end": 1449
+              "line": 1762,
+              "end": 1764,
+              "label": "实际调用位置"
             },
             {
               "repo": "ascend",
               "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
-              "line": 1616,
-              "label": "实际实现",
-              "end": 1643
+              "line": 1397,
+              "end": 1421,
+              "label": "实际实现"
             }
           ],
           "targets": [
@@ -1782,9 +2827,48 @@
           ]
         },
         {
+          "id": "draft-sampling-policy",
+          "parent": "draftsample",
+          "number": "2.1.3.3.1",
+          "kind": "分支",
+          "title": "SpecDecodeBaseProposer._sample_from_logits()",
+          "summary": "复用上游草稿采样策略，固定本页 greedy 场景。",
+          "input": "logits、sampling metadata、probabilistic 配置。",
+          "changes": "未开启概率导出或 all_greedy 时 argmax；随机路径另行计算概率/Gumbel。",
+          "output": "候选 ID，greedy 时 draft_probs=None。",
+          "resume": "返回 Ascend helper，再回 merged draft。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1421,
+              "end": 1421,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/spec_decode/llm_base_proposer.py",
+              "line": 450,
+              "end": 476,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dflash",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
           "id": "return",
           "parent": "draftloop",
-          "number": "1.1.3.4",
+          "number": "2.1.3.4",
           "kind": "返回",
           "title": "并行返回 [B,K]",
           "summary": "DFlash 不把上一个预测 token 喂回下一次前向。",
@@ -1816,7 +2900,7 @@
         {
           "id": "target",
           "parent": null,
-          "number": "2",
+          "number": "3",
           "kind": "边界",
           "title": "NPUModelRunner.execute_model() [下一轮 target]",
           "summary": "调度器把草稿加入 target 本轮输入，跨轮交给 Runner。",
@@ -1848,9 +2932,9 @@
         {
           "id": "sample",
           "parent": null,
-          "number": "3",
+          "number": "4",
           "kind": "调用",
-          "title": "NPUModelRunner.sample_tokens() → _sample()",
+          "title": "NPUModelRunner.sample_tokens()",
           "summary": "消费 target forward 保存的输出状态。",
           "input": "target logits、SpecDecodeMetadata、可选 draft_probs。",
           "changes": "_sample 在存在 spec metadata 时调用 rejection_sampler。",
@@ -1885,9 +2969,48 @@
           ]
         },
         {
-          "id": "verify",
+          "id": "sample-dispatch",
           "parent": "sample",
-          "number": "3.1",
+          "number": "4.1",
+          "kind": "调用",
+          "title": "NPUModelRunner._sample()",
+          "summary": "采样入口按是否有 speculative metadata 选择 sampler。",
+          "input": "本轮 logits、SpecDecodeMetadata、sampling metadata。",
+          "changes": "有 draft metadata 时调用 rejection_sampler；普通解码走 sampler。",
+          "output": "SamplerOutput。",
+          "resume": "返回 sample_tokens，再做 bookkeeping/ModelRunnerOutput。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2898,
+              "end": 2900,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3058,
+              "end": 3079,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dflash",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "verify",
+          "parent": "sample-dispatch",
+          "number": "4.1.1",
           "kind": "调用",
           "title": "AscendRejectionSampler.forward()",
           "summary": "对齐候选、target logits 与 bonus 位置。",
@@ -1896,6 +3019,13 @@
           "output": "有效接受前缀 + correction / bonus，其他槽位是占位。",
           "resume": "返回 _sample，再回 sample_tokens。",
           "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3073,
+              "end": 3075,
+              "label": "实际调用位置"
+            },
             {
               "repo": "ascend",
               "path": "vllm_ascend/sample/rejection_sampler.py",
@@ -1926,9 +3056,127 @@
           ]
         },
         {
+          "id": "reject-dispatch",
+          "parent": "verify",
+          "number": "4.1.1.1",
+          "kind": "调用",
+          "title": "rejection_sample()",
+          "summary": "Target logits 的预处理完成后才进入接受/纠正逻辑。",
+          "input": "draft IDs、每请求候选数、cu_num_draft_tokens、target logits、bonus IDs。",
+          "changes": "分配输出；greedy 路径求 target argmax，按 HAS_TRITON 选择实现。",
+          "output": "每请求有效前缀、correction/bonus 和剩余无效槽。",
+          "resume": "返回 AscendRejectionSampler.forward 包装 SamplerOutput。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 224,
+              "end": 226,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 378,
+              "end": 683,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dflash",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "reject-triton",
+          "parent": "reject-dispatch",
+          "number": "4.1.1.1.1",
+          "kind": "分支",
+          "title": "rejection_greedy_sample_with_triton() [HAS_TRITON]",
+          "summary": "当前教学 all-greedy、K=3 的 Triton 路径。",
+          "input": "draft IDs、target_argmax、bonus IDs、长度与输出 buffer。",
+          "changes": "按最大候选长度选择/启动 greedy 接受 kernel。",
+          "output": "写入接受前缀及首次纠正/bonus。",
+          "resume": "返回 rejection_sample；不是模型重新 forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 513,
+              "end": 515,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/triton/reject_sample.py",
+              "line": 426,
+              "end": 469,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dflash",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ],
+          "note": "与 PyTorch fallback 互斥；原图展示相同 greedy 接受语义，不代表选择了该硬件 kernel。"
+        },
+        {
+          "id": "reject-pytorch",
+          "parent": "reject-dispatch",
+          "number": "4.1.1.1.2",
+          "kind": "分支",
+          "title": "rejection_greedy_sample_pytorch() [无 Triton，K>1]",
+          "summary": "同一接受规则的 PyTorch fallback。",
+          "input": "draft IDs、target_argmax、bonus IDs、每请求长度。",
+          "changes": "逐候选比较，累计首次不匹配位置，写入纠正与有效前缀。",
+          "output": "与当前教学规则相符的输出 IDs。",
+          "resume": "返回 rejection_sample；K=1 专用函数是另一个分支。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 540,
+              "end": 542,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 825,
+              "end": 894,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dflash",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
           "id": "commit",
           "parent": "sample",
-          "number": "3.2",
+          "number": "4.2",
           "kind": "返回",
           "title": "sample_tokens 的 bookkeeping / ModelRunnerOutput",
           "summary": "只有有效输出追加到请求状态。",
@@ -1978,13 +3226,18 @@
           "url": "https://github.com/vllm-project/vllm-ascend",
           "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875",
           "label": "vLLM-Ascend"
+        },
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
         }
       },
       "nodes": [
         {
           "id": "select",
           "parent": null,
-          "number": "P1",
+          "number": "1",
           "kind": "分支",
           "title": "get_spec_decode_method() [初始化一次]",
           "summary": "配置决定 proposer 类型，不是每轮都加载草稿。",
@@ -2016,7 +3269,7 @@
         {
           "id": "runner",
           "parent": null,
-          "number": "1",
+          "number": "2",
           "kind": "调用",
           "title": "NPUModelRunner.propose_draft_token_ids()",
           "summary": "上轮 target 采样/验证后开始准备下一轮候选。",
@@ -2048,7 +3301,7 @@
         {
           "id": "propose",
           "parent": "runner",
-          "number": "1.1",
+          "number": "2.1",
           "kind": "调用",
           "title": "AscendSpecDecodeBaseProposer._propose()",
           "summary": "LLM proposer 的公共执行入口。",
@@ -2087,7 +3340,7 @@
         {
           "id": "inputs",
           "parent": "propose",
-          "number": "1.1.2",
+          "number": "2.1.1",
           "kind": "调用",
           "title": "AscendSpecDecodeBaseProposer.set_inputs_first_pass()",
           "summary": "对齐首轮 token、positions 与 hidden。",
@@ -2119,7 +3372,7 @@
         {
           "id": "draftloop",
           "parent": "propose",
-          "number": "1.1.3",
+          "number": "2.1.2",
           "kind": "调用",
           "title": "AscendSpecDecodeBaseProposer._run_merged_draft()",
           "summary": "_runnable 的实际内容；FULL 模式外有 ACLGraphWrapper。",
@@ -2165,7 +3418,7 @@
         {
           "id": "model",
           "parent": "draftloop",
-          "number": "1.1.3.2",
+          "number": "2.1.2.1",
           "kind": "边界",
           "title": "self.model(**model_kwargs) [配置的独立草稿]",
           "summary": "实际类由独立 draft checkpoint 的 architectures 决定。",
@@ -2204,28 +3457,28 @@
         {
           "id": "draftsample",
           "parent": "draftloop",
-          "number": "1.1.3.3",
+          "number": "2.1.2.2",
           "kind": "调用",
-          "title": "compute_draft_token_ids() / _sample_draft_from_logits()",
-          "summary": "将草稿 hidden 投影并选择候选 ID。",
-          "input": "草稿采样 hidden 与 sampling_metadata。",
-          "changes": "compute_logits 后按 greedy 或 configured probabilistic draft 采样。",
+          "title": "AscendSpecDecodeBaseProposer._sample_draft_from_logits()",
+          "summary": "当前五条普通路径先 model.compute_logits，再调用该采样接口；不混入 DFlash2 selector。",
+          "input": "草稿 LM head 产生的 logits、sampling_metadata。",
+          "changes": "metadata 缺失用 argmax；否则转调父类 _sample_from_logits。",
           "output": "draft_token_ids 与可选 draft_probs。",
-          "resume": "DFlash parallel_drafting 直接返回 K 个；串行方法进入后续循环。",
+          "resume": "回到 _run_merged_draft；串行方法继续下一候选，DFlash 并行返回。",
           "evidence": [
             {
               "repo": "ascend",
               "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
-              "line": 1423,
-              "label": "实际实现",
-              "end": 1449
+              "line": 1762,
+              "end": 1764,
+              "label": "实际调用位置"
             },
             {
               "repo": "ascend",
               "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
-              "line": 1616,
-              "label": "实际实现",
-              "end": 1643
+              "line": 1397,
+              "end": 1421,
+              "label": "实际实现"
             }
           ],
           "targets": [
@@ -2241,9 +3494,48 @@
           ]
         },
         {
+          "id": "draft-sampling-policy",
+          "parent": "draftsample",
+          "number": "2.1.2.2.1",
+          "kind": "分支",
+          "title": "SpecDecodeBaseProposer._sample_from_logits()",
+          "summary": "复用上游草稿采样策略，固定本页 greedy 场景。",
+          "input": "logits、sampling metadata、probabilistic 配置。",
+          "changes": "未开启概率导出或 all_greedy 时 argmax；随机路径另行计算概率/Gumbel。",
+          "output": "候选 ID，greedy 时 draft_probs=None。",
+          "resume": "返回 Ascend helper，再回 merged draft。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1421,
+              "end": 1421,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/spec_decode/llm_base_proposer.py",
+              "line": 450,
+              "end": 476,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "draft",
+                "step": 4,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
           "id": "return",
           "parent": "draftloop",
-          "number": "1.1.3.4",
+          "number": "2.1.2.3",
           "kind": "循环",
           "title": "for draft_index in range(K−1)",
           "summary": "每次把前一个候选及草稿递推 hidden 喂回，位置前移。",
@@ -2275,7 +3567,7 @@
         {
           "id": "target",
           "parent": null,
-          "number": "2",
+          "number": "3",
           "kind": "边界",
           "title": "NPUModelRunner.execute_model() [下一轮 target]",
           "summary": "调度器把草稿加入 target 本轮输入，跨轮交给 Runner。",
@@ -2307,9 +3599,9 @@
         {
           "id": "sample",
           "parent": null,
-          "number": "3",
+          "number": "4",
           "kind": "调用",
-          "title": "NPUModelRunner.sample_tokens() → _sample()",
+          "title": "NPUModelRunner.sample_tokens()",
           "summary": "消费 target forward 保存的输出状态。",
           "input": "target logits、SpecDecodeMetadata、可选 draft_probs。",
           "changes": "_sample 在存在 spec metadata 时调用 rejection_sampler。",
@@ -2344,9 +3636,48 @@
           ]
         },
         {
-          "id": "verify",
+          "id": "sample-dispatch",
           "parent": "sample",
-          "number": "3.1",
+          "number": "4.1",
+          "kind": "调用",
+          "title": "NPUModelRunner._sample()",
+          "summary": "采样入口按是否有 speculative metadata 选择 sampler。",
+          "input": "本轮 logits、SpecDecodeMetadata、sampling metadata。",
+          "changes": "有 draft metadata 时调用 rejection_sampler；普通解码走 sampler。",
+          "output": "SamplerOutput。",
+          "resume": "返回 sample_tokens，再做 bookkeeping/ModelRunnerOutput。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2898,
+              "end": 2900,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3058,
+              "end": 3079,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "draft",
+                "step": 6,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "verify",
+          "parent": "sample-dispatch",
+          "number": "4.1.1",
           "kind": "调用",
           "title": "AscendRejectionSampler.forward()",
           "summary": "对齐候选、target logits 与 bonus 位置。",
@@ -2355,6 +3686,13 @@
           "output": "有效接受前缀 + correction / bonus，其他槽位是占位。",
           "resume": "返回 _sample，再回 sample_tokens。",
           "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3073,
+              "end": 3075,
+              "label": "实际调用位置"
+            },
             {
               "repo": "ascend",
               "path": "vllm_ascend/sample/rejection_sampler.py",
@@ -2385,9 +3723,127 @@
           ]
         },
         {
+          "id": "reject-dispatch",
+          "parent": "verify",
+          "number": "4.1.1.1",
+          "kind": "调用",
+          "title": "rejection_sample()",
+          "summary": "Target logits 的预处理完成后才进入接受/纠正逻辑。",
+          "input": "draft IDs、每请求候选数、cu_num_draft_tokens、target logits、bonus IDs。",
+          "changes": "分配输出；greedy 路径求 target argmax，按 HAS_TRITON 选择实现。",
+          "output": "每请求有效前缀、correction/bonus 和剩余无效槽。",
+          "resume": "返回 AscendRejectionSampler.forward 包装 SamplerOutput。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 224,
+              "end": 226,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 378,
+              "end": 683,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "draft",
+                "step": 6,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "reject-triton",
+          "parent": "reject-dispatch",
+          "number": "4.1.1.1.1",
+          "kind": "分支",
+          "title": "rejection_greedy_sample_with_triton() [HAS_TRITON]",
+          "summary": "当前教学 all-greedy、K=3 的 Triton 路径。",
+          "input": "draft IDs、target_argmax、bonus IDs、长度与输出 buffer。",
+          "changes": "按最大候选长度选择/启动 greedy 接受 kernel。",
+          "output": "写入接受前缀及首次纠正/bonus。",
+          "resume": "返回 rejection_sample；不是模型重新 forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 513,
+              "end": 515,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/triton/reject_sample.py",
+              "line": 426,
+              "end": 469,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "draft",
+                "step": 6,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ],
+          "note": "与 PyTorch fallback 互斥；原图展示相同 greedy 接受语义，不代表选择了该硬件 kernel。"
+        },
+        {
+          "id": "reject-pytorch",
+          "parent": "reject-dispatch",
+          "number": "4.1.1.1.2",
+          "kind": "分支",
+          "title": "rejection_greedy_sample_pytorch() [无 Triton，K>1]",
+          "summary": "同一接受规则的 PyTorch fallback。",
+          "input": "draft IDs、target_argmax、bonus IDs、每请求长度。",
+          "changes": "逐候选比较，累计首次不匹配位置，写入纠正与有效前缀。",
+          "output": "与当前教学规则相符的输出 IDs。",
+          "resume": "返回 rejection_sample；K=1 专用函数是另一个分支。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 540,
+              "end": 542,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 825,
+              "end": 894,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "draft",
+                "step": 6,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
           "id": "commit",
           "parent": "sample",
-          "number": "3.2",
+          "number": "4.2",
           "kind": "返回",
           "title": "sample_tokens 的 bookkeeping / ModelRunnerOutput",
           "summary": "只有有效输出追加到请求状态。",
@@ -2448,7 +3904,7 @@
         {
           "id": "select",
           "parent": null,
-          "number": "P1",
+          "number": "1",
           "kind": "分支",
           "title": "get_spec_decode_method() [初始化一次]",
           "summary": "配置决定 proposer 类型，不是每轮都加载草稿。",
@@ -2480,7 +3936,7 @@
         {
           "id": "runner",
           "parent": null,
-          "number": "1",
+          "number": "2",
           "kind": "调用",
           "title": "NPUModelRunner.propose_draft_token_ids()",
           "summary": "上轮 target 采样/验证后开始准备下一轮候选。",
@@ -2512,7 +3968,7 @@
         {
           "id": "propose",
           "parent": "runner",
-          "number": "1.1",
+          "number": "2.1",
           "kind": "调用",
           "title": "AscendMedusaProposer.propose()",
           "summary": "按有效输出数选择最后已确认位置的 target hidden。",
@@ -2544,7 +4000,7 @@
         {
           "id": "base",
           "parent": "propose",
-          "number": "1.1.1",
+          "number": "2.1.1",
           "kind": "调用",
           "title": "MedusaProposer.propose()",
           "summary": "同一 target hidden 进入多个预测头。",
@@ -2576,28 +4032,28 @@
         {
           "id": "heads",
           "parent": "base",
-          "number": "1.1.1.1",
+          "number": "2.1.1.1",
           "kind": "调用",
-          "title": "Medusa.forward() → Medusa.compute_logits()",
+          "title": "Medusa.forward()",
           "summary": "各 residual block/head 读取同一输入行。",
           "input": "同一 target hidden。",
-          "changes": "各头独立计算本位置词表 logits。",
-          "output": "按未来位置排列的 logits 列表。",
-          "resume": "返回 MedusaProposer。",
+          "changes": "每个 ResidualBlock 读取同一目标 hidden，产生各预测头特征；此方法不调用 compute_logits。",
+          "output": "各头 hidden_states 列表。",
+          "resume": "返回 MedusaProposer.propose；下一语句独立调用 compute_logits。",
           "evidence": [
             {
               "repo": "vllm",
-              "path": "vllm/model_executor/models/medusa.py",
-              "line": 107,
-              "label": "实际实现",
-              "end": 108
+              "path": "vllm/v1/spec_decode/medusa.py",
+              "line": 49,
+              "end": 51,
+              "label": "实际调用位置"
             },
             {
               "repo": "vllm",
               "path": "vllm/model_executor/models/medusa.py",
-              "line": 110,
-              "label": "实际实现",
-              "end": 139
+              "line": 107,
+              "end": 108,
+              "label": "实际实现"
             }
           ],
           "targets": [
@@ -2613,9 +4069,87 @@
           ]
         },
         {
+          "id": "medusa-block",
+          "parent": "heads",
+          "number": "2.1.1.1.1",
+          "kind": "调用",
+          "title": "ResidualBlock.forward()",
+          "summary": "各预测距离的头独立处理同一 target hidden。",
+          "input": "该头 x、独立 Linear 参数。",
+          "changes": "对本头每层做 x = x + SiLU(Linear(x))。",
+          "output": "该预测头 hidden。",
+          "resume": "返回 Medusa.forward 的列表；各头之间不串行喂 token。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/medusa.py",
+              "line": 108,
+              "end": 108,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/medusa.py",
+              "line": 35,
+              "end": 38,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "medusa",
+                "step": 3,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "medusa-logits",
+          "parent": "base",
+          "number": "2.1.1.2",
+          "kind": "调用",
+          "title": "Medusa.compute_logits()",
+          "summary": "Proposer 在各头 hidden 返回后独立调用词表投影。",
+          "input": "Medusa.forward 的 hidden 列表。",
+          "changes": "按共享/独立 lm_head 配置逐头 logits_processor，可能映射截断词表。",
+          "output": "各头 logits 列表。",
+          "resume": "返回 proposer，随后逐头 argmax 并 stack。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/spec_decode/medusa.py",
+              "line": 50,
+              "end": 52,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/medusa.py",
+              "line": 110,
+              "end": 139,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "medusa",
+                "step": 3,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
           "id": "out",
           "parent": "base",
-          "number": "1.1.1.2",
+          "number": "2.1.1.3",
           "kind": "动作",
           "title": "torch.stack([logit.argmax(...)], dim=1)",
           "summary": "各头独立 greedy 选择，未进行串行反馈。",
@@ -2647,7 +4181,7 @@
         {
           "id": "target",
           "parent": null,
-          "number": "2",
+          "number": "3",
           "kind": "边界",
           "title": "NPUModelRunner.execute_model() [下一轮 target]",
           "summary": "调度器把草稿加入 target 本轮输入，跨轮交给 Runner。",
@@ -2679,9 +4213,9 @@
         {
           "id": "sample",
           "parent": null,
-          "number": "3",
+          "number": "4",
           "kind": "调用",
-          "title": "NPUModelRunner.sample_tokens() → _sample()",
+          "title": "NPUModelRunner.sample_tokens()",
           "summary": "消费 target forward 保存的输出状态。",
           "input": "target logits、SpecDecodeMetadata、可选 draft_probs。",
           "changes": "_sample 在存在 spec metadata 时调用 rejection_sampler。",
@@ -2716,9 +4250,48 @@
           ]
         },
         {
-          "id": "verify",
+          "id": "sample-dispatch",
           "parent": "sample",
-          "number": "3.1",
+          "number": "4.1",
+          "kind": "调用",
+          "title": "NPUModelRunner._sample()",
+          "summary": "采样入口按是否有 speculative metadata 选择 sampler。",
+          "input": "本轮 logits、SpecDecodeMetadata、sampling metadata。",
+          "changes": "有 draft metadata 时调用 rejection_sampler；普通解码走 sampler。",
+          "output": "SamplerOutput。",
+          "resume": "返回 sample_tokens，再做 bookkeeping/ModelRunnerOutput。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2898,
+              "end": 2900,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3058,
+              "end": 3079,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "medusa",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "verify",
+          "parent": "sample-dispatch",
+          "number": "4.1.1",
           "kind": "调用",
           "title": "AscendRejectionSampler.forward()",
           "summary": "对齐候选、target logits 与 bonus 位置。",
@@ -2727,6 +4300,13 @@
           "output": "有效接受前缀 + correction / bonus，其他槽位是占位。",
           "resume": "返回 _sample，再回 sample_tokens。",
           "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3073,
+              "end": 3075,
+              "label": "实际调用位置"
+            },
             {
               "repo": "ascend",
               "path": "vllm_ascend/sample/rejection_sampler.py",
@@ -2757,9 +4337,127 @@
           ]
         },
         {
+          "id": "reject-dispatch",
+          "parent": "verify",
+          "number": "4.1.1.1",
+          "kind": "调用",
+          "title": "rejection_sample()",
+          "summary": "Target logits 的预处理完成后才进入接受/纠正逻辑。",
+          "input": "draft IDs、每请求候选数、cu_num_draft_tokens、target logits、bonus IDs。",
+          "changes": "分配输出；greedy 路径求 target argmax，按 HAS_TRITON 选择实现。",
+          "output": "每请求有效前缀、correction/bonus 和剩余无效槽。",
+          "resume": "返回 AscendRejectionSampler.forward 包装 SamplerOutput。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 224,
+              "end": 226,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 378,
+              "end": 683,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "medusa",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "reject-triton",
+          "parent": "reject-dispatch",
+          "number": "4.1.1.1.1",
+          "kind": "分支",
+          "title": "rejection_greedy_sample_with_triton() [HAS_TRITON]",
+          "summary": "当前教学 all-greedy、K=3 的 Triton 路径。",
+          "input": "draft IDs、target_argmax、bonus IDs、长度与输出 buffer。",
+          "changes": "按最大候选长度选择/启动 greedy 接受 kernel。",
+          "output": "写入接受前缀及首次纠正/bonus。",
+          "resume": "返回 rejection_sample；不是模型重新 forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 513,
+              "end": 515,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/triton/reject_sample.py",
+              "line": 426,
+              "end": 469,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "medusa",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ],
+          "note": "与 PyTorch fallback 互斥；原图展示相同 greedy 接受语义，不代表选择了该硬件 kernel。"
+        },
+        {
+          "id": "reject-pytorch",
+          "parent": "reject-dispatch",
+          "number": "4.1.1.1.2",
+          "kind": "分支",
+          "title": "rejection_greedy_sample_pytorch() [无 Triton，K>1]",
+          "summary": "同一接受规则的 PyTorch fallback。",
+          "input": "draft IDs、target_argmax、bonus IDs、每请求长度。",
+          "changes": "逐候选比较，累计首次不匹配位置，写入纠正与有效前缀。",
+          "output": "与当前教学规则相符的输出 IDs。",
+          "resume": "返回 rejection_sample；K=1 专用函数是另一个分支。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 540,
+              "end": 542,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 825,
+              "end": 894,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "medusa",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
           "id": "commit",
           "parent": "sample",
-          "number": "3.2",
+          "number": "4.2",
           "kind": "返回",
           "title": "sample_tokens 的 bookkeeping / ModelRunnerOutput",
           "summary": "只有有效输出追加到请求状态。",
@@ -2820,7 +4518,7 @@
         {
           "id": "select",
           "parent": null,
-          "number": "P1",
+          "number": "1",
           "kind": "分支",
           "title": "get_spec_decode_method() [初始化一次]",
           "summary": "配置决定 proposer 类型，不是每轮都加载草稿。",
@@ -2852,7 +4550,7 @@
         {
           "id": "runner",
           "parent": null,
-          "number": "1",
+          "number": "2",
           "kind": "调用",
           "title": "NPUModelRunner.propose_draft_token_ids()",
           "summary": "上轮 target 采样/验证后开始准备下一轮候选。",
@@ -2884,7 +4582,7 @@
         {
           "id": "propose",
           "parent": "runner",
-          "number": "1.1",
+          "number": "2.1",
           "kind": "调用",
           "title": "AscendNgramProposer.propose()",
           "summary": "过滤无有效输出或达到最大长度的请求。",
@@ -2916,7 +4614,7 @@
         {
           "id": "batch",
           "parent": "propose",
-          "number": "1.1.1",
+          "number": "2.1.1",
           "kind": "调用",
           "title": "NgramProposer.batch_propose()",
           "summary": "批量调用 numba 查找。",
@@ -2948,7 +4646,7 @@
         {
           "id": "numba",
           "parent": "batch",
-          "number": "1.1.1.1",
+          "number": "2.1.1.1",
           "kind": "调用",
           "title": "batch_propose_numba()",
           "summary": "只读取每请求有效历史，不跨请求搜索。",
@@ -2980,7 +4678,7 @@
         {
           "id": "match",
           "parent": "numba",
-          "number": "1.1.1.1.1",
+          "number": "2.1.1.1.1",
           "kind": "调用",
           "title": "_find_longest_matched_ngram_and_propose_tokens()",
           "summary": "匹配历史后缀并复制其后的 token。",
@@ -3012,7 +4710,7 @@
         {
           "id": "target",
           "parent": null,
-          "number": "2",
+          "number": "3",
           "kind": "边界",
           "title": "NPUModelRunner.execute_model() [下一轮 target]",
           "summary": "调度器把草稿加入 target 本轮输入，跨轮交给 Runner。",
@@ -3044,9 +4742,9 @@
         {
           "id": "sample",
           "parent": null,
-          "number": "3",
+          "number": "4",
           "kind": "调用",
-          "title": "NPUModelRunner.sample_tokens() → _sample()",
+          "title": "NPUModelRunner.sample_tokens()",
           "summary": "消费 target forward 保存的输出状态。",
           "input": "target logits、SpecDecodeMetadata、可选 draft_probs。",
           "changes": "_sample 在存在 spec metadata 时调用 rejection_sampler。",
@@ -3081,9 +4779,48 @@
           ]
         },
         {
-          "id": "verify",
+          "id": "sample-dispatch",
           "parent": "sample",
-          "number": "3.1",
+          "number": "4.1",
+          "kind": "调用",
+          "title": "NPUModelRunner._sample()",
+          "summary": "采样入口按是否有 speculative metadata 选择 sampler。",
+          "input": "本轮 logits、SpecDecodeMetadata、sampling metadata。",
+          "changes": "有 draft metadata 时调用 rejection_sampler；普通解码走 sampler。",
+          "output": "SamplerOutput。",
+          "resume": "返回 sample_tokens，再做 bookkeeping/ModelRunnerOutput。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2898,
+              "end": 2900,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3058,
+              "end": 3079,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "ngram",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "verify",
+          "parent": "sample-dispatch",
+          "number": "4.1.1",
           "kind": "调用",
           "title": "AscendRejectionSampler.forward()",
           "summary": "对齐候选、target logits 与 bonus 位置。",
@@ -3092,6 +4829,13 @@
           "output": "有效接受前缀 + correction / bonus，其他槽位是占位。",
           "resume": "返回 _sample，再回 sample_tokens。",
           "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3073,
+              "end": 3075,
+              "label": "实际调用位置"
+            },
             {
               "repo": "ascend",
               "path": "vllm_ascend/sample/rejection_sampler.py",
@@ -3122,9 +4866,127 @@
           ]
         },
         {
+          "id": "reject-dispatch",
+          "parent": "verify",
+          "number": "4.1.1.1",
+          "kind": "调用",
+          "title": "rejection_sample()",
+          "summary": "Target logits 的预处理完成后才进入接受/纠正逻辑。",
+          "input": "draft IDs、每请求候选数、cu_num_draft_tokens、target logits、bonus IDs。",
+          "changes": "分配输出；greedy 路径求 target argmax，按 HAS_TRITON 选择实现。",
+          "output": "每请求有效前缀、correction/bonus 和剩余无效槽。",
+          "resume": "返回 AscendRejectionSampler.forward 包装 SamplerOutput。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 224,
+              "end": 226,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 378,
+              "end": 683,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "ngram",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "reject-triton",
+          "parent": "reject-dispatch",
+          "number": "4.1.1.1.1",
+          "kind": "分支",
+          "title": "rejection_greedy_sample_with_triton() [HAS_TRITON]",
+          "summary": "当前教学 all-greedy、K=3 的 Triton 路径。",
+          "input": "draft IDs、target_argmax、bonus IDs、长度与输出 buffer。",
+          "changes": "按最大候选长度选择/启动 greedy 接受 kernel。",
+          "output": "写入接受前缀及首次纠正/bonus。",
+          "resume": "返回 rejection_sample；不是模型重新 forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 513,
+              "end": 515,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/triton/reject_sample.py",
+              "line": 426,
+              "end": 469,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "ngram",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ],
+          "note": "与 PyTorch fallback 互斥；原图展示相同 greedy 接受语义，不代表选择了该硬件 kernel。"
+        },
+        {
+          "id": "reject-pytorch",
+          "parent": "reject-dispatch",
+          "number": "4.1.1.1.2",
+          "kind": "分支",
+          "title": "rejection_greedy_sample_pytorch() [无 Triton，K>1]",
+          "summary": "同一接受规则的 PyTorch fallback。",
+          "input": "draft IDs、target_argmax、bonus IDs、每请求长度。",
+          "changes": "逐候选比较，累计首次不匹配位置，写入纠正与有效前缀。",
+          "output": "与当前教学规则相符的输出 IDs。",
+          "resume": "返回 rejection_sample；K=1 专用函数是另一个分支。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 540,
+              "end": 542,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 825,
+              "end": 894,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "ngram",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
           "id": "commit",
           "parent": "sample",
-          "number": "3.2",
+          "number": "4.2",
           "kind": "返回",
           "title": "sample_tokens 的 bookkeeping / ModelRunnerOutput",
           "summary": "只有有效输出追加到请求状态。",

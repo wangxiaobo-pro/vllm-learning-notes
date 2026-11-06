@@ -109,6 +109,58 @@
           ]
         },
         {
+          "id": "gemm1-backend",
+          "parent": "gemm1",
+          "number": "1.1.1.1",
+          "kind": "边界",
+          "title": "default_unquantized_gemm() → F.linear()",
+          "summary": "当前教学绑定未量化默认线性后端，权重仍按 TP 分片。",
+          "input": "X、局部 weight[out,in]、bias。",
+          "changes": "F.linear 计算本 rank GEMM；不在这里做 TP 归约。",
+          "output": "本 rank 投影。",
+          "resume": "返回 UnquantizedLinearMethod.apply，再回 Column/RowParallelLinear。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/linear.py",
+              "line": 239,
+              "end": 239,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/linear.py",
+              "line": 170,
+              "end": 175,
+              "label": "初始化绑定"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/utils.py",
+              "line": 613,
+              "end": 645,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/utils.py",
+              "line": 83,
+              "end": 89,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "tp",
+                "step": 2,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
           "id": "activation",
           "parent": "mlp",
           "number": "1.2",
@@ -209,11 +261,63 @@
           ]
         },
         {
+          "id": "gemm2-backend",
+          "parent": "gemm2",
+          "number": "1.3.1.1",
+          "kind": "边界",
+          "title": "default_unquantized_gemm() → F.linear()",
+          "summary": "当前教学绑定未量化默认线性后端，权重仍按 TP 分片。",
+          "input": "X、局部 weight[out,in]、bias。",
+          "changes": "F.linear 计算本 rank GEMM；不在这里做 TP 归约。",
+          "output": "本 rank 投影。",
+          "resume": "返回 UnquantizedLinearMethod.apply，再回 Column/RowParallelLinear。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/linear.py",
+              "line": 239,
+              "end": 239,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/linear.py",
+              "line": 170,
+              "end": 175,
+              "label": "初始化绑定"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/utils.py",
+              "line": 613,
+              "end": 645,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/utils.py",
+              "line": 83,
+              "end": 89,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "tp",
+                "step": 4,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
           "id": "allreduce",
           "parent": "row",
           "number": "1.3.2",
           "kind": "调用",
-          "title": "tensor_model_parallel_all_reduce() → GroupCoordinator.all_reduce()",
+          "title": "tensor_model_parallel_all_reduce()",
           "summary": "只在本 TP 组内求和并复制结果。",
           "input": "各 rank 同形 output_parallel。",
           "changes": "get_tp_group().all_reduce(input_)。",
@@ -252,6 +356,166 @@
               }
             }
           ]
+        },
+        {
+          "id": "ar-group",
+          "parent": "allreduce",
+          "number": "1.3.2.1",
+          "kind": "调用",
+          "title": "GroupCoordinator.all_reduce()",
+          "summary": "tensor_model_parallel_all_reduce 选择 TP group 后的入口。",
+          "input": "RowParallelLinear 的各 rank 部分和。",
+          "changes": "TP=1 直接返回；多 rank 选择 custom op 或直接 out-of-place 实现。",
+          "output": "完整 TP 求和结果。",
+          "resume": "返回 RowParallelLinear。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/communication_op.py",
+              "line": 12,
+              "end": 14,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 724,
+              "end": 745,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "tp",
+                "step": 5,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "ar-dispatch",
+          "parent": "ar-group",
+          "number": "1.3.2.1.1",
+          "kind": "调用",
+          "title": "GroupCoordinator._all_reduce_out_place()",
+          "summary": "按组对象分派到设备通信器；custom-op 路径通过 group_name 找回同一对象。",
+          "input": "本 rank tensor、指定维度与 group。",
+          "changes": "调用 self.device_communicator.all_reduce。",
+          "output": "通信器返回的新 tensor。",
+          "resume": "返回 GroupCoordinator 的公开接口。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 724,
+              "end": 745,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 198,
+              "end": 203,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 747,
+              "end": 750,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "tp",
+                "step": 5,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "ar-cuda",
+          "parent": "ar-dispatch",
+          "number": "1.3.2.1.1.1",
+          "kind": "分支",
+          "title": "CudaCommunicator.all_reduce()",
+          "summary": "CUDA 设备通信器的真实后端选择。",
+          "input": "该通信组 tensor 与已初始化 communicators。",
+          "changes": "根据能力/大小选择通信实现；展开其中 PyNccl 有效且前置优化未命中的分支。",
+          "output": "按语义合并或分片的 tensor。",
+          "resume": "返回 GroupCoordinator；异步 stream 工作不表示 Host 返回时全设备已完成。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 750,
+              "end": 750,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/device_communicators/cuda_communicator.py",
+              "line": 360,
+              "end": 433,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "tp",
+                "step": 5,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "ar-nccl",
+          "parent": "ar-cuda",
+          "number": "1.3.2.1.1.1.1",
+          "kind": "边界",
+          "title": "PyNcclCommunicator.all_reduce()",
+          "summary": "进入 NCCL 动态库调用边界。",
+          "input": "输入/输出指针、元素数、dtype、group communicator 与当前 stream。",
+          "changes": "调用 NCCL all_reduce 接口，保持该组的 rank 范围。",
+          "output": "当前 stream 上提交的 collective 与输出 tensor。",
+          "resume": "返回 CUDA communicator；实际完成由后续 stream 依赖保证。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/device_communicators/cuda_communicator.py",
+              "line": 425,
+              "end": 427,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/device_communicators/pynccl.py",
+              "line": 268,
+              "end": 299,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "tp",
+                "step": 5,
+                "view": "device"
+              }
+            }
+          ],
+          "note": "仅 PyNccl 分支；NVLS、自定义 All-Reduce、PyTorch fallback 不按本节点执行。"
         },
         {
           "id": "out",
@@ -400,6 +664,128 @@
           ]
         },
         {
+          "id": "ag-dispatch",
+          "parent": "groupgather",
+          "number": "1.1.1.1",
+          "kind": "调用",
+          "title": "GroupCoordinator._all_gather_out_place()",
+          "summary": "按组对象分派到设备通信器；custom-op 路径通过 group_name 找回同一对象。",
+          "input": "本 rank tensor、指定维度与 group。",
+          "changes": "调用 self.device_communicator.all_gather。",
+          "output": "通信器返回的新 tensor。",
+          "resume": "返回 GroupCoordinator 的公开接口。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 752,
+              "end": 766,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 228,
+              "end": 235,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 768,
+              "end": 771,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "sp",
+                "step": 2,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "ag-cuda",
+          "parent": "ag-dispatch",
+          "number": "1.1.1.1.1",
+          "kind": "分支",
+          "title": "CudaCommunicator.all_gather()",
+          "summary": "CUDA 设备通信器的真实后端选择。",
+          "input": "该通信组 tensor 与已初始化 communicators。",
+          "changes": "根据能力/大小选择通信实现；展开其中 PyNccl 有效且前置优化未命中的分支。",
+          "output": "按语义合并或分片的 tensor。",
+          "resume": "返回 GroupCoordinator；异步 stream 工作不表示 Host 返回时全设备已完成。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 771,
+              "end": 771,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/device_communicators/cuda_communicator.py",
+              "line": 447,
+              "end": 481,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "sp",
+                "step": 2,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "ag-nccl",
+          "parent": "ag-cuda",
+          "number": "1.1.1.1.1.1",
+          "kind": "边界",
+          "title": "PyNcclCommunicator.all_gather()",
+          "summary": "进入 NCCL 动态库调用边界。",
+          "input": "输入/输出指针、元素数、dtype、group communicator 与当前 stream。",
+          "changes": "调用 NCCL all_gather 接口，保持该组的 rank 范围。",
+          "output": "当前 stream 上提交的 collective 与输出 tensor。",
+          "resume": "返回 CUDA communicator；实际完成由后续 stream 依赖保证。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/device_communicators/cuda_communicator.py",
+              "line": 474,
+              "end": 476,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/device_communicators/pynccl.py",
+              "line": 301,
+              "end": 322,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "sp",
+                "step": 2,
+                "view": "device"
+              }
+            }
+          ],
+          "note": "仅 PyNccl 分支；NVLS、自定义 All-Reduce、PyTorch fallback 不按本节点执行。"
+        },
+        {
           "id": "attention",
           "parent": "layer",
           "number": "1.2",
@@ -422,6 +808,82 @@
           "targets": [
             {
               "label": "查看对应流程",
+              "action": {
+                "mode": "sp",
+                "step": 3,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "mla",
+          "parent": "attention",
+          "number": "1.2.1",
+          "kind": "分支",
+          "title": "DeepseekV2MLAAttention.forward()",
+          "summary": "展开 use_mha=False 的实际模型 Attention 分支。",
+          "input": "已 All-Gather 的 token hidden、positions。",
+          "changes": "调用 mla_attn wrapper。",
+          "output": "Attention/o_proj 后的 hidden 部分贡献。",
+          "resume": "返回 Decoder，在 padding 后执行 Reduce-Scatter。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1378,
+              "end": 1380,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1240,
+              "end": 1246,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "sp",
+                "step": 3,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "mla-project",
+          "parent": "mla",
+          "number": "1.2.1.1",
+          "kind": "调用",
+          "title": "MultiHeadLatentAttentionWrapper.forward()",
+          "summary": "从 token 集合变为各 TP rank 的 Attention head 计算。",
+          "input": "gathered hidden、低秩投影与本地 head 权重。",
+          "changes": "Q/KV 投影、Norm、RoPE、MLA cache/attention、o_proj。",
+          "output": "当前 rank 的 Attention 输出贡献。",
+          "resume": "返回 MLA 层，再由外层 Decoder 的 SP 分支归约/切 token。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1246,
+              "end": 1246,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/mla.py",
+              "line": 163,
+              "end": 255,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
               "action": {
                 "mode": "sp",
                 "step": 3,
@@ -498,6 +960,128 @@
               }
             }
           ]
+        },
+        {
+          "id": "rs-dispatch",
+          "parent": "groupscatter",
+          "number": "1.3.1.1",
+          "kind": "调用",
+          "title": "GroupCoordinator._reduce_scatter_out_place()",
+          "summary": "按组对象分派到设备通信器；custom-op 路径通过 group_name 找回同一对象。",
+          "input": "本 rank tensor、指定维度与 group。",
+          "changes": "调用 self.device_communicator.reduce_scatter。",
+          "output": "通信器返回的新 tensor。",
+          "resume": "返回 GroupCoordinator 的公开接口。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 783,
+              "end": 797,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 210,
+              "end": 217,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 819,
+              "end": 822,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "sp",
+                "step": 4,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "rs-cuda",
+          "parent": "rs-dispatch",
+          "number": "1.3.1.1.1",
+          "kind": "分支",
+          "title": "CudaCommunicator.reduce_scatter()",
+          "summary": "CUDA 设备通信器的真实后端选择。",
+          "input": "该通信组 tensor 与已初始化 communicators。",
+          "changes": "根据能力/大小选择通信实现；展开其中 PyNccl 有效且前置优化未命中的分支。",
+          "output": "按语义合并或分片的 tensor。",
+          "resume": "返回 GroupCoordinator；异步 stream 工作不表示 Host 返回时全设备已完成。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 822,
+              "end": 822,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/device_communicators/cuda_communicator.py",
+              "line": 483,
+              "end": 508,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "sp",
+                "step": 4,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "rs-nccl",
+          "parent": "rs-cuda",
+          "number": "1.3.1.1.1.1",
+          "kind": "边界",
+          "title": "PyNcclCommunicator.reduce_scatter()",
+          "summary": "进入 NCCL 动态库调用边界。",
+          "input": "输入/输出指针、元素数、dtype、group communicator 与当前 stream。",
+          "changes": "调用 NCCL reduce_scatter 接口，保持该组的 rank 范围。",
+          "output": "当前 stream 上提交的 collective 与输出 tensor。",
+          "resume": "返回 CUDA communicator；实际完成由后续 stream 依赖保证。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/device_communicators/cuda_communicator.py",
+              "line": 505,
+              "end": 507,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/device_communicators/pynccl.py",
+              "line": 359,
+              "end": 385,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "sp",
+                "step": 4,
+                "view": "device"
+              }
+            }
+          ],
+          "note": "仅 PyNccl 分支；NVLS、自定义 All-Reduce、PyTorch fallback 不按本节点执行。"
         },
         {
           "id": "normffn",
@@ -677,6 +1261,128 @@
           ]
         },
         {
+          "id": "ag-dispatch",
+          "parent": "groupgather",
+          "number": "1.1.1.1",
+          "kind": "调用",
+          "title": "GroupCoordinator._all_gather_out_place()",
+          "summary": "按组对象分派到设备通信器；custom-op 路径通过 group_name 找回同一对象。",
+          "input": "本 rank tensor、指定维度与 group。",
+          "changes": "调用 self.device_communicator.all_gather。",
+          "output": "通信器返回的新 tensor。",
+          "resume": "返回 GroupCoordinator 的公开接口。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 752,
+              "end": 766,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 228,
+              "end": 235,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 768,
+              "end": 771,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "tpsp",
+                "step": 2,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "ag-cuda",
+          "parent": "ag-dispatch",
+          "number": "1.1.1.1.1",
+          "kind": "分支",
+          "title": "CudaCommunicator.all_gather()",
+          "summary": "CUDA 设备通信器的真实后端选择。",
+          "input": "该通信组 tensor 与已初始化 communicators。",
+          "changes": "根据能力/大小选择通信实现；展开其中 PyNccl 有效且前置优化未命中的分支。",
+          "output": "按语义合并或分片的 tensor。",
+          "resume": "返回 GroupCoordinator；异步 stream 工作不表示 Host 返回时全设备已完成。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 771,
+              "end": 771,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/device_communicators/cuda_communicator.py",
+              "line": 447,
+              "end": 481,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "tpsp",
+                "step": 2,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "ag-nccl",
+          "parent": "ag-cuda",
+          "number": "1.1.1.1.1.1",
+          "kind": "边界",
+          "title": "PyNcclCommunicator.all_gather()",
+          "summary": "进入 NCCL 动态库调用边界。",
+          "input": "输入/输出指针、元素数、dtype、group communicator 与当前 stream。",
+          "changes": "调用 NCCL all_gather 接口，保持该组的 rank 范围。",
+          "output": "当前 stream 上提交的 collective 与输出 tensor。",
+          "resume": "返回 CUDA communicator；实际完成由后续 stream 依赖保证。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/device_communicators/cuda_communicator.py",
+              "line": 474,
+              "end": 476,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/device_communicators/pynccl.py",
+              "line": 301,
+              "end": 322,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "tpsp",
+                "step": 2,
+                "view": "device"
+              }
+            }
+          ],
+          "note": "仅 PyNccl 分支；NVLS、自定义 All-Reduce、PyTorch fallback 不按本节点执行。"
+        },
+        {
           "id": "attention",
           "parent": "layer",
           "number": "1.2",
@@ -699,6 +1405,82 @@
           "targets": [
             {
               "label": "查看对应流程",
+              "action": {
+                "mode": "tpsp",
+                "step": 3,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "mla",
+          "parent": "attention",
+          "number": "1.2.1",
+          "kind": "分支",
+          "title": "DeepseekV2MLAAttention.forward()",
+          "summary": "展开 use_mha=False 的实际模型 Attention 分支。",
+          "input": "已 All-Gather 的 token hidden、positions。",
+          "changes": "调用 mla_attn wrapper。",
+          "output": "Attention/o_proj 后的 hidden 部分贡献。",
+          "resume": "返回 Decoder，在 padding 后执行 Reduce-Scatter。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1378,
+              "end": 1380,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1240,
+              "end": 1246,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "tpsp",
+                "step": 3,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "mla-project",
+          "parent": "mla",
+          "number": "1.2.1.1",
+          "kind": "调用",
+          "title": "MultiHeadLatentAttentionWrapper.forward()",
+          "summary": "从 token 集合变为各 TP rank 的 Attention head 计算。",
+          "input": "gathered hidden、低秩投影与本地 head 权重。",
+          "changes": "Q/KV 投影、Norm、RoPE、MLA cache/attention、o_proj。",
+          "output": "当前 rank 的 Attention 输出贡献。",
+          "resume": "返回 MLA 层，再由外层 Decoder 的 SP 分支归约/切 token。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1246,
+              "end": 1246,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/mla.py",
+              "line": 163,
+              "end": 255,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
               "action": {
                 "mode": "tpsp",
                 "step": 3,
@@ -775,6 +1557,128 @@
               }
             }
           ]
+        },
+        {
+          "id": "rs-dispatch",
+          "parent": "groupscatter",
+          "number": "1.3.1.1",
+          "kind": "调用",
+          "title": "GroupCoordinator._reduce_scatter_out_place()",
+          "summary": "按组对象分派到设备通信器；custom-op 路径通过 group_name 找回同一对象。",
+          "input": "本 rank tensor、指定维度与 group。",
+          "changes": "调用 self.device_communicator.reduce_scatter。",
+          "output": "通信器返回的新 tensor。",
+          "resume": "返回 GroupCoordinator 的公开接口。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 783,
+              "end": 797,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 210,
+              "end": 217,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 819,
+              "end": 822,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "tpsp",
+                "step": 4,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "rs-cuda",
+          "parent": "rs-dispatch",
+          "number": "1.3.1.1.1",
+          "kind": "分支",
+          "title": "CudaCommunicator.reduce_scatter()",
+          "summary": "CUDA 设备通信器的真实后端选择。",
+          "input": "该通信组 tensor 与已初始化 communicators。",
+          "changes": "根据能力/大小选择通信实现；展开其中 PyNccl 有效且前置优化未命中的分支。",
+          "output": "按语义合并或分片的 tensor。",
+          "resume": "返回 GroupCoordinator；异步 stream 工作不表示 Host 返回时全设备已完成。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 822,
+              "end": 822,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/device_communicators/cuda_communicator.py",
+              "line": 483,
+              "end": 508,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "tpsp",
+                "step": 4,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "rs-nccl",
+          "parent": "rs-cuda",
+          "number": "1.3.1.1.1.1",
+          "kind": "边界",
+          "title": "PyNcclCommunicator.reduce_scatter()",
+          "summary": "进入 NCCL 动态库调用边界。",
+          "input": "输入/输出指针、元素数、dtype、group communicator 与当前 stream。",
+          "changes": "调用 NCCL reduce_scatter 接口，保持该组的 rank 范围。",
+          "output": "当前 stream 上提交的 collective 与输出 tensor。",
+          "resume": "返回 CUDA communicator；实际完成由后续 stream 依赖保证。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/device_communicators/cuda_communicator.py",
+              "line": 505,
+              "end": 507,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/device_communicators/pynccl.py",
+              "line": 359,
+              "end": 385,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "tpsp",
+                "step": 4,
+                "view": "device"
+              }
+            }
+          ],
+          "note": "仅 PyNccl 分支；NVLS、自定义 All-Reduce、PyTorch fallback 不按本节点执行。"
         },
         {
           "id": "normffn",
@@ -947,6 +1851,76 @@
           ]
         },
         {
+          "id": "physical-ids",
+          "parent": "dispatch",
+          "number": "1.1.1.1",
+          "kind": "调用",
+          "title": "DeepEPLLPrepareAndFinalize._map_global_to_physical_ids()",
+          "summary": "路由的逻辑 expert ID 转为当前后端的物理 ID。",
+          "input": "topk_ids 与 expert placement 映射。",
+          "changes": "没有映射时保留原 ID；否则按映射表重编号。",
+          "output": "dispatch_topk_ids。",
+          "resume": "返回 prepare_async，随后 low_latency_dispatch。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/fused_moe/prepare_finalize/deepep_ll.py",
+              "line": 287,
+              "end": 289,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/fused_moe/prepare_finalize/deepep_ll.py",
+              "line": 151,
+              "end": 154,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "ep",
+                "step": 3,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "deepep-dispatch",
+          "parent": "dispatch",
+          "number": "1.1.1.2",
+          "kind": "边界",
+          "title": "deep_ep.Buffer.low_latency_dispatch() [外部库边界]",
+          "summary": "vLLM 把 activation 与物理专家 ID 交给 DeepEP。",
+          "input": "a1、dispatch_topk_ids、max_tokens_per_rank、num_experts、量化选项。",
+          "changes": "外部库返回 expert_x、counts、handle、接收 hook；vLLM 保存 handle。",
+          "output": "专家输入 buffer 与后续接收 hook。",
+          "resume": "返回 prepare_async；调用者执行 hook/receiver 才继续专家计算。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/fused_moe/prepare_finalize/deepep_ll.py",
+              "line": 286,
+              "end": 322,
+              "label": "完整调用与返回契约"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "ep",
+                "step": 3,
+                "view": "device"
+              }
+            }
+          ],
+          "note": "该固定快照不包含外部 DeepEP 的完整实现；不伪造其 Python/CUDA 子调用。"
+        },
+        {
           "id": "expert",
           "parent": "kernel",
           "number": "1.2",
@@ -1062,6 +2036,37 @@
           "targets": [
             {
               "label": "查看对应流程",
+              "action": {
+                "mode": "ep",
+                "step": 5,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "deepep-combine",
+          "parent": "combine",
+          "number": "1.3.1.1",
+          "kind": "边界",
+          "title": "deep_ep.Buffer.low_latency_combine() [外部库边界]",
+          "summary": "使用 dispatch 时保存的 handle 回源。",
+          "input": "专家输出、物理 topk IDs、权重、handle 与 output buffer。",
+          "changes": "把专家结果按 routing 权重合并，写回源 token 的 output。",
+          "output": "recv_hook 与回源结果。",
+          "resume": "返回 _finalize；由上层 finalize/hook 保证消费时序。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/fused_moe/prepare_finalize/deepep_ll.py",
+              "line": 382,
+              "end": 406,
+              "label": "完整调用与返回契约"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
               "action": {
                 "mode": "ep",
                 "step": 5,
@@ -1119,7 +2124,7 @@
         {
           "id": "wave",
           "parent": null,
-          "number": "P1",
+          "number": "1",
           "kind": "循环",
           "title": "DPEngineCoreProc.run_busy_loop() [运行协调]",
           "summary": "每 DP engine 有独立请求，MoE 通信要求参与者对齐。",
@@ -1150,7 +2155,7 @@
         {
           "id": "kernel",
           "parent": null,
-          "number": "1",
+          "number": "2",
           "kind": "调用",
           "title": "FusedMoEKernelModularImpl.apply()",
           "summary": "路由 top-k 已由上游 MoE router 产生；此处展开 DeepEP LL 通信与专家阶段。",
@@ -1181,7 +2186,7 @@
         {
           "id": "prepare",
           "parent": "kernel",
-          "number": "1.1",
+          "number": "2.1",
           "kind": "调用",
           "title": "FusedMoEKernelModularImpl._prepare()",
           "summary": "根据 prepare_finalize 的类型走 DeepEP LL。",
@@ -1212,7 +2217,7 @@
         {
           "id": "dispatch",
           "parent": "prepare",
-          "number": "1.1.1",
+          "number": "2.1.1",
           "kind": "调用",
           "title": "DeepEPLLPrepareAndFinalize.prepare_async()",
           "summary": "token 发往持有其目标专家的 rank。",
@@ -1241,9 +2246,79 @@
           ]
         },
         {
+          "id": "physical-ids",
+          "parent": "dispatch",
+          "number": "2.1.1.1",
+          "kind": "调用",
+          "title": "DeepEPLLPrepareAndFinalize._map_global_to_physical_ids()",
+          "summary": "路由的逻辑 expert ID 转为当前后端的物理 ID。",
+          "input": "topk_ids 与 expert placement 映射。",
+          "changes": "没有映射时保留原 ID；否则按映射表重编号。",
+          "output": "dispatch_topk_ids。",
+          "resume": "返回 prepare_async，随后 low_latency_dispatch。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/fused_moe/prepare_finalize/deepep_ll.py",
+              "line": 287,
+              "end": 289,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/fused_moe/prepare_finalize/deepep_ll.py",
+              "line": 151,
+              "end": 154,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dpep",
+                "step": 5,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "deepep-dispatch",
+          "parent": "dispatch",
+          "number": "2.1.1.2",
+          "kind": "边界",
+          "title": "deep_ep.Buffer.low_latency_dispatch() [外部库边界]",
+          "summary": "vLLM 把 activation 与物理专家 ID 交给 DeepEP。",
+          "input": "a1、dispatch_topk_ids、max_tokens_per_rank、num_experts、量化选项。",
+          "changes": "外部库返回 expert_x、counts、handle、接收 hook；vLLM 保存 handle。",
+          "output": "专家输入 buffer 与后续接收 hook。",
+          "resume": "返回 prepare_async；调用者执行 hook/receiver 才继续专家计算。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/fused_moe/prepare_finalize/deepep_ll.py",
+              "line": 286,
+              "end": 322,
+              "label": "完整调用与返回契约"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dpep",
+                "step": 5,
+                "view": "device"
+              }
+            }
+          ],
+          "note": "该固定快照不包含外部 DeepEP 的完整实现；不伪造其 Python/CUDA 子调用。"
+        },
+        {
           "id": "expert",
           "parent": "kernel",
-          "number": "1.2",
+          "number": "2.2",
           "kind": "调用",
           "title": "FusedMoEKernelModularImpl._fused_experts()",
           "summary": "设备上使用本 rank 常驻专家权重。",
@@ -1274,7 +2349,7 @@
         {
           "id": "expertop",
           "parent": "expert",
-          "number": "1.2.1",
+          "number": "2.2.1",
           "kind": "边界",
           "title": "self.fused_experts.apply(...) [选定专家 kernel]",
           "summary": "具体专家 kernel 由 quant/backend 工厂选择。",
@@ -1305,7 +2380,7 @@
         {
           "id": "finalize",
           "parent": "kernel",
-          "number": "1.3",
+          "number": "2.3",
           "kind": "调用",
           "title": "FusedMoEKernelModularImpl._finalize()",
           "summary": "调用匹配的 finalize / finalize_async。",
@@ -1336,7 +2411,7 @@
         {
           "id": "combine",
           "parent": "finalize",
-          "number": "1.3.1",
+          "number": "2.3.1",
           "kind": "调用",
           "title": "DeepEPLLPrepareAndFinalize._finalize()",
           "summary": "DeepEP LL combine 负责加权、归并、恢复源 token。",
@@ -1365,9 +2440,40 @@
           ]
         },
         {
+          "id": "deepep-combine",
+          "parent": "combine",
+          "number": "2.3.1.1",
+          "kind": "边界",
+          "title": "deep_ep.Buffer.low_latency_combine() [外部库边界]",
+          "summary": "使用 dispatch 时保存的 handle 回源。",
+          "input": "专家输出、物理 topk IDs、权重、handle 与 output buffer。",
+          "changes": "把专家结果按 routing 权重合并，写回源 token 的 output。",
+          "output": "recv_hook 与回源结果。",
+          "resume": "返回 _finalize；由上层 finalize/hook 保证消费时序。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/fused_moe/prepare_finalize/deepep_ll.py",
+              "line": 382,
+              "end": 406,
+              "label": "完整调用与返回契约"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dpep",
+                "step": 7,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
           "id": "return",
           "parent": "kernel",
-          "number": "1.4",
+          "number": "2.4",
           "kind": "返回",
           "title": "FusedMoEKernelModularImpl.apply() 返回",
           "summary": "输出对应源 rank 的原 token 顺序。",
@@ -1649,6 +2755,128 @@
           ]
         },
         {
+          "id": "cp-rs-dispatch",
+          "parent": "rs",
+          "number": "1.1.3.2.1",
+          "kind": "调用",
+          "title": "GroupCoordinator._reduce_scatter_out_place()",
+          "summary": "按组对象分派到设备通信器；custom-op 路径通过 group_name 找回同一对象。",
+          "input": "本 rank tensor、指定维度与 group。",
+          "changes": "调用 self.device_communicator.reduce_scatter。",
+          "output": "通信器返回的新 tensor。",
+          "resume": "返回 GroupCoordinator 的公开接口。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 783,
+              "end": 797,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 210,
+              "end": 217,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 819,
+              "end": 822,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "cp",
+                "step": 5,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "cp-rs-cuda",
+          "parent": "cp-rs-dispatch",
+          "number": "1.1.3.2.1.1",
+          "kind": "分支",
+          "title": "CudaCommunicator.reduce_scatter()",
+          "summary": "CUDA 设备通信器的真实后端选择。",
+          "input": "该通信组 tensor 与已初始化 communicators。",
+          "changes": "根据能力/大小选择通信实现；展开其中 PyNccl 有效且前置优化未命中的分支。",
+          "output": "按语义合并或分片的 tensor。",
+          "resume": "返回 GroupCoordinator；异步 stream 工作不表示 Host 返回时全设备已完成。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 822,
+              "end": 822,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/device_communicators/cuda_communicator.py",
+              "line": 483,
+              "end": 508,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "cp",
+                "step": 5,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "cp-rs-nccl",
+          "parent": "cp-rs-cuda",
+          "number": "1.1.3.2.1.1.1",
+          "kind": "边界",
+          "title": "PyNcclCommunicator.reduce_scatter()",
+          "summary": "进入 NCCL 动态库调用边界。",
+          "input": "输入/输出指针、元素数、dtype、group communicator 与当前 stream。",
+          "changes": "调用 NCCL reduce_scatter 接口，保持该组的 rank 范围。",
+          "output": "当前 stream 上提交的 collective 与输出 tensor。",
+          "resume": "返回 CUDA communicator；实际完成由后续 stream 依赖保证。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/device_communicators/cuda_communicator.py",
+              "line": 505,
+              "end": 507,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/device_communicators/pynccl.py",
+              "line": 359,
+              "end": 385,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "cp",
+                "step": 5,
+                "view": "device"
+              }
+            }
+          ],
+          "note": "仅 PyNccl 分支；NVLS、自定义 All-Reduce、PyTorch fallback 不按本节点执行。"
+        },
+        {
           "id": "current",
           "parent": "dcp",
           "number": "1.1.4",
@@ -1826,6 +3054,44 @@
           ]
         },
         {
+          "id": "pp-recv-metadata",
+          "parent": "recv",
+          "number": "1.2.1",
+          "kind": "调用",
+          "title": "GroupCoordinator.recv_object()",
+          "summary": "接收端先重建 tensor 字典描述。",
+          "input": "上游 rank 的 metadata 消息。",
+          "changes": "接收长度/序列化内容并反序列化。",
+          "output": "键、dtype、shape 等 metadata_list。",
+          "resume": "返回 irecv_tensor_dict，分配接收 tensor 并提交 irecv。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 1318,
+              "end": 1320,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 922,
+              "end": 956,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "pp",
+                "step": 3,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
           "id": "execute",
           "parent": "worker",
           "number": "1.3",
@@ -1857,9 +3123,86 @@
           ]
         },
         {
-          "id": "stage",
+          "id": "forward-helper",
           "parent": "execute",
           "number": "1.3.1",
+          "kind": "调用",
+          "title": "GPUModelRunner._model_forward()",
+          "summary": "Runner 在输入/metadata 准备后调用模型的明确位置。",
+          "input": "input_ids、positions、intermediate_tensors、inputs_embeds。",
+          "changes": "self.model(...)；eager 示例进入配置的 CausalLM.forward。",
+          "output": "本 PP stage 模型输出。",
+          "resume": "返回 execute_model，再由 Worker 决定发送还是返回。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4383,
+              "end": 4385,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 3786,
+              "end": 3817,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "pp",
+                "step": 4,
+                "view": "device"
+              }
+            }
+          ],
+          "note": "编译/图包装可能包住 self.model；这里跟踪 eager 的模型函数调用。"
+        },
+        {
+          "id": "model-wrapper",
+          "parent": "forward-helper",
+          "number": "1.3.1.1",
+          "kind": "调用",
+          "title": "LlamaForCausalLM.forward()",
+          "summary": "CausalLM wrapper 转入本地 stage 的 LlamaModel。",
+          "input": "IDs/positions 或上游 intermediate_tensors。",
+          "changes": "self.model(...)。",
+          "output": "hidden 或 IntermediateTensors。",
+          "resume": "返回 _model_forward。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 3811,
+              "end": 3813,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 534,
+              "end": 544,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "pp",
+                "step": 4,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "stage",
+          "parent": "model-wrapper",
+          "number": "1.3.1.1.1",
           "kind": "调用",
           "title": "LlamaModel.forward() [本 stage 层切片]",
           "summary": "模型仅执行 start_layer:end_layer。",
@@ -1868,6 +3211,13 @@
           "output": "hidden/residual 张量字典。",
           "resume": "返回 Runner 再返回 Worker；不会把权重/KV 发到下一 stage。",
           "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 541,
+              "end": 543,
+              "label": "实际调用位置"
+            },
             {
               "repo": "vllm",
               "path": "vllm/model_executor/models/llama.py",
@@ -1917,6 +3267,44 @@
           "targets": [
             {
               "label": "查看对应流程",
+              "action": {
+                "mode": "pp",
+                "step": 5,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "pp-metadata",
+          "parent": "send",
+          "number": "1.4.1",
+          "kind": "调用",
+          "title": "GroupCoordinator.isend_object()",
+          "summary": "张量字典先发送结构元数据，设备 tensor 单独传输。",
+          "input": "_split_tensor_dict 产生的键、dtype、shape、非 tensor 值。",
+          "changes": "序列化 metadata；提交长度与字节 payload 的 P2P 发送，并保留源引用。",
+          "output": "可等待的 metadata send handle。",
+          "resume": "返回 isend_tensor_dict，再安排各 tensor 的发送。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 1211,
+              "end": 1213,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/parallel_state.py",
+              "line": 958,
+              "end": 983,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
               "action": {
                 "mode": "pp",
                 "step": 5,
@@ -1992,7 +3380,7 @@
     {
       "id": "dp",
       "title": "推理 DP · 独立请求与 EngineCore",
-      "scope": "Dense DP=2、TP=PP=1，内部负载均衡客户端。教学双线性数字不冒充真实模型；展开请求/执行边界，梯度同步属于训练比较，不在此实现链。",
+      "scope": "Dense DP=2、TP=PP=1，内部负载均衡客户端。教学双线性数字不冒充真实模型；展开请求/执行边界，梯度同步属于训练比较，不在此实现链。 新展开固定各实例使用 UniProcExecutor 与 CUDA Worker；DP 引擎之间仍不共享 activation。",
       "entry": "client",
       "repositories": {
         "vllm": {
@@ -2193,7 +3581,7 @@
           "parent": "step",
           "number": "3.2",
           "kind": "提交",
-          "title": "self.model_executor.execute_model(..., non_block=True)",
+          "title": "UniProcExecutor.execute_model(..., non_block=True)",
           "summary": "本实例 Worker 计算自己的请求。",
           "input": "SchedulerOutput。",
           "changes": "发给 executor/worker，input IDs 在 Worker 查 embedding 后变为 hidden。",
@@ -2206,11 +3594,178 @@
               "line": 654,
               "label": "实际实现",
               "end": 665
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 119,
+              "end": 132,
+              "label": "实际实现"
             }
           ],
           "targets": [
             {
               "label": "查看对应流程",
+              "action": {
+                "mode": "dp",
+                "step": 3,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "executor-rpc",
+          "parent": "execute",
+          "number": "3.2.1",
+          "kind": "调用",
+          "title": "UniProcExecutor.collective_rpc()",
+          "summary": "单 Worker executor 的 RPC 接口实际在本进程调用 driver_worker。",
+          "input": "method=\"execute_model\"、SchedulerOutput、non_block=True、single_value=True。",
+          "changes": "run_method 后将普通结果包装成已完成 Future，或包装 AsyncModelRunnerOutput。",
+          "output": "future；是否异步完成取决于返回类型。",
+          "resume": "返回 execute_model，再回 EngineCore 等待结果。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 122,
+              "end": 124,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 90,
+              "end": 117,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dp",
+                "step": 3,
+                "view": "device"
+              }
+            }
+          ],
+          "note": "接口名 collective_rpc 不表示这里一定发送跨进程 RPC。"
+        },
+        {
+          "id": "worker-dispatch",
+          "parent": "executor-rpc",
+          "number": "3.2.1.1",
+          "kind": "调用",
+          "title": "run_method() → WorkerWrapperBase.__getattr__()",
+          "summary": "字符串方法名解析到实际 Worker 方法。",
+          "input": "driver_worker、\"execute_model\"、args/kwargs。",
+          "changes": "getattr 转发到 worker，调用 func(*args, **kwargs)。",
+          "output": "Worker 的执行结果。",
+          "resume": "返回 collective_rpc 的 Future 包装。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 109,
+              "end": 111,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/serial_utils.py",
+              "line": 485,
+              "end": 508,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/worker_base.py",
+              "line": 352,
+              "end": 353,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dp",
+                "step": 3,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "dp-worker",
+          "parent": "worker-dispatch",
+          "number": "3.2.1.1.1",
+          "kind": "调用",
+          "title": "Worker.execute_model()",
+          "summary": "被选 DP 引擎内的 CUDA Worker 接口。",
+          "input": "本实例 SchedulerOutput。",
+          "changes": "处理 PP 接收/发送条件，调用 model_runner.execute_model；TP=PP=1 时无 PP 传输。",
+          "output": "本实例 ModelRunnerOutput 或待采样状态。",
+          "resume": "返回 run_method，而不是进入另一 DP engine。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/serial_utils.py",
+              "line": 508,
+              "end": 508,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_worker.py",
+              "line": 1267,
+              "end": 1325,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dp",
+                "step": 3,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "dp-runner",
+          "parent": "dp-worker",
+          "number": "3.2.1.1.1.1",
+          "kind": "调用",
+          "title": "GPUModelRunner.execute_model()",
+          "summary": "把本 DP 实例的计划打包为模型输入。",
+          "input": "SchedulerOutput、persistent input batch、KV block tables。",
+          "changes": "更新 batch/metadata，设置 forward context，调用 _model_forward。",
+          "output": "hidden/logits 的本轮执行状态或输出。",
+          "resume": "返回 Worker；采样/请求回写仍由外层调度。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_worker.py",
+              "line": 1293,
+              "end": 1295,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4105,
+              "end": 4462,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
               "action": {
                 "mode": "dp",
                 "step": 3,
@@ -2286,7 +3841,7 @@
     {
       "id": "dptpp",
       "title": "DP + TP + PP · 各组作用域",
-      "scope": "DP=2 × PP=2 × TP=2 的 Dense 部署；调用树只展开一副本、各 stage 一轮，第二副本重复且无跨 DP activation 合并。",
+      "scope": "DP=2 × PP=2 × TP=2 的 Dense 部署；调用树只展开一副本、各 stage 一轮，第二副本重复且无跨 DP activation 合并。 新展开的层内调用采用 eager Llama MLP 示例；页面 ReLU 小矩阵仍是通信教学替身。",
       "entry": "route",
       "repositories": {
         "vllm": {
@@ -2359,9 +3914,206 @@
           ]
         },
         {
-          "id": "column",
+          "id": "stage0-runner",
           "parent": "worker0",
           "number": "2.1",
+          "kind": "调用",
+          "title": "GPUModelRunner.execute_model() [stage 0]",
+          "summary": "每 stage 的 Runner 拥有自己的本地模型切片。",
+          "input": "SchedulerOutput 与上游 IntermediateTensors。",
+          "changes": "准备输入/metadata，再调用 _model_forward。",
+          "output": "本 stage 执行状态。",
+          "resume": "返回 Worker，非末 stage 再发送。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_worker.py",
+              "line": 1293,
+              "end": 1295,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4105,
+              "end": 4462,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dptpp",
+                "step": 2,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "stage0-helper",
+          "parent": "stage0-runner",
+          "number": "2.1.1",
+          "kind": "调用",
+          "title": "GPUModelRunner._model_forward()",
+          "summary": "模型函数的直接调用点。",
+          "input": "IDs/positions/intermediate_tensors。",
+          "changes": "调用 self.model。",
+          "output": "hidden 或 PP 中间张量。",
+          "resume": "返回 execute_model。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4383,
+              "end": 4385,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 3786,
+              "end": 3817,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dptpp",
+                "step": 2,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "stage0-model",
+          "parent": "stage0-helper",
+          "number": "2.1.1.1",
+          "kind": "调用",
+          "title": "LlamaForCausalLM.forward() → LlamaModel.forward()",
+          "summary": "合并展示 wrapper 的直接转调，模型只遍历本地层切片。",
+          "input": "本副本、本 stage 的 hidden/residual。",
+          "changes": "wrapper 调 model；model 遍历 start_layer:end_layer。",
+          "output": "本地末层 hidden/residual。",
+          "resume": "非末 PP stage 返回 IntermediateTensors。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 3811,
+              "end": 3813,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 534,
+              "end": 544,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 406,
+              "end": 457,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dptpp",
+                "step": 2,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "stage0-layer",
+          "parent": "stage0-model",
+          "number": "2.1.1.1.1",
+          "kind": "调用",
+          "title": "LlamaDecoderLayer.forward()",
+          "summary": "Attention 与 FFN 都位于模型层内，Worker 不直接调用线性层。",
+          "input": "本层 hidden、residual、positions。",
+          "changes": "input norm → Attention → post-attention norm → mlp。",
+          "output": "MLP hidden 与 residual。",
+          "resume": "返回 LlamaModel 的本 stage 循环。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 436,
+              "end": 438,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 313,
+              "end": 330,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dptpp",
+                "step": 2,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "stage0-mlp",
+          "parent": "stage0-layer",
+          "number": "2.1.1.1.1.1",
+          "kind": "调用",
+          "title": "LlamaMLP.forward()",
+          "summary": "TP 列/行投影的真正调用者。",
+          "input": "post-attention norm hidden。",
+          "changes": "gate_up_proj → act_fn → down_proj。",
+          "output": "本 stage FFN hidden。",
+          "resume": "返回 Decoder，再逐层返回 Worker。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 329,
+              "end": 330,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 118,
+              "end": 122,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dptpp",
+                "step": 2,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "column",
+          "parent": "stage0-mlp",
+          "number": "2.1.1.1.1.1.1",
           "kind": "调用",
           "title": "ColumnParallelLinear.forward()",
           "summary": "首 stage 的 TP ranks 分担中间特征。",
@@ -2370,6 +4122,13 @@
           "output": "中间 activation shard。",
           "resume": "本地激活后调用 RowParallelLinear。",
           "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 119,
+              "end": 121,
+              "label": "实际调用位置"
+            },
             {
               "repo": "vllm",
               "path": "vllm/model_executor/layers/linear.py",
@@ -2391,8 +4150,8 @@
         },
         {
           "id": "row",
-          "parent": "worker0",
-          "number": "2.2",
+          "parent": "stage0-mlp",
+          "number": "2.1.1.1.1.1.2",
           "kind": "调用",
           "title": "RowParallelLinear.forward()",
           "summary": "本地部分和汇聚为完整 hidden。",
@@ -2401,6 +4160,13 @@
           "output": "该副本该 stage 完整 hidden。",
           "resume": "返回模型/Runner/Worker。",
           "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 121,
+              "end": 122,
+              "label": "实际调用位置"
+            },
             {
               "repo": "vllm",
               "path": "vllm/model_executor/layers/linear.py",
@@ -2423,7 +4189,7 @@
         {
           "id": "send",
           "parent": "worker0",
-          "number": "2.3",
+          "number": "2.2",
           "kind": "调用",
           "title": "GroupCoordinator.isend_tensor_dict()",
           "summary": "PP 发送使用相同 TP rank 的 peer。",
@@ -2521,9 +4287,206 @@
           ]
         },
         {
-          "id": "column1",
+          "id": "stage1-runner",
           "parent": "worker1",
           "number": "4.1",
+          "kind": "调用",
+          "title": "GPUModelRunner.execute_model() [stage 1]",
+          "summary": "每 stage 的 Runner 拥有自己的本地模型切片。",
+          "input": "SchedulerOutput 与上游 IntermediateTensors。",
+          "changes": "准备输入/metadata，再调用 _model_forward。",
+          "output": "本 stage 执行状态。",
+          "resume": "返回 Worker，非末 stage 再发送。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_worker.py",
+              "line": 1293,
+              "end": 1295,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4105,
+              "end": 4462,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dptpp",
+                "step": 6,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "stage1-helper",
+          "parent": "stage1-runner",
+          "number": "4.1.1",
+          "kind": "调用",
+          "title": "GPUModelRunner._model_forward()",
+          "summary": "模型函数的直接调用点。",
+          "input": "IDs/positions/intermediate_tensors。",
+          "changes": "调用 self.model。",
+          "output": "hidden 或 PP 中间张量。",
+          "resume": "返回 execute_model。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4383,
+              "end": 4385,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 3786,
+              "end": 3817,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dptpp",
+                "step": 6,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "stage1-model",
+          "parent": "stage1-helper",
+          "number": "4.1.1.1",
+          "kind": "调用",
+          "title": "LlamaForCausalLM.forward() → LlamaModel.forward()",
+          "summary": "合并展示 wrapper 的直接转调，模型只遍历本地层切片。",
+          "input": "本副本、本 stage 的 hidden/residual。",
+          "changes": "wrapper 调 model；model 遍历 start_layer:end_layer。",
+          "output": "本地末层 hidden/residual。",
+          "resume": "非末 PP stage 返回 IntermediateTensors。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 3811,
+              "end": 3813,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 534,
+              "end": 544,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 406,
+              "end": 457,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dptpp",
+                "step": 6,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "stage1-layer",
+          "parent": "stage1-model",
+          "number": "4.1.1.1.1",
+          "kind": "调用",
+          "title": "LlamaDecoderLayer.forward()",
+          "summary": "Attention 与 FFN 都位于模型层内，Worker 不直接调用线性层。",
+          "input": "本层 hidden、residual、positions。",
+          "changes": "input norm → Attention → post-attention norm → mlp。",
+          "output": "MLP hidden 与 residual。",
+          "resume": "返回 LlamaModel 的本 stage 循环。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 436,
+              "end": 438,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 313,
+              "end": 330,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dptpp",
+                "step": 6,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "stage1-mlp",
+          "parent": "stage1-layer",
+          "number": "4.1.1.1.1.1",
+          "kind": "调用",
+          "title": "LlamaMLP.forward()",
+          "summary": "TP 列/行投影的真正调用者。",
+          "input": "post-attention norm hidden。",
+          "changes": "gate_up_proj → act_fn → down_proj。",
+          "output": "本 stage FFN hidden。",
+          "resume": "返回 Decoder，再逐层返回 Worker。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 329,
+              "end": 330,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 118,
+              "end": 122,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "dptpp",
+                "step": 6,
+                "view": "device"
+              }
+            }
+          ]
+        },
+        {
+          "id": "column1",
+          "parent": "stage1-mlp",
+          "number": "4.1.1.1.1.1.1",
           "kind": "调用",
           "title": "ColumnParallelLinear.forward()",
           "summary": "目的 stage 自己的列并行权重。",
@@ -2532,6 +4495,13 @@
           "output": "feature shard。",
           "resume": "调用第二投影。",
           "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 119,
+              "end": 121,
+              "label": "实际调用位置"
+            },
             {
               "repo": "vllm",
               "path": "vllm/model_executor/layers/linear.py",
@@ -2553,8 +4523,8 @@
         },
         {
           "id": "row1",
-          "parent": "worker1",
-          "number": "4.2",
+          "parent": "stage1-mlp",
+          "number": "4.1.1.1.1.1.2",
           "kind": "调用",
           "title": "RowParallelLinear.forward()",
           "summary": "只在目的 stage 的 TP group 求和。",
@@ -2563,6 +4533,13 @@
           "output": "每 TP rank 完整 hidden。",
           "resume": "返回 Model 最终 norm，再返回 Worker。",
           "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 121,
+              "end": 122,
+              "label": "实际调用位置"
+            },
             {
               "repo": "vllm",
               "path": "vllm/model_executor/layers/linear.py",
@@ -2585,7 +4562,7 @@
         {
           "id": "return",
           "parent": "worker1",
-          "number": "4.3",
+          "number": "4.2",
           "kind": "返回",
           "title": "Worker.execute_model() 返回末 stage 结果",
           "summary": "各 DP 副本独立完成。",

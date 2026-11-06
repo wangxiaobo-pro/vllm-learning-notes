@@ -115,7 +115,7 @@ python verify_combinations.py
 
 ## 真实调用链
 
-[call-chain.json](call-chain.json) 保存 9 条实现路径：TP、SP、TP+SP、EP、DP+EP、CP、PP、推理 DP、DP+TP+PP，共 77 个节点。每个节点记录输入、状态变化、输出消费者、返回续点和固定 commit 的源码范围；跨 Worker、DP 实例或设备库的边界单独标出。
+[call-chain.json](call-chain.json) 保存 9 条实现路径：TP、SP、TP+SP、EP、DP+EP、CP、PP、推理 DP、DP+TP+PP，共 126 个节点。每个节点记录输入、状态变化、输出消费者、返回续点和固定 commit 的源码范围；跨 Worker、DP 实例或设备库的边界单独标出。
 
 - TP 的源码例子是 Llama SwiGLU；图中的小型 ReLU 网络用于展示切片与求和，不代表实际模型参数。
 - SP/TP+SP 固定 DeepSeek activation/MoE SP、PP=1。EP/DP+EP 固定模块化 DeepEP low latency 后端，外部 `deep_ep` 库内部不展开。
@@ -123,3 +123,7 @@ python verify_combinations.py
 - 推理 DP 从客户端路由到独立 EngineCore；PP 的异步发送与对端接收分属不同进程。训练 DP 是算法对照，没有虚构 vLLM 训练实现链。
 
 [call-chain-adapter.js](call-chain-adapter.js) 按目标切换实际模式、设备/数值视图及步骤，并读取页面状态确认定位成功。数据基线为 vLLM `295c062db8a48ea73bbd05d1174cb37d24bf86f9`。页面示例与源码静态走读均不代表设备实测。
+
+新增子调用追踪 TP/SP 到 GroupCoordinator、CUDA communicator 和条件性 PyNccl 路径，EP 到 DeepEP 库边界，PP/DP 到实际 Runner/模型调用。DP+TP+PP 的 Linear 父节点改为真正的 LlamaMLP，经过 Worker、Runner 与 Decoder；页面小型 ReLU 算例仍只解释通信布局。
+
+新增子调用复用已有图的适用输入/输出边界，入口明确标为“原图未单列此调用”，不声称每个 Python/C++ 函数都有独立动画。旧节点 ID 保持不变，编号随真实父子关系更新；跨进程消费者与后续独立采样继续保留为独立根。

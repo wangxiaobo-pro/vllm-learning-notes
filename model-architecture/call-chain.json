@@ -215,6 +215,85 @@
           ]
         },
         {
+          "id": "attn-layer",
+          "parent": "attention",
+          "number": "1.1.2.1.1.1",
+          "kind": "调用",
+          "title": "Attention.forward()",
+          "summary": "LlamaAttention 将已投影并旋转的 Q/K/V 交给公共 Attention 层。",
+          "input": "Q、K、V、层内 KV cache 与 forward context metadata。",
+          "changes": "reshape 到 head 布局，建立 KV 更新依赖，分派 unified_attention_with_output。",
+          "output": "Attention head 输出。",
+          "resume": "返回 LlamaAttention，继续 o_proj。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 232,
+              "end": 234,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 488,
+              "end": 579,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "llama",
+                "model": "llama",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "attn-dispatch",
+          "parent": "attn-layer",
+          "number": "1.1.2.1.1.1.1",
+          "kind": "边界",
+          "title": "unified_attention_with_output()",
+          "summary": "直接调用与注册 custom op 最终进入同一实现。",
+          "input": "Q/K/V/output、layer_name、KV update dummy dependency。",
+          "changes": "从 forward context 取 Attention 对象和 metadata，调用 self.impl.forward。",
+          "output": "后端写入 output。",
+          "resume": "返回 Attention.forward，再由 o_proj 投影。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 540,
+              "end": 578,
+              "label": "直接/算子分派调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 767,
+              "end": 794,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "llama",
+                "model": "llama",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ],
+          "note": "具体 Attention backend 取决于设备与配置，不把 FlashAttention 或 Ascend 实现固定为 Llama 必经路径。"
+        },
+        {
           "id": "postnorm",
           "parent": "block",
           "number": "1.1.2.1.2",
@@ -269,6 +348,145 @@
           "targets": [
             {
               "label": "查看对应流程",
+              "action": {
+                "mode": "llama",
+                "model": "llama",
+                "component": "dense",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "ffn-gate",
+          "parent": "ffn",
+          "number": "1.1.2.1.3.1",
+          "kind": "调用",
+          "title": "MergedColumnParallelLinear.forward() [继承 ColumnParallelLinear]",
+          "summary": "合并 gate/up 投影，保留两个分支的本地通道。",
+          "input": "归一化 hidden、本 rank gate/up 权重。",
+          "changes": "调用 quant_method.apply；gather_output=False 时保留分片。",
+          "output": "gate_up 张量。",
+          "resume": "回到 LlamaMLP 的 act_fn。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 119,
+              "end": 121,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/linear.py",
+              "line": 603,
+              "end": 621,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/linear.py",
+              "line": 673,
+              "end": 690,
+              "label": "继承关系"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "llama",
+                "model": "llama",
+                "component": "dense",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "ffn-gemm",
+          "parent": "ffn-gate",
+          "number": "1.1.2.1.3.1.1",
+          "kind": "调用",
+          "title": "UnquantizedLinearMethod.apply() [未量化示例]",
+          "summary": "固定未量化、非 batch-invariant 的补充路径。",
+          "input": "hidden、layer.weight、bias。",
+          "changes": "调用加载初始化时选择的 _gemm_impl。",
+          "output": "本地 gate/up GEMM 输出。",
+          "resume": "返回 ColumnParallelLinear，接 SiLU-and-mul。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/linear.py",
+              "line": 610,
+              "end": 612,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/linear.py",
+              "line": 229,
+              "end": 239,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/linear.py",
+              "line": 170,
+              "end": 175,
+              "label": "初始化时绑定 GEMM 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "llama",
+                "model": "llama",
+                "component": "dense",
+                "step": 0
+              }
+            }
+          ],
+          "note": "这是新增的明确配置分支；量化权重改走对应 quant_method，不使用本节点。"
+        },
+        {
+          "id": "ffn-linear",
+          "parent": "ffn-gemm",
+          "number": "1.1.2.1.3.1.1.1",
+          "kind": "边界",
+          "title": "default_unquantized_gemm() → torch.nn.functional.linear()",
+          "summary": "当分派器选择默认 GEMM 时进入 PyTorch 线性算子边界。",
+          "input": "X 与存储为 [out,in] 的 weight，以及 bias。",
+          "changes": "F.linear 计算 X @ weight.T + bias。",
+          "output": "未归约的本 rank 投影。",
+          "resume": "返回 apply，再返回 ColumnParallelLinear。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/linear.py",
+              "line": 239,
+              "end": 239,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/utils.py",
+              "line": 613,
+              "end": 645,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/utils.py",
+              "line": 83,
+              "end": 89,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
               "action": {
                 "mode": "llama",
                 "model": "llama",
@@ -341,6 +559,124 @@
               }
             }
           ]
+        },
+        {
+          "id": "logits-process",
+          "parent": "head",
+          "number": "2.1",
+          "kind": "调用",
+          "title": "LogitsProcessor.forward()",
+          "summary": "投影与可选 soft-cap/scale 的公共入口。",
+          "input": "选定采样行 hidden、lm_head、可选 bias。",
+          "changes": "logits_as_input=False 时调用 _get_logits；随后应用配置的 soft-cap/scale。",
+          "output": "采样行的词表 logits，尚未采样。",
+          "resume": "返回模型 compute_logits，再返回 Runner。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 546,
+              "end": 551,
+              "label": "模型 head 调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 98,
+              "end": 120,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "llama",
+                "model": "llama",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "logits-project",
+          "parent": "logits-process",
+          "number": "2.1.1",
+          "kind": "调用",
+          "title": "LogitsProcessor._get_logits()",
+          "summary": "每 rank 先投影本地词表分片，再按 TP 配置汇集。",
+          "input": "hidden、词表分片权重、skip_gather。",
+          "changes": "_apply_head → 条件 _gather_logits → 裁掉 padding 词表。",
+          "output": "本地或汇集后的有效词表 logits。",
+          "resume": "返回 forward 的 soft-cap/scale 段。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 109,
+              "end": 111,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 180,
+              "end": 199,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "llama",
+                "model": "llama",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "logits-apply",
+          "parent": "logits-project",
+          "number": "2.1.1.1",
+          "kind": "分支",
+          "title": "LogitsProcessor._apply_head()",
+          "summary": "真正选择词表投影计算路径，量化方法在加载时已绑定。",
+          "input": "hidden、lm_head.quant_method、head_dtype。",
+          "changes": "同 dtype 调 quant_method.apply；改变 head_dtype 的未量化分支使用 mm/F.linear。",
+          "output": "本 rank 的词表 logits。",
+          "resume": "返回 _get_logits，随后可能 TP gather。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 188,
+              "end": 190,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 136,
+              "end": 178,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "llama",
+                "model": "llama",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ],
+          "note": "量化后端由实际 checkpoint/config 决定；此节点不把默认 GEMM 套到所有模型。"
         }
       ]
     },
@@ -529,7 +865,7 @@
           "parent": "block",
           "number": "1.1.2.1.1",
           "kind": "调用",
-          "title": "DeepseekV2MLAAttention.forward() → self.mla_attn(...)",
+          "title": "DeepseekV2MLAAttention.forward()",
           "summary": "本层真实 Attention 实现。",
           "input": "归一化 hidden、positions；历史 KV 从 Attention backend 获取。",
           "changes": "把 positions、hidden_states、llama_4_scaling 交给 MultiHeadLatentAttentionWrapper；MLA 与 use_mha 分支不合并。",
@@ -554,6 +890,84 @@
           "targets": [
             {
               "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v2",
+                "model": "deepseek_v2",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "mla-wrapper",
+          "parent": "attention",
+          "number": "1.1.2.1.1.1",
+          "kind": "调用",
+          "title": "MultiHeadLatentAttentionWrapper.forward()",
+          "summary": "低秩 Q/KV 投影与 MLA attention 的拥有者。",
+          "input": "positions、hidden、可选 llama_4_scaling。",
+          "changes": "fused_qkv_a_proj → Q/KV Norm → q_b_proj → RoPE → mla_attn → o_proj。",
+          "output": "投影回 H 的 hidden。",
+          "resume": "返回 DeepseekV2MLAAttention，再回 Decoder。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1246,
+              "end": 1246,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/mla.py",
+              "line": 163,
+              "end": 255,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v2",
+                "model": "deepseek_v2",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "mla-cache-attn",
+          "parent": "mla-wrapper",
+          "number": "1.1.2.1.1.1.1",
+          "kind": "分支",
+          "title": "MLAAttention.forward()",
+          "summary": "用压缩 latent 与位置 K 写缓存，再执行 MLA。",
+          "input": "q、kv_c_normed、k_pe、output_shape、层 metadata。",
+          "changes": "direct-call 分支更新 cache 后调用 forward_impl；custom-op 分支显式建立更新依赖。",
+          "output": "Attention 的本地 head 输出。",
+          "resume": "返回 wrapper，继续 o_proj。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/mla.py",
+              "line": 244,
+              "end": 246,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/mla_attention.py",
+              "line": 813,
+              "end": 882,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
               "action": {
                 "mode": "deepseek_v2",
                 "model": "deepseek_v2",
@@ -698,6 +1112,124 @@
               }
             }
           ]
+        },
+        {
+          "id": "logits-process",
+          "parent": "head",
+          "number": "2.1",
+          "kind": "调用",
+          "title": "LogitsProcessor.forward()",
+          "summary": "投影与可选 soft-cap/scale 的公共入口。",
+          "input": "选定采样行 hidden、lm_head、可选 bias。",
+          "changes": "logits_as_input=False 时调用 _get_logits；随后应用配置的 soft-cap/scale。",
+          "output": "采样行的词表 logits，尚未采样。",
+          "resume": "返回模型 compute_logits，再返回 Runner。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1977,
+              "end": 1982,
+              "label": "模型 head 调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 98,
+              "end": 120,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v2",
+                "model": "deepseek_v2",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "logits-project",
+          "parent": "logits-process",
+          "number": "2.1.1",
+          "kind": "调用",
+          "title": "LogitsProcessor._get_logits()",
+          "summary": "每 rank 先投影本地词表分片，再按 TP 配置汇集。",
+          "input": "hidden、词表分片权重、skip_gather。",
+          "changes": "_apply_head → 条件 _gather_logits → 裁掉 padding 词表。",
+          "output": "本地或汇集后的有效词表 logits。",
+          "resume": "返回 forward 的 soft-cap/scale 段。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 109,
+              "end": 111,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 180,
+              "end": 199,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v2",
+                "model": "deepseek_v2",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "logits-apply",
+          "parent": "logits-project",
+          "number": "2.1.1.1",
+          "kind": "分支",
+          "title": "LogitsProcessor._apply_head()",
+          "summary": "真正选择词表投影计算路径，量化方法在加载时已绑定。",
+          "input": "hidden、lm_head.quant_method、head_dtype。",
+          "changes": "同 dtype 调 quant_method.apply；改变 head_dtype 的未量化分支使用 mm/F.linear。",
+          "output": "本 rank 的词表 logits。",
+          "resume": "返回 _get_logits，随后可能 TP gather。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 188,
+              "end": 190,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 136,
+              "end": 178,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v2",
+                "model": "deepseek_v2",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ],
+          "note": "量化后端由实际 checkpoint/config 决定；此节点不把默认 GEMM 套到所有模型。"
         }
       ]
     },
@@ -921,6 +1453,84 @@
           ]
         },
         {
+          "id": "sparse-mha-choice",
+          "parent": "sparse",
+          "number": "1.1.1.1.1.1.1",
+          "kind": "分支",
+          "title": "MLAAttention._use_sparse_mha() [继承]",
+          "summary": "当前 batch 能否使用 sparse/dense MHA prefill 的真实条件判断。",
+          "input": "prefill metadata、backend 能力、workspace 与 force_mqa 配置。",
+          "changes": "检查 hisparse、prefill、masked MHA 条件，返回是否使用 MHA。",
+          "output": "use_mha 布尔结果。",
+          "resume": "返回 _sparse_indexer_and_attn，选择 MHA 或 MQA 分支。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/deepseek_v32/attention.py",
+              "line": 556,
+              "end": 558,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/mla_attention.py",
+              "line": 1193,
+              "end": 1218,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "glm53",
+                "model": "glm53",
+                "component": "indexer",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "sparse-mha-execute",
+          "parent": "sparse",
+          "number": "1.1.1.1.1.1.2",
+          "kind": "分支",
+          "title": "MLAAttention.forward_impl() [MHA 分支继承]",
+          "summary": "当前分支选择 MHA 时复用 MLA attention 的调度实现。",
+          "input": "Q、压缩 K、位置 K、KV cache、metadata、output。",
+          "changes": "分离有效 token/prefill/decode，调用所选 backend 的 MHA/MQA 实现并写 output。",
+          "output": "head Attention 输出。",
+          "resume": "返回 _sparse_indexer_and_attn；MQA 直调分支不会先进入本节点。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/deepseek_v32/attention.py",
+              "line": 564,
+              "end": 566,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/mla_attention.py",
+              "line": 884,
+              "end": 1191,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "glm53",
+                "model": "glm53",
+                "component": "indexer",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
           "id": "mlp",
           "parent": "block",
           "number": "1.1.1.1.2",
@@ -1029,6 +1639,124 @@
               }
             }
           ]
+        },
+        {
+          "id": "logits-process",
+          "parent": "head",
+          "number": "2.1",
+          "kind": "调用",
+          "title": "LogitsProcessor.forward()",
+          "summary": "投影与可选 soft-cap/scale 的公共入口。",
+          "input": "选定采样行 hidden、lm_head、可选 bias。",
+          "changes": "logits_as_input=False 时调用 _get_logits；随后应用配置的 soft-cap/scale。",
+          "output": "采样行的词表 logits，尚未采样。",
+          "resume": "返回模型 compute_logits，再返回 Runner。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1977,
+              "end": 1982,
+              "label": "模型 head 调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 98,
+              "end": 120,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "glm53",
+                "model": "glm53",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "logits-project",
+          "parent": "logits-process",
+          "number": "2.1.1",
+          "kind": "调用",
+          "title": "LogitsProcessor._get_logits()",
+          "summary": "每 rank 先投影本地词表分片，再按 TP 配置汇集。",
+          "input": "hidden、词表分片权重、skip_gather。",
+          "changes": "_apply_head → 条件 _gather_logits → 裁掉 padding 词表。",
+          "output": "本地或汇集后的有效词表 logits。",
+          "resume": "返回 forward 的 soft-cap/scale 段。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 109,
+              "end": 111,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 180,
+              "end": 199,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "glm53",
+                "model": "glm53",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "logits-apply",
+          "parent": "logits-project",
+          "number": "2.1.1.1",
+          "kind": "分支",
+          "title": "LogitsProcessor._apply_head()",
+          "summary": "真正选择词表投影计算路径，量化方法在加载时已绑定。",
+          "input": "hidden、lm_head.quant_method、head_dtype。",
+          "changes": "同 dtype 调 quant_method.apply；改变 head_dtype 的未量化分支使用 mm/F.linear。",
+          "output": "本 rank 的词表 logits。",
+          "resume": "返回 _get_logits，随后可能 TP gather。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 188,
+              "end": 190,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 136,
+              "end": 178,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "glm53",
+                "model": "glm53",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ],
+          "note": "量化后端由实际 checkpoint/config 决定；此节点不把默认 GEMM 套到所有模型。"
         }
       ]
     },
@@ -1042,6 +1770,11 @@
           "url": "https://github.com/vllm-project/vllm-ascend",
           "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875",
           "label": "vLLM-Ascend"
+        },
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
         }
       },
       "nodes": [
@@ -1270,6 +2003,286 @@
           ]
         },
         {
+          "id": "dsa-dispatch",
+          "parent": "attn",
+          "number": "1.1.2.1.2.1",
+          "kind": "调用",
+          "title": "dsa_v41_forward()",
+          "summary": "已注册 PrivateUse1 custom op 按层名定位实际对象。",
+          "input": "hidden、稳定地址 output、v41_layer_name。",
+          "changes": "get_forward_context → no_compile_layers[layer_name] → attn.v41_impl.forward。",
+          "output": "在 output 中写入 Attention/O-proj 结果。",
+          "resume": "回到 DeepseekV41Attention.forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v41/model.py",
+              "line": 770,
+              "end": 771,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/dsa_v41.py",
+              "line": 56,
+              "end": 64,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/dsa_v41.py",
+              "line": 75,
+              "end": 81,
+              "label": "算子注册绑定"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "dsa-impl",
+          "parent": "dsa-dispatch",
+          "number": "1.1.2.1.2.1.1",
+          "kind": "调用",
+          "title": "AscendDSAV41Impl.forward()",
+          "summary": "按本层 Full/Reindex/Reuse metadata 执行，不把角色串行相加。",
+          "input": "attn 对象、hidden、forward_context.attn_metadata、output。",
+          "changes": "准备输入/缓存 → 选 sparse indices → attention → inverse RoPE → O projection。",
+          "output": "本层 output hidden。",
+          "resume": "返回 custom op；HC post 随后消费。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/dsa_v41.py",
+              "line": 64,
+              "end": 64,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/dsa_v41.py",
+              "line": 734,
+              "end": 761,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "dsa-prepare",
+          "parent": "dsa-impl",
+          "number": "1.1.2.1.2.1.1.1",
+          "kind": "调用",
+          "title": "AscendDSAV41Impl._prepare_inputs_and_caches()",
+          "summary": "准备 Q / KV 与缓存，保持实际实现内的条件分支。",
+          "input": "本层 hidden / q / metadata 与共享状态。",
+          "changes": "转调 _preprocess，后者按配置选择串行或多流准备，并维护共享缓存。",
+          "output": "q、qr、prepared_indexer",
+          "resume": "返回 AscendDSAV41Impl.forward 的下一语句。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/dsa_v41.py",
+              "line": 745,
+              "end": 747,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/dsa_v41.py",
+              "line": 391,
+              "end": 392,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "dsa-preprocess",
+          "parent": "dsa-prepare",
+          "number": "1.1.2.1.2.1.1.1.1",
+          "kind": "分支",
+          "title": "AscendDSAV41Impl._preprocess()",
+          "summary": "普通与多流预处理的实际共同入口。",
+          "input": "query_hidden、cache_hidden、query/cache metadata、投影/压缩参数。",
+          "changes": "按 overlap 配置选择 multistream_preprocess 或串行 Q/KV；再处理 RoPE、indexer 与源层压缩。",
+          "output": "Q、QR、prepared_indexer 及 cache 副作用。",
+          "resume": "返回 _prepare_inputs_and_caches，再进入 indices 选择。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/dsa_v41.py",
+              "line": 391,
+              "end": 392,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/dsa_v41.py",
+              "line": 394,
+              "end": 433,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "dsa-multistream",
+          "parent": "dsa-preprocess",
+          "number": "1.1.2.1.2.1.1.1.1.1",
+          "kind": "分支",
+          "title": "AscendDSAV41Impl.multistream_preprocess() [overlap 分支]",
+          "summary": "仅 multistream_dsv4_dsa_overlap 且 cache_hidden 非空时执行。",
+          "input": "query/cache hidden、KV RoPE、cache metadata 与 share_inputs。",
+          "changes": "协调辅助流与主流，生成 Q/QR 并安排 KV cache 更新。",
+          "output": "q、qr 与受流依赖保护的缓存更新。",
+          "resume": "返回 _preprocess，继续 Query RoPE 与 indexer 准备。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/dsa_v41.py",
+              "line": 403,
+              "end": 405,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/dsa_v41.py",
+              "line": 484,
+              "end": 539,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "dsa-select",
+          "parent": "dsa-impl",
+          "number": "1.1.2.1.2.1.1.2",
+          "kind": "调用",
+          "title": "AscendDSAV41Impl._select_sparse_indices()",
+          "summary": "选择或复用稀疏索引，保持实际实现内的条件分支。",
+          "input": "本层 hidden / q / metadata 与共享状态。",
+          "changes": "依据 layer role 决定全范围索引、候选池重选或复用已有 indices。",
+          "output": "本层 compressed_indices",
+          "resume": "返回 AscendDSAV41Impl.forward 的下一语句。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/dsa_v41.py",
+              "line": 752,
+              "end": 754,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/dsa_v41.py",
+              "line": 611,
+              "end": 655,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "dsa-attention",
+          "parent": "dsa-impl",
+          "number": "1.1.2.1.2.1.1.3",
+          "kind": "调用",
+          "title": "AscendDSAV41Impl._forward_attention()",
+          "summary": "执行窗口与压缩 KV 注意力，保持实际实现内的条件分支。",
+          "input": "本层 hidden / q / metadata 与共享状态。",
+          "changes": "组织窗口/压缩 cache 和 sparse indices，调用 npu_sparse_flash_mla。",
+          "output": "attention_output",
+          "resume": "返回 AscendDSAV41Impl.forward 的下一语句。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/dsa_v41.py",
+              "line": 755,
+              "end": 757,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/dsa_v41.py",
+              "line": 657,
+              "end": 727,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
           "id": "attnpost",
           "parent": "layer",
           "number": "1.1.2.1.3",
@@ -1460,6 +2473,184 @@
               }
             }
           ]
+        },
+        {
+          "id": "logits-process",
+          "parent": "head",
+          "number": "2.1",
+          "kind": "调用",
+          "title": "AscendLogitsProcessor.forward() [继承 LogitsProcessor]",
+          "summary": "投影与可选 soft-cap/scale 的公共入口。",
+          "input": "选定采样行 hidden、lm_head、可选 bias。",
+          "changes": "logits_as_input=False 时调用 _get_logits；随后应用配置的 soft-cap/scale。",
+          "output": "采样行的词表 logits，尚未采样。",
+          "resume": "返回模型 compute_logits，再返回 Runner。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v41/model.py",
+              "line": 1787,
+              "end": 1792,
+              "label": "模型 head 调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 98,
+              "end": 120,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/utils.py",
+              "line": 881,
+              "end": 884,
+              "label": "插件替换绑定"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/vocab_parallel_embedding.py",
+              "line": 542,
+              "end": 547,
+              "label": "继承关系"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "logits-project",
+          "parent": "logits-process",
+          "number": "2.1.1",
+          "kind": "调用",
+          "title": "AscendLogitsProcessor._get_logits()",
+          "summary": "Ascend 按 lm_head.parallel_mode 选择实际词表路径。",
+          "input": "hidden、词表分片权重、skip_gather。",
+          "changes": "skip_gather 直接投影；PCP_X_TP、FINE_GRAINED、normal 三种模式互斥。",
+          "output": "本地或汇集后的有效词表 logits。",
+          "resume": "返回继承的 LogitsProcessor.forward。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 109,
+              "end": 111,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/vocab_parallel_embedding.py",
+              "line": 556,
+              "end": 576,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "logits-normal",
+          "parent": "logits-project",
+          "number": "2.1.1.1",
+          "kind": "分支",
+          "title": "AscendLogitsProcessor._get_logits_normal() [普通 head]",
+          "summary": "非 PCP_X_TP / FINE_GRAINED 且非 skip_gather 的分支。",
+          "input": "hidden、普通/复制词表 head、bias。",
+          "changes": "_apply_head；tp_size>1 才 _gather_logits；裁掉 padding 词表。",
+          "output": "有效词表 logits。",
+          "resume": "返回 _get_logits 与 inherited forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/vocab_parallel_embedding.py",
+              "line": 576,
+              "end": 576,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/vocab_parallel_embedding.py",
+              "line": 613,
+              "end": 631,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "logits-apply",
+          "parent": "logits-normal",
+          "number": "2.1.1.1.1",
+          "kind": "分支",
+          "title": "AscendLogitsProcessor._apply_head() → LogitsProcessor._apply_head()",
+          "summary": "真正选择词表投影计算路径，量化方法在加载时已绑定。",
+          "input": "hidden、lm_head.quant_method、head_dtype。",
+          "changes": "同 dtype 调 quant_method.apply；改变 head_dtype 的未量化分支使用 mm/F.linear。",
+          "output": "本 rank 的词表 logits。",
+          "resume": "返回 _get_logits，随后可能 TP gather。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/vocab_parallel_embedding.py",
+              "line": 619,
+              "end": 621,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/vocab_parallel_embedding.py",
+              "line": 548,
+              "end": 554,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 136,
+              "end": 178,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ],
+          "note": "量化后端由实际 checkpoint/config 决定；此节点不把默认 GEMM 套到所有模型。"
         }
       ]
     },
@@ -1473,6 +2664,11 @@
           "url": "https://github.com/vllm-project/vllm-ascend",
           "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875",
           "label": "vLLM-Ascend"
+        },
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
         }
       },
       "nodes": [
@@ -1701,6 +2897,130 @@
           ]
         },
         {
+          "id": "v4-wrapper",
+          "parent": "attn",
+          "number": "1.1.2.1.2.1",
+          "kind": "调用",
+          "title": "AscendDeepseekSparseAttention.forward()",
+          "summary": "V4 Attention 的 dsa_attn 对象。",
+          "input": "positions、hidden；缓存/metadata 由 forward context 提供。",
+          "changes": "分配 output 并调用 torch.ops.vllm.dsa_forward。",
+          "output": "O projection 后的 hidden。",
+          "resume": "返回 DeepseekV4Attention，然后 hc_post。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v4/model.py",
+              "line": 666,
+              "end": 666,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v4/model.py",
+              "line": 637,
+              "end": 658,
+              "label": "dsa_attn 类型绑定"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/dsa.py",
+              "line": 151,
+              "end": 168,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "v4-dispatch",
+          "parent": "v4-wrapper",
+          "number": "1.1.2.1.2.1.1",
+          "kind": "调用",
+          "title": "dsa_forward()",
+          "summary": "V4 的 custom-op handler 与 V4.1 handler 独立。",
+          "input": "hidden、need_gather_q_kv、output、layer_name。",
+          "changes": "从 no_compile_layers 取对象，构造 cache 后调用所选 impl.forward；profile 无 metadata 时走独立分支。",
+          "output": "O projection 后的 output 副作用。",
+          "resume": "返回 AscendDeepseekSparseAttention.forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/dsa.py",
+              "line": 165,
+              "end": 167,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/dsa.py",
+              "line": 172,
+              "end": 211,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "v4-cache",
+          "parent": "v4-dispatch",
+          "number": "1.1.2.1.2.1.1.1",
+          "kind": "调用",
+          "title": "_build_kv_cache()",
+          "summary": "真实运行的 dsa_forward 用当前层与上下文组装 cache 参数。",
+          "input": "本层 Attention 对象与 forward_context。",
+          "changes": "收集本层所需 SWA/压缩/索引缓存引用。",
+          "output": "传给 backend impl.forward 的 kv_cache。",
+          "resume": "返回 dsa_forward；随后按 need_gather_q_kv 分支调用后端。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/dsa.py",
+              "line": 198,
+              "end": 200,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/dsa.py",
+              "line": 232,
+              "end": 284,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
           "id": "attnpost",
           "parent": "layer",
           "number": "1.1.2.1.3",
@@ -1891,6 +3211,184 @@
               }
             }
           ]
+        },
+        {
+          "id": "logits-process",
+          "parent": "head",
+          "number": "2.1",
+          "kind": "调用",
+          "title": "AscendLogitsProcessor.forward() [继承 LogitsProcessor]",
+          "summary": "投影与可选 soft-cap/scale 的公共入口。",
+          "input": "选定采样行 hidden、lm_head、可选 bias。",
+          "changes": "logits_as_input=False 时调用 _get_logits；随后应用配置的 soft-cap/scale。",
+          "output": "采样行的词表 logits，尚未采样。",
+          "resume": "返回模型 compute_logits，再返回 Runner。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v4/model.py",
+              "line": 1104,
+              "end": 1109,
+              "label": "模型 head 调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 98,
+              "end": 120,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/utils.py",
+              "line": 881,
+              "end": 884,
+              "label": "插件替换绑定"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/vocab_parallel_embedding.py",
+              "line": 542,
+              "end": 547,
+              "label": "继承关系"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "logits-project",
+          "parent": "logits-process",
+          "number": "2.1.1",
+          "kind": "调用",
+          "title": "AscendLogitsProcessor._get_logits()",
+          "summary": "Ascend 按 lm_head.parallel_mode 选择实际词表路径。",
+          "input": "hidden、词表分片权重、skip_gather。",
+          "changes": "skip_gather 直接投影；PCP_X_TP、FINE_GRAINED、normal 三种模式互斥。",
+          "output": "本地或汇集后的有效词表 logits。",
+          "resume": "返回继承的 LogitsProcessor.forward。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 109,
+              "end": 111,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/vocab_parallel_embedding.py",
+              "line": 556,
+              "end": 576,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "logits-normal",
+          "parent": "logits-project",
+          "number": "2.1.1.1",
+          "kind": "分支",
+          "title": "AscendLogitsProcessor._get_logits_normal() [普通 head]",
+          "summary": "非 PCP_X_TP / FINE_GRAINED 且非 skip_gather 的分支。",
+          "input": "hidden、普通/复制词表 head、bias。",
+          "changes": "_apply_head；tp_size>1 才 _gather_logits；裁掉 padding 词表。",
+          "output": "有效词表 logits。",
+          "resume": "返回 _get_logits 与 inherited forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/vocab_parallel_embedding.py",
+              "line": 576,
+              "end": 576,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/vocab_parallel_embedding.py",
+              "line": 613,
+              "end": 631,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "logits-apply",
+          "parent": "logits-normal",
+          "number": "2.1.1.1.1",
+          "kind": "分支",
+          "title": "AscendLogitsProcessor._apply_head() → LogitsProcessor._apply_head()",
+          "summary": "真正选择词表投影计算路径，量化方法在加载时已绑定。",
+          "input": "hidden、lm_head.quant_method、head_dtype。",
+          "changes": "同 dtype 调 quant_method.apply；改变 head_dtype 的未量化分支使用 mm/F.linear。",
+          "output": "本 rank 的词表 logits。",
+          "resume": "返回 _get_logits，随后可能 TP gather。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/vocab_parallel_embedding.py",
+              "line": 619,
+              "end": 621,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/vocab_parallel_embedding.py",
+              "line": 548,
+              "end": 554,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 136,
+              "end": 178,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ],
+          "note": "量化后端由实际 checkpoint/config 决定；此节点不把默认 GEMM 套到所有模型。"
         }
       ]
     },
@@ -2100,6 +3598,45 @@
           ]
         },
         {
+          "id": "kda-core",
+          "parent": "kda",
+          "number": "1.1.1.2.1.1",
+          "kind": "分支",
+          "title": "KimiK3DeltaAttention._forward()",
+          "summary": "投影后的 KDA 核心按 prefill/decode metadata 分派。",
+          "input": "混合 Q/K/V/gate 参数、卷积/递推状态与 output buffer。",
+          "changes": "按 batch 形态选择卷积与 KDA 更新实现，维护 state cache 后做输出归一化。",
+          "output": "KDA 中间输出，随后还要 o_proj。",
+          "resume": "返回 KimiK3DeltaAttention.forward；与 MLA 分支互斥。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/kimi_k3/nvidia/kda.py",
+              "line": 891,
+              "end": 893,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/models/kimi_k3/nvidia/kda.py",
+              "line": 904,
+              "end": 1372,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "kimi_k3",
+                "model": "kimi_k3",
+                "component": "kda",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
           "id": "mla",
           "parent": "dispatch",
           "number": "1.1.1.2.2",
@@ -2122,6 +3659,84 @@
           "targets": [
             {
               "label": "查看对应流程",
+              "action": {
+                "mode": "kimi_k3",
+                "model": "kimi_k3",
+                "component": "mla",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "mla-qlora",
+          "parent": "mla",
+          "number": "1.1.1.2.2.1",
+          "kind": "分支",
+          "title": "MultiHeadLatentAttention._forward_q_lora()",
+          "summary": "仅 q_lora_rank 非空的 MLA 层走此分支。",
+          "input": "hidden、positions、低秩投影与可选输出门参数。",
+          "changes": "投影 qkv_lora，按门控多流条件进入 _apply_q_lora_attention。",
+          "output": "attn_out 与可选 gate。",
+          "resume": "返回 forward，门控后执行 o_proj。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/kimi_k3/nvidia/mla.py",
+              "line": 620,
+              "end": 622,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/models/kimi_k3/nvidia/mla.py",
+              "line": 538,
+              "end": 585,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "kimi_k3",
+                "model": "kimi_k3",
+                "component": "mla",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "mla-expand",
+          "parent": "mla-qlora",
+          "number": "1.1.1.2.2.1.1",
+          "kind": "调用",
+          "title": "MultiHeadLatentAttention._apply_q_lora_attention()",
+          "summary": "从低秩 Q/KV 到实际 MLA 查询。",
+          "input": "qkv_lora、positions、hidden。",
+          "changes": "split → fused Q/KV RMSNorm → q_b_proj → self._attention。",
+          "output": "attn_out。",
+          "resume": "回到 _forward_q_lora；output gate 不在此方法中执行。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/kimi_k3/nvidia/mla.py",
+              "line": 584,
+              "end": 585,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/models/kimi_k3/nvidia/mla.py",
+              "line": 509,
+              "end": 536,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
               "action": {
                 "mode": "kimi_k3",
                 "model": "kimi_k3",
@@ -2258,6 +3873,124 @@
               }
             }
           ]
+        },
+        {
+          "id": "logits-process",
+          "parent": "logits",
+          "number": "2.1",
+          "kind": "调用",
+          "title": "LogitsProcessor.forward()",
+          "summary": "投影与可选 soft-cap/scale 的公共入口。",
+          "input": "选定采样行 hidden、lm_head、可选 bias。",
+          "changes": "logits_as_input=False 时调用 _get_logits；随后应用配置的 soft-cap/scale。",
+          "output": "采样行的词表 logits，尚未采样。",
+          "resume": "返回模型 compute_logits，再返回 Runner。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/kimi_k3/nvidia/model.py",
+              "line": 1689,
+              "end": 1696,
+              "label": "模型 head 调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 98,
+              "end": 120,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "kimi_k3",
+                "model": "kimi_k3",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "logits-project",
+          "parent": "logits-process",
+          "number": "2.1.1",
+          "kind": "调用",
+          "title": "LogitsProcessor._get_logits()",
+          "summary": "每 rank 先投影本地词表分片，再按 TP 配置汇集。",
+          "input": "hidden、词表分片权重、skip_gather。",
+          "changes": "_apply_head → 条件 _gather_logits → 裁掉 padding 词表。",
+          "output": "本地或汇集后的有效词表 logits。",
+          "resume": "返回 forward 的 soft-cap/scale 段。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 109,
+              "end": 111,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 180,
+              "end": 199,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "kimi_k3",
+                "model": "kimi_k3",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "logits-apply",
+          "parent": "logits-project",
+          "number": "2.1.1.1",
+          "kind": "分支",
+          "title": "LogitsProcessor._apply_head()",
+          "summary": "真正选择词表投影计算路径，量化方法在加载时已绑定。",
+          "input": "hidden、lm_head.quant_method、head_dtype。",
+          "changes": "同 dtype 调 quant_method.apply；改变 head_dtype 的未量化分支使用 mm/F.linear。",
+          "output": "本 rank 的词表 logits。",
+          "resume": "返回 _get_logits，随后可能 TP gather。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 188,
+              "end": 190,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 136,
+              "end": 178,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "kimi_k3",
+                "model": "kimi_k3",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ],
+          "note": "量化后端由实际 checkpoint/config 决定；此节点不把默认 GEMM 套到所有模型。"
         }
       ]
     },
@@ -2271,6 +4004,11 @@
           "url": "https://github.com/vllm-project/vllm-ascend",
           "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875",
           "label": "vLLM-Ascend"
+        },
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
         }
       },
       "nodes": [
@@ -2474,6 +4212,162 @@
           ]
         },
         {
+          "id": "msa-prepare",
+          "parent": "attention",
+          "number": "1.1.2.1.1.1",
+          "kind": "分支",
+          "title": "MiniMaxM3SparseAttention._sparse_prepare()",
+          "summary": "_can_fuse_sparse_prepare=False 时的普通准备分支。",
+          "input": "positions、hidden 与 QKV/indexer 权重。",
+          "changes": "QKV/indexer 投影、Q/K Norm 与 RoPE，返回主/索引 QK。",
+          "output": "q,k,v,index_q,index_k。",
+          "resume": "回到 forward 的 minimax_m3_sparse_forward 调用。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/minimax_m3.py",
+              "line": 555,
+              "end": 557,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/minimax_m3.py",
+              "line": 405,
+              "end": 465,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "msa-dispatch",
+          "parent": "attention",
+          "number": "1.1.2.1.1.2",
+          "kind": "分支",
+          "title": "minimax_m3_sparse_forward()",
+          "summary": "普通稀疏 custom op 的注册实现；融合分支使用另一算子。",
+          "input": "q/k/v、index Q/K、output、layer_name。",
+          "changes": "从 context 查 layer，然后 layer._run_sparse_attention。",
+          "output": "写入 attn_output。",
+          "resume": "返回模型 forward，继续 o_proj。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/minimax_m3.py",
+              "line": 557,
+              "end": 559,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/msa_m3.py",
+              "line": 1229,
+              "end": 1246,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "msa-run",
+          "parent": "msa-dispatch",
+          "number": "1.1.2.1.1.2.1",
+          "kind": "调用",
+          "title": "MiniMaxM3SparseAttention._run_sparse_attention()",
+          "summary": "缓存写入、索引与注意力的顺序拥有者。",
+          "input": "主 K/V、索引 K、query、index_query。",
+          "changes": "_insert_kv → indexer → impl.forward。",
+          "output": "写完本轮 cache 与 Attention output。",
+          "resume": "返回 custom op 后执行 o_proj。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/msa_m3.py",
+              "line": 1246,
+              "end": 1246,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/minimax_m3.py",
+              "line": 467,
+              "end": 479,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "msa-cache",
+          "parent": "msa-run",
+          "number": "1.1.2.1.1.2.1.1",
+          "kind": "调用",
+          "title": "MiniMaxM3SparseAttention._insert_kv()",
+          "summary": "把本轮主 KV 与索引 K 写入对应缓存。",
+          "input": "key、value、index_key 与层 metadata。",
+          "changes": "按缓存 dtype/slot mapping 更新主 cache 与索引 cache。",
+          "output": "后续 indexer/attention 可读取的新 cache。",
+          "resume": "返回 _run_sparse_attention，下一句才调用 indexer。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/minimax_m3.py",
+              "line": 477,
+              "end": 479,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/minimax_m3.py",
+              "line": 366,
+              "end": 403,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
           "id": "postnorm",
           "parent": "block",
           "number": "1.1.2.1.2",
@@ -2608,6 +4502,184 @@
               }
             }
           ]
+        },
+        {
+          "id": "logits-process",
+          "parent": "head",
+          "number": "2.1",
+          "kind": "调用",
+          "title": "AscendLogitsProcessor.forward() [继承 LogitsProcessor]",
+          "summary": "投影与可选 soft-cap/scale 的公共入口。",
+          "input": "选定采样行 hidden、lm_head、可选 bias。",
+          "changes": "logits_as_input=False 时调用 _get_logits；随后应用配置的 soft-cap/scale。",
+          "output": "采样行的词表 logits，尚未采样。",
+          "resume": "返回模型 compute_logits，再返回 Runner。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/minimax_m3.py",
+              "line": 1553,
+              "end": 1558,
+              "label": "模型 head 调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 98,
+              "end": 120,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/utils.py",
+              "line": 881,
+              "end": 884,
+              "label": "插件替换绑定"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/vocab_parallel_embedding.py",
+              "line": 542,
+              "end": 547,
+              "label": "继承关系"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "logits-project",
+          "parent": "logits-process",
+          "number": "2.1.1",
+          "kind": "调用",
+          "title": "AscendLogitsProcessor._get_logits()",
+          "summary": "Ascend 按 lm_head.parallel_mode 选择实际词表路径。",
+          "input": "hidden、词表分片权重、skip_gather。",
+          "changes": "skip_gather 直接投影；PCP_X_TP、FINE_GRAINED、normal 三种模式互斥。",
+          "output": "本地或汇集后的有效词表 logits。",
+          "resume": "返回继承的 LogitsProcessor.forward。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 109,
+              "end": 111,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/vocab_parallel_embedding.py",
+              "line": 556,
+              "end": 576,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "logits-normal",
+          "parent": "logits-project",
+          "number": "2.1.1.1",
+          "kind": "分支",
+          "title": "AscendLogitsProcessor._get_logits_normal() [普通 head]",
+          "summary": "非 PCP_X_TP / FINE_GRAINED 且非 skip_gather 的分支。",
+          "input": "hidden、普通/复制词表 head、bias。",
+          "changes": "_apply_head；tp_size>1 才 _gather_logits；裁掉 padding 词表。",
+          "output": "有效词表 logits。",
+          "resume": "返回 _get_logits 与 inherited forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/vocab_parallel_embedding.py",
+              "line": 576,
+              "end": 576,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/vocab_parallel_embedding.py",
+              "line": 613,
+              "end": 631,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "logits-apply",
+          "parent": "logits-normal",
+          "number": "2.1.1.1.1",
+          "kind": "分支",
+          "title": "AscendLogitsProcessor._apply_head() → LogitsProcessor._apply_head()",
+          "summary": "真正选择词表投影计算路径，量化方法在加载时已绑定。",
+          "input": "hidden、lm_head.quant_method、head_dtype。",
+          "changes": "同 dtype 调 quant_method.apply；改变 head_dtype 的未量化分支使用 mm/F.linear。",
+          "output": "本 rank 的词表 logits。",
+          "resume": "返回 _get_logits，随后可能 TP gather。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/vocab_parallel_embedding.py",
+              "line": 619,
+              "end": 621,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/vocab_parallel_embedding.py",
+              "line": 548,
+              "end": 554,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/logits_processor.py",
+              "line": 136,
+              "end": 178,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ],
+          "note": "量化后端由实际 checkpoint/config 决定；此节点不把默认 GEMM 套到所有模型。"
         }
       ]
     },
@@ -2679,6 +4751,45 @@
           "targets": [
             {
               "label": "查看对应流程",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "draft",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "draft-context-kv",
+          "parent": "kv",
+          "number": "1.2",
+          "kind": "分支",
+          "title": "DSparkMiniMaxAttention.kv_proj_only()",
+          "summary": "未命中 fused/stacked KV 写入优化时，逐草稿层准备 context KV。",
+          "input": "已投影 target hidden、草稿层 QKV 权重。",
+          "changes": "可切片时只做 K/V F.linear；否则完整投影后丢弃 Q。",
+          "output": "k,v；随后 apply_k_norm、apply_k_rope，再写 cache。",
+          "resume": "返回 write_target_hidden_kv 的当前 layer 迭代。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/dspark.py",
+              "line": 914,
+              "end": 916,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/dspark_minimax.py",
+              "line": 43,
+              "end": 64,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
               "action": {
                 "mode": "minimax",
                 "model": "minimax",
@@ -2796,6 +4907,137 @@
           "targets": [
             {
               "label": "查看对应流程",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "draft",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "draft-decoder",
+          "parent": "layer",
+          "number": "2.2.1",
+          "kind": "调用",
+          "title": "MiniMaxM3DecoderLayer.forward() [DSparkMiniMaxDecoder 继承]",
+          "summary": "草稿 decoder 继承模型层的边界/残差处理，attention_cls 被替换。",
+          "input": "query-block hidden、positions、forward_batch。",
+          "changes": "attention boundary prepare → self_attn → finish → FFN boundary → mlp。",
+          "output": "下一草稿层 hidden。",
+          "resume": "返回 DSparkMiniMaxLayer，再回草稿层循环。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/dspark_minimax.py",
+              "line": 94,
+              "end": 96,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/dspark_minimax.py",
+              "line": 78,
+              "end": 79,
+              "label": "继承与 attention_cls 绑定"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/minimax_m3.py",
+              "line": 1808,
+              "end": 1836,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "draft",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "draft-attention",
+          "parent": "draft-decoder",
+          "number": "2.2.1.1",
+          "kind": "调用",
+          "title": "MiniMaxM3Attention.forward() [DSparkMiniMaxAttention 继承]",
+          "summary": "查询块是 ENCODER_ONLY attention；不套用 target 因果查询规则。",
+          "input": "positions、query-block hidden、forward_batch。",
+          "changes": "按平台 prepare/prepare_npu，再调用 forward_core。",
+          "output": "投影后的草稿 Attention 输出。",
+          "resume": "返回 decoder 的 attention boundary.finish。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/minimax_m3.py",
+              "line": 1824,
+              "end": 1826,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/dspark_minimax.py",
+              "line": 32,
+              "end": 41,
+              "label": "继承与查询块类型"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/minimax_m3.py",
+              "line": 1654,
+              "end": 1672,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "draft",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "draft-attention-core",
+          "parent": "draft-attention",
+          "number": "2.2.1.1.1",
+          "kind": "分支",
+          "title": "MiniMaxM3Attention.forward_core()",
+          "summary": "准备阶段产生的 Q/K/V 交给所选 attention backend。",
+          "input": "准备后的 inner_state 与 forward_batch。",
+          "changes": "按 sparse/dense 配置调用 self.attn，再 o_proj；稀疏索引输出分支按配置处理。",
+          "output": "草稿 Attention 的 hidden。",
+          "resume": "返回 forward，再返回 decoder。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/minimax_m3.py",
+              "line": 1672,
+              "end": 1672,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/minimax_m3.py",
+              "line": 1625,
+              "end": 1652,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
               "action": {
                 "mode": "minimax",
                 "model": "minimax",

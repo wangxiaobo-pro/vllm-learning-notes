@@ -29,9 +29,9 @@
       <nav class="cw-nav" aria-label="阅读方式"><button type="button" data-cw-view="chain">01 整体调用链</button><button type="button" data-cw-view="visual">02 可视化执行</button></nav>
       <p class="cw-error" role="alert" hidden></p>
       <section class="cw-chain"><div class="cw-variant"><label>实现与场景 <select aria-label="选择调用链实现"></select></label><p class="cw-scope-text"></p><details class="cw-scope"><summary>源码仓库与固定 commit</summary><div class="cw-repositories"></div></details></div>
-      <p class="cw-guide">点 ＋ 展开子调用，点名称查看输入、状态变化与返回续点。「动作」「分支」「循环」表示控制块；异步提交与完成回报分开标记。</p>
-      <div class="cw-layout"><section class="cw-tree-panel" aria-label="源码调用树"><div class="cw-tools"><strong></strong><div><button type="button" data-cw-expand>全部展开</button> <button type="button" data-cw-fold>只看主链</button></div></div><div class="cw-tree-scroll"><ol class="cw-tree"></ol></div></section>
-      <article class="cw-detail" tabindex="-1" aria-labelledby="cw-node-title"><div class="cw-kicker"></div><h2 id="cw-node-title"></h2><p class="cw-summary"></p><dl class="cw-data"></dl><p class="cw-note" hidden></p>
+      <p class="cw-guide">默认展开三层，点 ＋ 继续跟入子调用。父子缩进表示调用或明确标记的控制块；异步提交与消费分别说明。点名称查看数据变化，沿详情中的调用路径返回上层。</p>
+      <div class="cw-layout"><section class="cw-tree-panel" aria-label="源码调用树"><div class="cw-tools"><strong></strong><div><button type="button" data-cw-depth>展开三层</button> <button type="button" data-cw-expand>全部展开</button> <button type="button" data-cw-fold>只看主链</button></div></div><div class="cw-tree-scroll"><ol class="cw-tree"></ol></div></section>
+      <article class="cw-detail" tabindex="-1" aria-labelledby="cw-node-title"><nav class="cw-path" aria-label="当前调用路径"></nav><div class="cw-kicker"></div><h2 id="cw-node-title"></h2><p class="cw-summary"></p><dl class="cw-data"></dl><p class="cw-note" hidden></p>
       <section class="cw-evidence"><h3>源码依据 · 行号属于所示 commit</h3><div></div></section><section class="cw-targets"><h3>进入可视化执行</h3><p>按下列入口定位现有图中的对应步骤。</p><div></div></section></article></div></section>
       <div class="cw-context" tabindex="-1" hidden></div>`;
     document.body.insertBefore(root,original[0] || dataElement);
@@ -81,8 +81,13 @@
       }
       lastRoute = routeKey();
     }
+    function depthOf(node) {
+      let depth = 1;
+      while (node.parent !== null) { node = nodeById(node.parent); depth++; }
+      return depth;
+    }
     function resetTree() {
-      collapsed = new Set(variant.nodes.filter(node => node.parent !== null).map(node => node.id));
+      collapsed = new Set(variant.nodes.filter(node => depthOf(node) >= 3).map(node => node.id));
       revealSelected();
     }
     function revealSelected() {
@@ -102,16 +107,26 @@
             branch.setAttribute('aria-expanded',!collapsed.has(node.id)); branch.setAttribute('aria-label',(collapsed.has(node.id) ? '展开 ' : '收起 ') + node.title);
           } else branch.setAttribute('aria-hidden','true');
           const button = make('button',undefined,'cw-node'); button.type = 'button'; button.dataset.cwNode = node.id;
-          const label = make('span'); label.append(make('code',node.title),make('small','[' + node.kind + '] ' + node.summary));
+          const childCount = variant.nodes.filter(child => child.parent === node.id).length;
+          const label = make('span'); label.append(make('code',node.title),make('small','[' + node.kind + '] ' + node.summary + (childCount ? ' · ' + childCount + ' 个子节点' : '')));
           button.append(make('span',node.number,'cw-number'),label); row.append(branch,button); item.append(row);
           if (hasChildren) { const nested = make('ol',undefined,'cw-tree'); nested.hidden = collapsed.has(node.id); append(nested,node.id); item.append(nested); }
           list.append(item);
         });
       };
-      append(top,null); $('.cw-tools strong').textContent = '调用与返回 · ' + variant.nodes.length + ' 个节点';
+      append(top,null); $('.cw-tools strong').textContent = '调用与返回 · ' + variant.nodes.length + ' 节点 / ' + Math.max(...variant.nodes.map(depthOf)) + ' 层';
     }
     function detail() {
       const node = nodeById(selected);
+      const ancestors = [];
+      for (let item = node; item; item = item.parent === null ? null : nodeById(item.parent)) ancestors.unshift(item);
+      const path = $('.cw-path'); path.replaceChildren(make('span','调用路径'));
+      ancestors.forEach((item,index) => {
+        if (index) path.append(make('span','›'));
+        const part = make(index === ancestors.length - 1 ? 'span' : 'button',item.number + ' ' + item.title);
+        if (part.tagName === 'BUTTON') { part.type = 'button'; part.dataset.cwAncestor = item.id; }
+        path.append(part);
+      });
       root.querySelectorAll('[data-cw-node]').forEach(button => {
         if (button.dataset.cwNode === selected) button.setAttribute('aria-current','true'); else button.removeAttribute('aria-current');
       });
@@ -248,13 +263,17 @@
         if (collapsed.has(id)) collapsed.delete(id); else collapsed.add(id);
         buildTree(); detail(); root.querySelector('[data-cw-toggle="' + id + '"]').focus({preventScroll:true}); return;
       }
-      const button = event.target.closest('[data-cw-node]');
+      const button = event.target.closest('[data-cw-node],[data-cw-ancestor]');
       if (button) {
-        selected = button.dataset.cwNode; targetIndex = null; clearError(); detail(); remember('push');
+        selected = button.dataset.cwNode || button.dataset.cwAncestor; targetIndex = null; clearError();
+        if (button.dataset.cwAncestor) { revealSelected(); buildTree(); }
+        detail(); remember('push');
+        if (button.dataset.cwAncestor) scrollSelected();
         if (matchMedia('(max-width:760px)').matches) { $('.cw-detail').scrollIntoView({block:'start'}); $('.cw-detail').focus({preventScroll:true}); }
       }
     });
     $('[data-cw-expand]').addEventListener('click',() => { collapsed.clear(); buildTree(); detail(); });
+    $('[data-cw-depth]').addEventListener('click',() => { resetTree(); buildTree(); detail(); });
     $('[data-cw-fold]').addEventListener('click',() => { collapsed = new Set(variant.nodes.filter(node => node.parent !== null).map(node => node.id)); buildTree(); detail(); });
     $('.cw-variant select').addEventListener('change',event => {
       variant = variants.get(event.target.value); selected = variant.entry || variant.nodes[0].id; targetIndex = null;

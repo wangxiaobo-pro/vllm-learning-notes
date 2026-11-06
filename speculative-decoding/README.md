@@ -42,10 +42,14 @@ EAGLE 用前移一位的 token 配合目标特征预测后续特征，原论文�
 
 ## 真实调用链与双页定位
 
-[call-chain.json](call-chain.json) 包含 EAGLE、EAGLE-3、普通 DeepSeek MTP、DFlash、独立草稿、Medusa、CPU N-gram 七条路径，共 83 个节点。主线固定 Ascend Model Runner V1、贪心验证和三个候选；初始化工厂、草稿提议、本轮返回及下一轮 target 验证分别标明，不把 target forward 画成 proposer 的同步子调用。
+[call-chain.json](call-chain.json) 包含 EAGLE、EAGLE-3、普通 DeepSeek MTP、DFlash、独立草稿、Medusa、CPU N-gram 七条路径，共 129 个节点。主线固定 Ascend Model Runner V1、贪心验证和三个候选；初始化工厂、草稿提议、本轮返回及下一轮 target 验证分别标明，不把 target forward 画成 proposer 的同步子调用。
 
 源码基线为 vLLM `295c062db8a48ea73bbd05d1174cb37d24bf86f9` 与 vLLM-Ascend `94e3e25f836d79b5ee5c1aed257999ee61d10875`。普通 MTP 不混入 Gemma / Step3.5 等专用分支，DFlash 不混入 DSpark / DFlash2。独立草稿模型保留动态模型接口边界，不能从通用 proposer 推断具体 checkpoint 的网络结构。
 
 [call-chain-adapter.js](call-chain-adapter.js) 兼容两个页面：主页面实际选择方法、接受场景与步骤；对照页面实际选择验证场景，展示串行/并行关系。带 `action.page` 的目标由共享导航切换页面后重放；对照图是算法比较，没有伪造独立的 Python 调用实现或不存在的逐步控件。两页使用同一份调用链数据，源码证据中的 commit 与行号随数据一起维护。
 
 返回[项目导航](../index.html)。
+
+新增子调用展开 EAGLE/EAGLE3/MTP/DFlash 草稿主干与层、DFlash context KV 注入，以及 _sample → rejection_sample 的条件分支。普通方法的草稿采样实际走 _sample_draft_from_logits；compute_draft_token_ids 在此位置属于未展示的 DFlash2 selector。Medusa.forward 与 compute_logits 是 Proposer 内的兄弟调用，ResidualBlock 才是 forward 的子调用。
+
+新增子调用复用已有图的适用输入/输出边界，入口明确标为“原图未单列此调用”，不声称每个 Python/C++ 函数都有独立动画。旧节点 ID 保持不变，编号随真实父子关系更新；跨进程消费者与后续独立采样继续保留为独立根。

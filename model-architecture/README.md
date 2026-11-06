@@ -80,10 +80,14 @@ V4.1 总览单独标出 DSpark 的已确认 anchor、positions 和有效长度�
 
 ## 各模型的真实调用链
 
-[call-chain.json](call-chain.json) 为七个模型 Sheet 提供匹配的主干路径，并另列 MiniMax DSpark，共 8 条路径、84 个节点。每个节点包含输入、状态变化、输出与返回续点，以及固定 commit 的源码证据。模型 `forward` 与 Runner 后续调用 `compute_logits` 分开；Dense/MoE、KDA/MLA 等互斥分支不拼成一次必经执行。
+[call-chain.json](call-chain.json) 为七个模型 Sheet 提供匹配的主干路径，并另列 MiniMax DSpark，共 8 条路径、138 个节点。每个节点包含输入、状态变化、输出与返回续点，以及固定 commit 的源码证据。模型 `forward` 与 Runner 后续调用 `compute_logits` 分开；Dense/MoE、KDA/MLA 等互斥分支不拼成一次必经执行。
 
 - Llama、DeepSeek V2 使用 vLLM 模型实现；GLM-5.3 使用 NVIDIA DSA 实现，Kimi K3 使用 NVIDIA KDA/MLA 实现。
 - DeepSeek V4.1、V4 Pro、MiniMax 主干使用 Ascend 实现；V4.1 延后消费的 HC pre 系数与 V4 的同子层 HC 处理分别追踪。
 - MiniMax DSpark 使用 SGLang `17e94c4677d7beb58a89b104fd61b3768994e45e`，独立记录上下文 KV 注入、查询块、logits/confidence 头及 target 验证边界。多个根由外部服务分阶段调用；不据此宣称 Ascend 主干自动执行或支持这条草稿链。
 
 vLLM / Ascend commit 沿用上方基线。[call-chain-adapter.js](call-chain-adapter.js) 实际选择模型、组件和步骤，用 `history.replaceState` 更新模型 hash，同时保留共享导航的 `cw-*` 查询参数。调用链只覆盖所声明的主干/草稿范围；视觉编码器、后端 kernel、通信及服务编排未展开的部分均不能从逻辑组件图推断为已经执行。
+
+新增子调用展开 Attention/custom-op 分派、MLA wrapper、V4.1 预处理分支、MiniMax 稀疏 cache 写入、DSpark 继承的 decoder，以及 logits processor 的实际投影。Ascend 的 LogitsProcessor 覆盖与 NVIDIA 路径分别追踪；未量化 GEMM、普通 head、多流预处理等均注明条件，不推广到所有配置。
+
+新增子调用复用已有图的适用输入/输出边界，入口明确标为“原图未单列此调用”，不声称每个 Python/C++ 函数都有独立动画。旧节点 ID 保持不变，编号随真实父子关系更新；跨进程消费者与后续独立采样继续保留为独立根。

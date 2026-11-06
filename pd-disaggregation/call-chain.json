@@ -97,9 +97,47 @@
           ]
         },
         {
-          "id": "insert",
+          "id": "connector-insert",
           "parent": "send",
           "number": "1.1.1",
+          "kind": "调用",
+          "title": "SimpleConnector.insert()",
+          "summary": "将当前请求结果交给生产者 buffer。",
+          "input": "tokens、ROI、逐层 gather 后的 K/V 和 hidden。",
+          "changes": "检查 producer_buffer 已建立，委托其 insert()；本接口不直接操作 D 的物理块。",
+          "output": "缓冲插入完成后返回 send_kv_caches_and_hidden_states()。",
+          "resume": "P Runner 继续处理自身模型输出。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/simple_connector.py",
+              "line": 200,
+              "label": "调用位置",
+              "end": 203
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/simple_connector.py",
+              "line": 142,
+              "label": "实际实现",
+              "end": 149
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V0 第 2 步 · 缓冲副本",
+              "action": {
+                "mode": "v0",
+                "step": 2
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
+          "id": "insert",
+          "parent": "connector-insert",
+          "number": "1.1.1.1",
           "kind": "调用",
           "title": "SimpleBuffer.insert()",
           "summary": "克隆独立副本并启动查找服务。",
@@ -139,6 +177,43 @@
               }
             }
           ]
+        },
+        {
+          "id": "buffer-copy",
+          "parent": "insert",
+          "number": "1.1.1.1.1",
+          "kind": "调用",
+          "title": "SimpleBuffer._add_to_buffer()",
+          "summary": "克隆独立快照并计入 buffer 容量。",
+          "input": "tokens/ROI/K/V/hidden 张量。",
+          "changes": "clone() 各张量；容量满时等待条件变量，足够后 append 并通知。",
+          "output": "buffer 保有与 P 原 paged KV 独立的副本。",
+          "resume": "返回 insert()；随后按需启动查询处理线程。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_lookup_buffer/simple_buffer.py",
+              "line": 218,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_lookup_buffer/simple_buffer.py",
+              "line": 102,
+              "label": "实际实现",
+              "end": 130
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V0 第 2 步 · 缓冲副本",
+              "action": {
+                "mode": "v0",
+                "step": 2
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
         },
         {
           "id": "consumer",
@@ -228,9 +303,47 @@
           ]
         },
         {
-          "id": "query",
+          "id": "connector-select",
           "parent": "receive",
           "number": "2.1.1",
+          "kind": "调用",
+          "title": "SimpleConnector.select()",
+          "summary": "把接收请求委托给消费端查询 buffer。",
+          "input": "D 请求的 tokens 和 ROI。",
+          "changes": "检查 consumer_buffer 后调用 drop_select()；查询阻塞在 Worker 的普通执行路径中。",
+          "output": "远端匹配结果返回 recv_kv_caches_and_hidden_states()。",
+          "resume": "接收函数检查完整性并安装本地 KV。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/simple_connector.py",
+              "line": 258,
+              "label": "调用位置",
+              "end": 259
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/simple_connector.py",
+              "line": 135,
+              "label": "实际实现",
+              "end": 140
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V0 第 4 步 · 同步查询",
+              "action": {
+                "mode": "v0",
+                "step": 4
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
+          "id": "query",
+          "parent": "connector-select",
+          "number": "2.1.1.1",
           "kind": "等待",
           "title": "SimpleBuffer.drop_select()",
           "summary": "发送 tokens/ROI 后同步等待五项结果。",
@@ -272,120 +385,30 @@
           ]
         },
         {
-          "id": "handler",
-          "parent": null,
-          "number": "3",
-          "kind": "边界",
-          "title": "P SimpleBuffer.drop_select_handler()",
-          "summary": "后台消费查询并取走匹配条目。",
-          "input": "D 发来的信号、tokens 与 ROI。",
-          "changes": "遍历缓冲条目；没有匹配则在条件变量上等待，匹配后 popleft() 取走并发送。",
-          "output": "条目从查找缓冲移除，不是仅查询仍留在原处。",
-          "resume": "继续后台循环处理下一个请求。",
-          "evidence": [
-            {
-              "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_lookup_buffer/simple_buffer.py",
-              "line": 223,
-              "end": 225,
-              "label": "后台线程入口绑定"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_lookup_buffer/simple_buffer.py",
-              "line": 135,
-              "end": 177,
-              "label": "查询消费、等待、移除、发送"
-            }
-          ],
-          "targets": [
-            {
-              "label": "跳到 V0 第 5 步 · 匹配并取走",
-              "action": {
-                "mode": "v0",
-                "step": 5
-              }
-            }
-          ],
-          "note": "D 的 drop_select 与 P 的后台 handler 由消息连接，不是同进程直接调用。"
-        },
-        {
-          "id": "matches",
-          "parent": "handler",
-          "number": "3.1",
-          "kind": "调用",
-          "title": "SimpleBuffer._matches()",
-          "summary": "比较 ROI 过滤后的 token 前缀。",
-          "input": "缓冲与查询的 tokens/ROI；本例完整 64-token 匹配。",
-          "changes": "按 ROI 取 token，并比较两者较短长度内的前缀。",
-          "output": "返回正匹配长度后 handler 可以选择该条目；否则继续等待。",
-          "resume": "返回 handler 的可用性检查，后者才取走条目。",
-          "evidence": [
-            {
-              "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_lookup_buffer/simple_buffer.py",
-              "line": 160,
-              "end": 162,
-              "label": "调用位置"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_lookup_buffer/simple_buffer.py",
-              "line": 53,
-              "end": 80,
-              "label": "匹配方法定义与返回"
-            }
-          ],
-          "targets": [
-            {
-              "label": "跳到 V0 第 5 步 · tokens/ROI 匹配",
-              "action": {
-                "mode": "v0",
-                "step": 5
-              }
-            }
-          ],
-          "note": "源码可匹配较短前缀；页面仅选完整命中的主线，不把部分匹配等同完整可跳过计算。"
-        },
-        {
           "id": "pipe",
           "parent": "query",
-          "number": "2.1.1.1",
-          "kind": "边界",
-          "title": "MooncakePipe.recv_tensor() → transfer_sync_read()",
-          "summary": "由 D 主动读取 P 的序列化临时缓冲。",
+          "number": "2.1.1.1.1",
+          "kind": "等待",
+          "title": "MooncakePipe.recv_tensor()",
+          "summary": "向专用 transport 线程提交接收并同步等待。",
           "input": "P 提供源地址与字节长度，D 为接收分配临时缓冲。",
-          "changes": "P safetensors 序列化并发布地址；D READ 后反序列化张量并发送 ACK。",
+          "changes": "transport_thread.submit(_recv_impl).result()；线程中读取临时缓冲并反序列化，返回后识别 None 哨兵。",
           "output": "五项张量回到 drop_select()；临时传输缓冲按 ACK 回收。",
-          "resume": "继续 SimpleConnector 的 KV 恢复；P 原有 paged KV 按普通生命周期管理。",
+          "resume": "回到 drop_select() 接收下一项，五项完成后返回 SimpleConnector。",
           "evidence": [
             {
               "repo": "vllm",
               "path": "vllm/distributed/kv_transfer/kv_lookup_buffer/simple_buffer.py",
               "line": 202,
-              "end": 210,
-              "label": "接收张量调用"
+              "label": "逐项接收调用",
+              "end": 210
             },
             {
               "repo": "vllm",
               "path": "vllm/distributed/kv_transfer/kv_pipe/mooncake_pipe.py",
-              "line": 245,
-              "end": 270,
-              "label": "序列化与反序列化"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_pipe/mooncake_pipe.py",
-              "line": 186,
-              "end": 209,
-              "label": "地址发布、接收、ACK"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_pipe/mooncake_pipe.py",
-              "line": 159,
-              "end": 184,
-              "label": "READ 与发送方 ACK 清理"
+              "line": 262,
+              "label": "实际实现",
+              "end": 270
             }
           ],
           "targets": [
@@ -397,7 +420,118 @@
               }
             }
           ],
-          "note": "这里有序列化 staging 与复制；不是 V1 的 P 直接 WRITE 到 D 缓存地址。"
+          "note": "这里是线程池提交加 result() 等待；READ 发生在 _recv_impl 的下层，不是 recv_tensor() 直接调用 Transfer Engine。"
+        },
+        {
+          "id": "recv-impl",
+          "parent": "pipe",
+          "number": "2.1.1.1.1.1",
+          "kind": "边界",
+          "title": "MooncakePipe._recv_impl()（transport 线程）",
+          "summary": "接收字节并反序列化张量。",
+          "input": "transport_thread 提交的接收工作。",
+          "changes": "调用 transfer_engine.recv_bytes()，再 safetensors_load() 并搬到接收设备。",
+          "output": "张量返回 future，唤醒 recv_tensor().result()。",
+          "resume": "Worker 接收下一项；该线程函数不是 Sender 的子调用。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_pipe/mooncake_pipe.py",
+              "line": 266,
+              "label": "线程池提交及等待"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_pipe/mooncake_pipe.py",
+              "line": 249,
+              "label": "实际实现",
+              "end": 252
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V0 第 6 步 · D READ",
+              "action": {
+                "mode": "v0",
+                "step": 6
+              }
+            }
+          ],
+          "note": "父子表示提交的线程入口；result() 明确等待它完成。"
+        },
+        {
+          "id": "recv-bytes",
+          "parent": "recv-impl",
+          "number": "2.1.1.1.1.1.1",
+          "kind": "调用",
+          "title": "MooncakeTransferEngine.recv_bytes()",
+          "summary": "D 读取 P 发布的临时缓冲。",
+          "input": "控制 socket 返回的源地址与长度。",
+          "changes": "分配目标临时内存，transfer_sync() READ 后读出 bytes，再发送 ACK 并释放 D 临时缓冲。",
+          "output": "序列化 bytes 返回 _recv_impl()。",
+          "resume": "反序列化后才能安装到 D 原先分配的 paged KV。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_pipe/mooncake_pipe.py",
+              "line": 251,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_pipe/mooncake_pipe.py",
+              "line": 196,
+              "label": "实际实现",
+              "end": 209
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V0 第 6 步 · D READ",
+              "action": {
+                "mode": "v0",
+                "step": 6
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
+          "id": "read-transfer",
+          "parent": "recv-bytes",
+          "number": "2.1.1.1.1.1.1.1",
+          "kind": "调用",
+          "title": "MooncakeTransferEngine.transfer_sync()",
+          "summary": "调用外部 Transfer Engine 的同步 READ。",
+          "input": "D 临时地址、P 临时地址和字节长度。",
+          "changes": "调用 engine.transfer_sync_read()；负返回码抛错。",
+          "output": "成功状态返回 recv_bytes()，不表示已写入最终 KV 页。",
+          "resume": "recv_bytes() 读取本地 bytes，后续由 Connector 安装 KV。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_pipe/mooncake_pipe.py",
+              "line": 202,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_pipe/mooncake_pipe.py",
+              "line": 159,
+              "label": "实际实现",
+              "end": 167
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V0 第 6 步 · D READ",
+              "action": {
+                "mode": "v0",
+                "step": 6
+              }
+            }
+          ],
+          "note": "外部 Mooncake C++/传输后端为边界，本节点只核实 vLLM 内包装与调用点。"
         },
         {
           "id": "install",
@@ -503,6 +637,119 @@
               }
             }
           ]
+        },
+        {
+          "id": "handler",
+          "parent": null,
+          "number": "3",
+          "kind": "边界",
+          "title": "P SimpleBuffer.drop_select_handler()",
+          "summary": "后台消费查询并取走匹配条目。",
+          "input": "D 发来的信号、tokens 与 ROI。",
+          "changes": "遍历缓冲条目；没有匹配则在条件变量上等待，匹配后 popleft() 取走并发送。",
+          "output": "条目从查找缓冲移除，不是仅查询仍留在原处。",
+          "resume": "继续后台循环处理下一个请求。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_lookup_buffer/simple_buffer.py",
+              "line": 223,
+              "end": 225,
+              "label": "后台线程入口绑定"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_lookup_buffer/simple_buffer.py",
+              "line": 135,
+              "end": 177,
+              "label": "查询消费、等待、移除、发送"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V0 第 5 步 · 匹配并取走",
+              "action": {
+                "mode": "v0",
+                "step": 5
+              }
+            }
+          ],
+          "note": "D 的 drop_select 与 P 的后台 handler 由消息连接，不是同进程直接调用。"
+        },
+        {
+          "id": "buffer-available",
+          "parent": "handler",
+          "number": "3.1",
+          "kind": "调用",
+          "title": "is_buffer_available()（嵌套函数）",
+          "summary": "扫描并轮转 buffer，寻找可取条目。",
+          "input": "D 的 tokens/ROI 与生产者当前缓冲队列。",
+          "changes": "逐个调用 _matches()；失败时 rotate，命中时返回 True；外层在无命中时等待条件变量。",
+          "output": "布尔可用结果交给 handler 的 while 条件。",
+          "resume": "handler 只有可用后才 popleft() 并发送。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_lookup_buffer/simple_buffer.py",
+              "line": 168,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_lookup_buffer/simple_buffer.py",
+              "line": 153,
+              "label": "实际实现",
+              "end": 165
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V0 第 5 步 · tokens/ROI 匹配",
+              "action": {
+                "mode": "v0",
+                "step": 5
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
+          "id": "matches",
+          "parent": "buffer-available",
+          "number": "3.1.1",
+          "kind": "调用",
+          "title": "SimpleBuffer._matches()",
+          "summary": "比较 ROI 过滤后的 token 前缀。",
+          "input": "缓冲与查询的 tokens/ROI；本例完整 64-token 匹配。",
+          "changes": "按 ROI 取 token，并比较两者较短长度内的前缀。",
+          "output": "返回正匹配长度后 handler 可以选择该条目；否则继续等待。",
+          "resume": "返回 handler 的可用性检查，后者才取走条目。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_lookup_buffer/simple_buffer.py",
+              "line": 160,
+              "end": 162,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_lookup_buffer/simple_buffer.py",
+              "line": 53,
+              "end": 80,
+              "label": "匹配方法定义与返回"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V0 第 5 步 · tokens/ROI 匹配",
+              "action": {
+                "mode": "v0",
+                "step": 5
+              }
+            }
+          ],
+          "note": "源码可匹配较短前缀；页面仅选完整命中的主线，不把部分匹配等同完整可跳过计算。"
         }
       ]
     },
@@ -524,7 +771,7 @@
           "parent": null,
           "number": "1",
           "kind": "调用",
-          "title": "Proxy._handle_completions()",
+          "title": "mooncake_connector_proxy._handle_completions()",
           "summary": "同时推进 P 请求和 D 响应流。",
           "input": "64-token 请求 R，生成同一个 transfer_id。",
           "changes": "后台 create_task() 启动 P 请求，D 流式请求由响应生成器推进。",
@@ -537,6 +784,13 @@
               "line": 311,
               "end": 343,
               "label": "代理入口与两个异步方向"
+            },
+            {
+              "repo": "vllm",
+              "path": "examples/disaggregated/mooncake_connector/mooncake_connector_proxy.py",
+              "line": 357,
+              "end": 363,
+              "label": "两个 HTTP 入口的实际调用"
             }
           ],
           "targets": [
@@ -689,9 +943,122 @@
           ]
         },
         {
-          "id": "matched",
+          "id": "blocked-check",
           "parent": "d-schedule",
           "number": "2.1",
+          "kind": "调用",
+          "title": "Scheduler._handle_blocked_waiting_request()",
+          "summary": "下一轮先判断远端等待是否已结束。",
+          "input": "处于 WAITING_FOR_REMOTE_KVS 的 D 请求和 finished_recving_kv_req_ids。",
+          "changes": "未完成返回 False；完成则调用 _update_waiting_for_remote_kv() 并恢复 WAITING/PREEMPTED。",
+          "output": "是否可继续当前 waiting 扫描的布尔值。",
+          "resume": "schedule() 对可执行请求重新计算需求与分配。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 918,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 3185,
+              "label": "实际实现",
+              "end": 3217
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 9 步 · computed=63",
+              "action": {
+                "mode": "v1",
+                "step": 9
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
+          "id": "resume",
+          "parent": "blocked-check",
+          "number": "2.1.1",
+          "kind": "调用",
+          "title": "Scheduler._update_waiting_for_remote_kv()",
+          "summary": "恢复 D 并重算最后一个输入 token。",
+          "input": "完成接收的64-token prompt KV；普通 full-attention，无重放分支。",
+          "changes": "下一次等待检查调用本函数；缓存已接收块，完整命中时把 computed=64调为63。",
+          "output": "请求回到 WAITING，安排末 token 得到 logits，再继续采样/Decode。",
+          "resume": "返回等待扫描，完成准入后再次交给 Worker 计算。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 3188,
+              "end": 3199,
+              "label": "等待检查与状态恢复"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 3133,
+              "end": 3183,
+              "label": "接收后缓存与末 token 重算"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 9 步 · computed=63",
+              "action": {
+                "mode": "v1",
+                "step": 9
+              }
+            }
+          ],
+          "note": "V1 此直接PD路径只传KV，不使用 P 的 hidden 或 HTTP 首 token。Mamba/有界重放分支不在此主线。"
+        },
+        {
+          "id": "matched-facade",
+          "parent": "d-schedule",
+          "number": "2.2",
+          "kind": "调用",
+          "title": "MooncakeConnector.get_num_new_matched_tokens()",
+          "summary": "调度器通过 Connector facade 查询远端命中。",
+          "input": "D Request 与本地已命中的16个 token。",
+          "changes": "检查 connector_scheduler 存在，再委托其 get_num_new_matched_tokens()；此时不会传输 KV。",
+          "output": "远端数量和异步标志返回 Scheduler.schedule()。",
+          "resume": "调度器为目标槽分配资源，随后进入远端等待。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 968,
+              "label": "调用位置",
+              "end": 970
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 757,
+              "label": "实际实现",
+              "end": 763
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 2 步 · 声明48",
+              "action": {
+                "mode": "v1",
+                "step": 2
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
+          "id": "matched",
+          "parent": "matched-facade",
+          "number": "2.2.1",
           "kind": "调用",
           "title": "MooncakeConnectorScheduler.get_num_new_matched_tokens()",
           "summary": "声明预期可远端加载量。",
@@ -743,49 +1110,28 @@
         {
           "id": "metadata",
           "parent": "d-schedule",
-          "number": "2.2",
-          "kind": "动作",
-          "title": "update_state_after_alloc() → build_connector_meta()",
-          "summary": "把目标块与连接信息传给 D Worker。",
+          "number": "2.3",
+          "kind": "调用",
+          "title": "MooncakeConnector.update_state_after_alloc()",
+          "summary": "分配后把目标块登记给 Connector Scheduler。",
           "input": "已分配目标块、transfer_id、远端 engine/bootstrap 地址。",
-          "changes": "分配回调记录待接收请求；打包回调构造 MooncakeConnectorMetadata 并清空本轮待发送队列。",
-          "output": "元数据含接收目标和请求配对信息。",
-          "resume": "Worker 消费元数据后启动接收任务。",
+          "changes": "包装层委托 connector_scheduler.update_state_after_alloc()；构造元数据由后面的独立调用完成。",
+          "output": "待接收状态保存在 Connector Scheduler 中。",
+          "resume": "返回 Scheduler.schedule()；请求设为远端等待，本轮末尾另外调用 _build_kv_connector_meta()。",
           "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1278,
+              "label": "调用位置",
+              "end": 1282
+            },
             {
               "repo": "vllm",
               "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
               "line": 765,
-              "end": 778,
-              "label": "公开入口转调"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
-              "line": 1033,
-              "end": 1072,
-              "label": "记录目标块"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
-              "line": 1082,
-              "end": 1097,
-              "label": "构造待接收元数据"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/v1/core/sched/scheduler.py",
-              "line": 1528,
-              "end": 1530,
-              "label": "Scheduler 打包调用"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/v1/core/sched/scheduler.py",
-              "line": 1558,
-              "end": 1561,
-              "label": "打包辅助函数转调 Connector"
+              "label": "实际实现",
+              "end": 771
             }
           ],
           "targets": [
@@ -799,37 +1145,180 @@
           ]
         },
         {
+          "id": "alloc-state",
+          "parent": "metadata",
+          "number": "2.3.1",
+          "kind": "调用",
+          "title": "MooncakeConnectorScheduler.update_state_after_alloc()",
+          "summary": "保存尚待加载的请求与本地目标块。",
+          "input": "D 已分配的 KVCacheBlocks 与 num_external_tokens=48。",
+          "changes": "提取尚未命中的目标块 ID，写入 _reqs_need_recv；只登记计划，块内容仍未就绪。",
+          "output": "请求与目标块表供 build_connector_meta() 消费。",
+          "resume": "返回 facade 后继续调度器的等待状态与计划打包。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 769,
+              "label": "调用位置",
+              "end": 771
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 1033,
+              "label": "实际实现",
+              "end": 1072
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 3 步 · 下发元数据",
+              "action": {
+                "mode": "v1",
+                "step": 3
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
+          "id": "build-meta",
+          "parent": "d-schedule",
+          "number": "2.4",
+          "kind": "调用",
+          "title": "Scheduler._build_kv_connector_meta()",
+          "summary": "本轮计划完成后打包 Connector 元数据。",
+          "input": "已构造的 SchedulerOutput 与 Connector 中待接收记录。",
+          "changes": "委托 connector.build_connector_meta()，返回值挂到 SchedulerOutput.kv_connector_metadata。",
+          "output": "元数据随执行计划发往 Worker。",
+          "resume": "schedule() 继续本轮收尾并返回 EngineCore。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1528,
+              "label": "调用位置",
+              "end": 1530
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1558,
+              "label": "实际实现",
+              "end": 1561
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 3 步 · 下发元数据",
+              "action": {
+                "mode": "v1",
+                "step": 3
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
+          "id": "build-facade",
+          "parent": "build-meta",
+          "number": "2.4.1",
+          "kind": "调用",
+          "title": "MooncakeConnector.build_connector_meta()",
+          "summary": "把计划打包请求交给 Scheduler 角色。",
+          "input": "SchedulerOutput 和已初始化的 connector_scheduler。",
+          "changes": "调用 connector_scheduler.build_connector_meta()；不触及 Worker 的后台线程。",
+          "output": "MooncakeConnectorMetadata 返回通用 Scheduler 包装。",
+          "resume": "返回 schedule()，随后进入执行器边界。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1561,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 773,
+              "label": "实际实现",
+              "end": 778
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 3 步 · 下发元数据",
+              "action": {
+                "mode": "v1",
+                "step": 3
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
+          "id": "build-owned",
+          "parent": "build-facade",
+          "number": "2.4.1.1",
+          "kind": "调用",
+          "title": "MooncakeConnectorScheduler.build_connector_meta()",
+          "summary": "生成待接收描述并清空本轮队列。",
+          "input": "_reqs_need_recv 中的 Request、目标块 IDs 与 kv_transfer_params。",
+          "changes": "调用 meta.add_new_req() 构造 PullReqMeta，完成后清空 _reqs_need_recv；P角色对应打包待发送记录。",
+          "output": "本轮 MooncakeConnectorMetadata，持久任务由 Worker 后续持有。",
+          "resume": "返回 facade 和 Scheduler，当前打包动作不代表复制完成。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 778,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 1082,
+              "label": "实际实现",
+              "end": 1112
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 3 步 · 下发元数据",
+              "action": {
+                "mode": "v1",
+                "step": 3
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
           "id": "worker-load",
           "parent": null,
           "number": "3",
           "kind": "边界",
-          "title": "Worker Connector 上下文 → start_load_kv()",
-          "summary": "将计划元数据绑定到实际 Worker 角色。",
+          "title": "KVConnectorModelRunnerMixin._get_kv_connector_output()",
+          "summary": "模型执行上下文绑定计划并收集传输回报。",
           "input": "SchedulerOutput 的 Connector 元数据。",
-          "changes": "Runner 上下文绑定元数据；按 has_sync_kv_loads 决定启动时点。Mooncake 包装层转交 Worker.start_load_kv()。",
-          "output": "D 向 receiver_loop 提交异步任务；P 可向 sender_loop 提交发送记录。",
-          "resume": "提交后模型循环继续；该请求在远端等待状态下暂不执行模型。",
+          "changes": "绑定 connector metadata；同步加载在 forward 前启动，异步加载在 forward launch 后启动；finally 收集当前已完成的传输集合。",
+          "output": "KVConnectorOutput 合并入模型回报；未完成传输继续在后台。",
+          "resume": "退出当前 Runner 上下文；传输完成集合由 Scheduler 的结果更新路径消费。",
           "evidence": [
             {
               "repo": "vllm",
               "path": "vllm/v1/worker/kv_connector_model_runner_mixin.py",
+              "line": 40,
+              "label": "上下文创建位置",
+              "end": 49
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/kv_connector_model_runner_mixin.py",
               "line": 67,
-              "end": 98,
-              "label": "元数据绑定、启动与结果采集"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
-              "line": 826,
-              "end": 829,
-              "label": "Worker 包装层转调"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
-              "line": 2563,
-              "end": 2574,
-              "label": "后台事件循环提交"
+              "label": "实际实现",
+              "end": 107
             }
           ],
           "targets": [
@@ -841,47 +1330,219 @@
               }
             }
           ],
-          "note": "异步加载可能在当前轮 forward 后启动；不能固定画成每次都在 forward 前调用。无模型输入时也能处理 Connector 元数据。"
+          "note": "Worker 执行上下文是调度计划的接收边界。start_load_kv() 返回不表示远端数据已经就绪；get_transfer_results() 只收集当前已完成任务。"
         },
         {
-          "id": "pull",
+          "id": "load-facade",
           "parent": "worker-load",
           "number": "3.1",
-          "kind": "边界",
-          "title": "异步接收链 → receive_kv_from_single_worker()",
-          "summary": "D 定位 P 并发送目标地址。",
-          "input": "transfer_id、目标块、KV base addresses 和布局信息。",
-          "changes": "必要时先 bootstrap；receive_kv() 为目标 Worker 建任务，再发送 MooncakeXferMetadata。",
-          "output": "P 收到取数请求；D 等待对应的完成响应。",
-          "resume": "每个响应交给 process_pulling_result() 计数，收齐才完成接收。",
+          "kind": "调用",
+          "title": "MooncakeConnector.start_load_kv()",
+          "summary": "将通用 Connector 调用转给 Worker 角色。",
+          "input": "已绑定的 MooncakeConnectorMetadata 与 forward context。",
+          "changes": "检查 Worker 和 metadata 类型，调用 connector_worker.start_load_kv()。",
+          "output": "本轮传输工作被提交后返回上下文。",
+          "resume": "异步任务在 receiver_loop 或 sender_loop 独立推进。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/kv_connector_model_runner_mixin.py",
+              "line": 84,
+              "label": "按加载时点调用",
+              "end": 90
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 826,
+              "label": "实际实现",
+              "end": 829
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 4 步 · 异步取数",
+              "action": {
+                "mode": "v1",
+                "step": 4
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
+          "id": "load-worker",
+          "parent": "load-facade",
+          "number": "3.1.1",
+          "kind": "提交",
+          "title": "MooncakeConnectorWorker.start_load_kv()",
+          "summary": "向专用事件循环提交加载/源块登记协程。",
+          "input": "D reqs_to_recv 或 P reqs_to_send 元数据。",
+          "changes": "D 使用 run_coroutine_threadsafe(_start_load_kv, receiver_loop)；P提交 record_send_reqs 到 sender_loop。",
+          "output": "提交 future 不在这里等待；调用立即返回。",
+          "resume": "上下文继续运行；下方接收任务入口独立开始，未来轮次才观察完成。",
           "evidence": [
             {
               "repo": "vllm",
               "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 829,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 2563,
+              "label": "实际实现",
+              "end": 2574
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 4 步 · 异步取数",
+              "action": {
+                "mode": "v1",
+                "step": 4
+              }
+            }
+          ],
+          "note": "两个角色位于不同 Worker 实例。任务提交是跨线程事件循环边界，不画成发送方与接收方之间的同步调用。"
+        },
+        {
+          "id": "report",
+          "parent": "worker-load",
+          "number": "3.2",
+          "kind": "调用",
+          "title": "MooncakeConnector.get_transfer_results()",
+          "summary": "通过 facade 收集当前 Worker 的传输结果。",
+          "input": "P 的 finished_sending，D 收齐响应后的 finished_recving。",
+          "changes": "调用 connector_worker.get_transfer_results()；返回 sending/recving/failed 集合，由上下文写入 KVConnectorOutput。",
+          "output": "当前已完成和失败的请求 IDs。",
+          "resume": "上下文返回模型结果；Executor 汇总后 Scheduler.update_from_output() 才消费这些集合。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/kv_connector_model_runner_mixin.py",
+              "line": 94,
+              "label": "调用与复制结果",
+              "end": 99
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 814,
+              "label": "实际实现",
+              "end": 819
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 8 步 · 完成回报",
+              "action": {
+                "mode": "v1",
+                "step": 8
+              }
+            }
+          ]
+        },
+        {
+          "id": "report-owned",
+          "parent": "report",
+          "number": "3.2.1",
+          "kind": "调用",
+          "title": "MooncakeConnectorWorker.get_transfer_results()",
+          "summary": "收集完成集合并排空失败接收队列。",
+          "input": "后台 sender/receiver loop 已记录的完成集合和失败队列。",
+          "changes": "先调用 get_finished()，再 get_nowait() 排空 _failed_recv_reqs，构造 KVConnectorTransferResults。",
+          "output": "成功发送、成功接收、失败接收三类集合返回 facade。",
+          "resume": "返回 Worker 上下文，当前还没有修改 Scheduler 队列。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 819,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 2275,
+              "label": "实际实现",
+              "end": 2295
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 8 步 · 完成回报",
+              "action": {
+                "mode": "v1",
+                "step": 8
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
+          "id": "finished-collect",
+          "parent": "report-owned",
+          "number": "3.2.1.1",
+          "kind": "等待",
+          "title": "MooncakeConnectorWorker.get_finished()",
+          "summary": "从专用事件循环取走完成集合。",
+          "input": "该 Worker 角色对应的 sender_loop/receiver_loop。",
+          "changes": "run_coroutine_threadsafe 提交 fetch_finished_*，用 future.result() 等待收集动作；不等待尚未完成的全部传输。",
+          "output": "两侧完成 ID 集合返回 get_transfer_results()。",
+          "resume": "结果汇入模型输出；新完成事件留给后续收集。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 2282,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 2244,
+              "label": "实际实现",
+              "end": 2273
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 8 步 · 完成回报",
+              "action": {
+                "mode": "v1",
+                "step": 8
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
+          "id": "pull",
+          "parent": null,
+          "number": "4",
+          "kind": "边界",
+          "title": "MooncakeConnectorWorker._start_load_kv()（receiver_loop 入口）",
+          "summary": "后台接收任务按远端引擎分派。",
+          "input": "transfer_id、目标块、KV base addresses 和布局信息。",
+          "changes": "远端地址已缓存时调用 receive_kv()；首次遇到引擎时 create_task(handle_new_engine_id()) 先完成 bootstrap。",
+          "output": "每个远端 Worker 的接收协程在后台执行。",
+          "resume": "本协程提交/分派后返回 receiver_loop；不会回到本轮模型执行栈等待复制。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 2565,
+              "label": "跨线程协程提交位置",
+              "end": 2567
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
               "line": 2524,
-              "end": 2533,
-              "label": "启动异步接收链"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
-              "line": 2501,
-              "end": 2522,
-              "label": "bootstrap 后继续"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
-              "line": 2494,
-              "end": 2499,
-              "label": "每 Worker 接收任务"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
-              "line": 2304,
-              "end": 2362,
-              "label": "目标元数据发送与响应消费"
+              "label": "实际实现",
+              "end": 2533
             }
           ],
           "targets": [
@@ -892,47 +1553,263 @@
                 "step": 4
               }
             }
-          ]
+          ],
+          "note": "由 start_load_kv() 提交到 receiver_loop。独立根表示异步执行入口，不能把它视为已返回的 Worker 函数的同步子栈。"
         },
         {
-          "id": "p-finish",
-          "parent": null,
-          "number": "4",
+          "id": "bootstrap-entry",
+          "parent": "pull",
+          "number": "4.1",
           "kind": "边界",
-          "title": "P request_finished_all_groups() → request_finished()",
-          "summary": "P 计算完成后保留源块等待传输。",
-          "input": "P 的 max_tokens=1 请求已长度结束，源 blocks 为7/8/9/10。",
-          "changes": "Scheduler 的结束钩子经 SupportsHMA 分派到 all-groups 包装，再转调连接器 Scheduler.request_finished()。",
-          "output": "记录源块并返回 delay_free_blocks=True，普通请求结束不立即归还这些块。",
-          "resume": "后续 build_connector_meta() 把源块交给 P Worker。",
+          "title": "MooncakeConnectorWorker.handle_new_engine_id()（异步任务）",
+          "summary": "首次遇到 P 引擎时解析 Worker 地址。",
+          "input": "远端 engine_id 与 D 的 PullReqMeta。",
+          "changes": "create_task 提交后，本任务等待 _connect_to_prefiller_bootstrap() 或已有查询事件；成功后调用 receive_kv()。",
+          "output": "_remote_agents 和远端 TP 信息就绪；随后建立接收任务。",
+          "resume": "任务结束回到 receiver_loop；失败会走 _handle_failed_recv()。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 2528,
+              "label": "任务提交位置",
+              "end": 2531
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 2501,
+              "label": "实际实现",
+              "end": 2522
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 4 步 · 目标地址发送",
+              "action": {
+                "mode": "v1",
+                "step": 4
+              }
+            }
+          ],
+          "note": "仅首次连接触发；原图第4步是异步取数阶段，没有独立展示 bootstrap HTTP 往返。"
+        },
+        {
+          "id": "bootstrap-query",
+          "parent": "bootstrap-entry",
+          "number": "4.1.1",
+          "kind": "调用",
+          "title": "MooncakeConnectorWorker._connect_to_prefiller_bootstrap()",
+          "summary": "查询 P 引擎的通信地址。",
+          "input": "remote_bootstrap_addr。",
+          "changes": "HTTP GET /query，解析 engine/TP/PP 到 Worker 地址映射，最后设置查询完成事件。",
+          "output": "地址缓存供 handle_new_engine_id() 和 receive_kv() 使用。",
+          "resume": "返回调用协程；确认 engine_id 存在后才建立接收任务。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 2509,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 2439,
+              "label": "实际实现",
+              "end": 2465
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 4 步 · 目标地址发送",
+              "action": {
+                "mode": "v1",
+                "step": 4
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
+          "id": "receive-dispatch",
+          "parent": "pull",
+          "number": "4.2",
+          "kind": "调用",
+          "title": "MooncakeConnectorWorker.receive_kv()",
+          "summary": "按传输拓扑建立每 Worker 接收任务。",
+          "input": "已有远端地址映射、TP/PP 关系和 PullReqMeta。",
+          "changes": "设置 pull_tasks_count，并为每个目标 Worker create_task(receive_kv_from_single_worker())。",
+          "output": "后台任务各自发送地址并等待 P 的完成响应。",
+          "resume": "函数返回 _start_load_kv()；首次 bootstrap 分支也在 handle_new_engine_id() 尾部调用同一函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 2533,
+              "label": "已知引擎调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 2522,
+              "label": "首次 bootstrap 后调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 2467,
+              "label": "实际实现",
+              "end": 2499
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 4 步 · 目标地址发送",
+              "action": {
+                "mode": "v1",
+                "step": 4
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
+          "id": "receive-one",
+          "parent": "receive-dispatch",
+          "number": "4.2.1",
+          "kind": "边界",
+          "title": "MooncakeConnectorWorker.receive_kv_from_single_worker()（异步任务）",
+          "summary": "向一个 P Worker 发送目标地址并等待完成响应。",
+          "input": "D 目标 KV 地址、块长度、目标块表与 transfer_id。",
+          "changes": "构造 MooncakeXferMetadata，经控制 socket 发送；收到响应后调用 process_pulling_result()。",
+          "output": "成功/失败的请求结果更新接收端持久任务状态。",
+          "resume": "该任务在响应完成后退出；实际 KV 数据由 P 的 WRITE 写入。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 2496,
+              "label": "任务提交位置",
+              "end": 2499
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 2304,
+              "label": "实际实现",
+              "end": 2367
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 4 步 · 目标地址发送",
+              "action": {
+                "mode": "v1",
+                "step": 4
+              }
+            }
+          ],
+          "note": "create_task 的子节点表示明确的任务创建关系，不表示 receive_kv() 同步等待该协程。"
+        },
+        {
+          "id": "pull-result",
+          "parent": "receive-one",
+          "number": "4.2.1.1",
+          "kind": "调用",
+          "title": "MooncakeConnectorWorker.process_pulling_result()",
+          "summary": "收到成功响应后推进请求完成计数。",
+          "input": "MooncakeXferResponse.ok_reqs 与请求 PullReqMeta。",
+          "changes": "逐个减少 pull_tasks_count；计数为0且有目标块时加入 finished_recving_reqs。",
+          "output": "可被后续 get_finished() 取走的接收完成集合。",
+          "resume": "返回接收协程；不会在这里直接修改 Scheduler 的 Request.status。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 2360,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 2413,
+              "label": "实际实现",
+              "end": 2437
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 8 步 · 完成回报",
+              "action": {
+                "mode": "v1",
+                "step": 8
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
+          "id": "p-free-entry",
+          "parent": null,
+          "number": "5",
+          "kind": "边界",
+          "title": "P Scheduler._free_request()（请求结束入口）",
+          "summary": "P 生成结束时询问是否延迟释放源 KV。",
+          "input": "P 已完成 Prefill 的请求与 source block IDs。",
+          "changes": "调用 _connector_finished()；若连接器要求保留源块，则暂不执行 _free_blocks()。",
+          "output": "请求结束与 KV 可释放成为两个独立状态。",
+          "resume": "返回 P 的结果更新路径；下一轮 Connector 元数据把源块交给 Worker。",
           "evidence": [
             {
               "repo": "vllm",
               "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2229,
+              "label": "结果更新中的调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2713,
+              "label": "实际实现",
+              "end": 2743
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 5 步 · 保留源 blocks",
+              "action": {
+                "mode": "v1",
+                "step": 5
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
+          "id": "p-finish",
+          "parent": "p-free-entry",
+          "number": "5.1",
+          "kind": "调用",
+          "title": "Scheduler._connector_finished()",
+          "summary": "按 Connector 能力选择结束钩子。",
+          "input": "P 的 max_tokens=1 请求已长度结束，源 blocks 为7/8/9/10。",
+          "changes": "读取已计算位置的 block IDs；Mooncake 实现 SupportsHMA，因此调用 request_finished_all_groups()。",
+          "output": "delay_free 与可选传输参数返回 _free_request()。",
+          "resume": "_free_request() 依据 delay_free 决定是否保留源块。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2722,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
               "line": 3004,
-              "end": 3057,
-              "label": "结束钩子及 SupportsHMA 分派"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
-              "line": 792,
-              "end": 798,
-              "label": "all-groups 包装转调"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
-              "line": 1114,
-              "end": 1166,
-              "label": "实际延迟释放实现"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
-              "line": 1099,
-              "end": 1112,
-              "label": "源块元数据打包"
+              "label": "实际实现",
+              "end": 3057
             }
           ],
           "targets": [
@@ -946,9 +1823,84 @@
           ]
         },
         {
+          "id": "finished-facade",
+          "parent": "p-finish",
+          "number": "5.1.1",
+          "kind": "调用",
+          "title": "MooncakeConnector.request_finished_all_groups()",
+          "summary": "把多组源块传给 Connector Scheduler。",
+          "input": "已结束的 P Request 和按组组织的 block IDs。",
+          "changes": "委托 connector_scheduler.request_finished(request, block_ids)。",
+          "output": "是否延迟释放返回通用 Scheduler 钩子。",
+          "resume": "继续 _free_request()；本函数不发送权重或 KV。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 3054,
+              "label": "调用位置",
+              "end": 3056
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 792,
+              "label": "实际实现",
+              "end": 798
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 5 步 · 保留源 blocks",
+              "action": {
+                "mode": "v1",
+                "step": 5
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
+          "id": "finished-owned",
+          "parent": "finished-facade",
+          "number": "5.1.1.1",
+          "kind": "调用",
+          "title": "MooncakeConnectorScheduler.request_finished()",
+          "summary": "登记待发送源块并要求延迟释放。",
+          "input": "带 do_remote_decode/transfer_id 的已完成 P 请求及非空源块。",
+          "changes": "将请求和裁剪后的源块保存到 _reqs_need_send；返回 delay_free_blocks。",
+          "output": "下一次 build_connector_meta() 打包这组源块。",
+          "resume": "返回 Scheduler；原图P计算完成与 ready 事件不是同一个函数调用。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 798,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 1114,
+              "label": "实际实现",
+              "end": 1166
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 5 步 · 保留源 blocks",
+              "action": {
+                "mode": "v1",
+                "step": 5
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
           "id": "ready",
           "parent": null,
-          "number": "5",
+          "number": "6",
           "kind": "边界",
           "title": "P MooncakeConnectorWorker.record_send_reqs()",
           "summary": "元数据到达后发布源 KV 就绪事件。",
@@ -980,39 +1932,27 @@
                 "step": 5
               }
             }
-          ]
+          ],
+          "note": "独立 sender_loop 协程入口，由 Worker.start_load_kv() 的 run_coroutine_threadsafe 提交；不是 P Scheduler 结束钩子的同步子调用。"
         },
         {
           "id": "sender",
           "parent": null,
-          "number": "6",
+          "number": "7",
           "kind": "边界",
           "title": "MooncakeConnectorWorker._sender_worker()",
-          "summary": "按 transfer_id 配对并等待源块。",
+          "summary": "从后台队列取得请求并调用实际发送协程。",
           "input": "D 的目标元数据与 P 已登记或稍后登记的源块。",
-          "changes": "按 transfer_id 找 SendBlockMeta，等待 ready；随后构造源/目标指针与长度。",
-          "output": "本例跳过 D 已有16-token前缀，传 P尾块8/9/10到D31/32/33。",
-          "resume": "把地址列表交给发送线程；完成后回复 D。",
+          "changes": "await sender_worker_queue.get()，解码 MooncakeXferMetadata，再 await send_kv_to_decode()；finally 标记队列任务完成。",
+          "output": "单次传输处理完成或错误响应，然后处理下一个队列项。",
+          "resume": "继续 sender_loop 的 _sender_worker() 循环。",
           "evidence": [
             {
               "repo": "vllm",
               "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
               "line": 1473,
-              "label": "消息消费入口定义"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
-              "line": 1561,
-              "end": 1581,
-              "label": "transfer_id 配对与等待"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
-              "line": 1631,
-              "end": 1658,
-              "label": "构造指针并提交发送"
+              "label": "实际实现",
+              "end": 1493
             }
           ],
           "targets": [
@@ -1027,16 +1967,67 @@
           "note": "控制请求由 D 发起；实际 KV 字节搬运由 P WRITE 发起。"
         },
         {
-          "id": "write",
+          "id": "send-control",
           "parent": "sender",
-          "number": "6.1",
+          "number": "7.1",
           "kind": "调用",
-          "title": "MooncakeConnectorWorker._send_blocks()",
+          "title": "MooncakeConnectorWorker.send_kv_to_decode()",
+          "summary": "配对请求、等待源 KV，并组织本次 WRITE。",
+          "input": "D 发送的 MooncakeXferMetadata、P reqs_need_send。",
+          "changes": "按 transfer_id 匹配 ready 事件，调用 _build_transfer_params()；随后在线程池执行 _send_blocks() 并 await 结果。",
+          "output": "成功时更新 finished_sending_reqs 并发送控制响应给 D。",
+          "resume": "返回 _sender_worker()；P源块释放要等 Scheduler 收到完成回报。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 1479,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 1495,
+              "label": "实际实现",
+              "end": 1499
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 1561,
+              "label": "实际实现",
+              "end": 1588
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
+              "line": 1631,
+              "label": "实际实现",
+              "end": 1693
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 V1 第 6 步 · 配对与地址",
+              "action": {
+                "mode": "v1",
+                "step": 6
+              }
+            }
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
+        },
+        {
+          "id": "write",
+          "parent": "send-control",
+          "number": "7.1.1",
+          "kind": "边界",
+          "title": "MooncakeConnectorWorker._send_blocks()（发送线程）",
           "summary": "由 P 同步 WRITE 到 D 目标缓存。",
           "input": "remote_session、src_ptrs、dst_ptrs、lengths。",
           "changes": "发送线程调用 Transfer Engine.batch_transfer_sync_write()；返回后区分成功与失败。",
           "output": "成功时 D 目标48-token KV 已写入；本地16-token KV保留。",
-          "resume": "返回 _sender_worker()，计数发送完成并向 D 回响应。",
+          "resume": "线程结果完成后恢复 send_kv_to_decode() 的 await，随后记完成并响应 D；并非直接返回 _sender_worker()。",
           "evidence": [
             {
               "repo": "vllm",
@@ -1069,62 +2060,56 @@
               }
             }
           ],
-          "note": "Transfer Engine 是外部库边界；这里不声称已经完成各 Scheduler 的状态回写。"
+          "note": "由 send_kv_to_decode() 通过 run_in_executor 提交。函数内部 Transfer Engine WRITE 是同步的，外层 sender_loop 用 await 等待线程完成。"
         },
         {
-          "id": "report",
+          "id": "output-consumer",
           "parent": null,
-          "number": "7",
+          "number": "8",
           "kind": "边界",
-          "title": "Worker.get_transfer_results() → 模型输出",
-          "summary": "把完成事件汇入引擎结果通路。",
-          "input": "P 的 finished_sending，D 收齐响应后的 finished_recving。",
-          "changes": "D 的 process_pulling_result() 递减任务数；Runner 上下文经 get_transfer_results() 收集两侧完成集合。",
-          "output": "KVConnectorOutput 携带发送/接收完成，交各自 Scheduler。",
-          "resume": "执行结果更新阶段消费完成集合。",
+          "title": "Scheduler.update_from_output()（传输回报消费入口）",
+          "summary": "执行结果返回后更新传输状态。",
+          "input": "Executor 聚合的 ModelRunnerOutput.kv_connector_output。",
+          "changes": "有连接器输出时调用 _update_from_kv_xfer_finished()；P/D各自处理自己的 Scheduler 状态。",
+          "output": "接收完成集合或释放源块的结果留在对应引擎。",
+          "resume": "返回 EngineCore；D在下一轮 waiting 检查中恢复调度。",
           "evidence": [
             {
               "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
-              "line": 2360,
-              "label": "响应处理调用"
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2025,
+              "label": "实际实现",
+              "end": 2038
             },
             {
               "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
-              "line": 2413,
-              "end": 2429,
-              "label": "D 收齐才完成"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py",
-              "line": 2275,
-              "end": 2295,
-              "label": "传输结果聚合"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/v1/worker/kv_connector_model_runner_mixin.py",
-              "line": 94,
-              "end": 104,
-              "label": "结果进入 Worker 输出"
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2329,
+              "label": "完成消费调用位置"
             }
           ],
           "targets": [
             {
-              "label": "跳到 V1 第 8 步 · 完成回报",
+              "label": "跳到 V1 第 8 步 · Scheduler 收到通知",
               "action": {
                 "mode": "v1",
                 "step": 8
               }
+            },
+            {
+              "label": "跳到 V1 第 9 步 · P 解除占用",
+              "action": {
+                "mode": "v1",
+                "step": 9
+              }
             }
-          ]
+          ],
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
         },
         {
           "id": "complete",
-          "parent": null,
-          "number": "8",
+          "parent": "output-consumer",
+          "number": "8.1",
           "kind": "调用",
           "title": "Scheduler._update_from_kv_xfer_finished()",
           "summary": "接收通知与解除源块占用分开处理。",
@@ -1165,42 +2150,42 @@
           ]
         },
         {
-          "id": "resume",
-          "parent": null,
-          "number": "9",
+          "id": "release-source",
+          "parent": "complete",
+          "number": "8.1.1",
           "kind": "调用",
-          "title": "Scheduler._update_waiting_for_remote_kv()",
-          "summary": "恢复 D 并重算最后一个输入 token。",
-          "input": "完成接收的64-token prompt KV；普通 full-attention，无重放分支。",
-          "changes": "下一次等待检查调用本函数；缓存已接收块，完整命中时把 computed=64调为63。",
-          "output": "请求回到 WAITING，安排末 token 得到 logits，再继续采样/Decode。",
-          "resume": "返回等待扫描，完成准入后再次交给 Worker 计算。",
+          "title": "Scheduler._free_blocks()",
+          "summary": "P 收到发送完成后释放仍保留的源块。",
+          "input": "finished_sending 中的已结束 P request_id。",
+          "changes": "调用 _free_request_blocks() 并删除 requests 项；此时传输已经完成。",
+          "output": "P源 KV 的调度占用解除。",
+          "resume": "返回 _update_from_kv_xfer_finished()；D 的恢复由另一引擎处理。",
           "evidence": [
             {
               "repo": "vllm",
               "path": "vllm/v1/core/sched/scheduler.py",
-              "line": 3188,
-              "end": 3199,
-              "label": "等待检查与状态恢复"
+              "line": 3242,
+              "label": "发送完成分支调用",
+              "end": 3245
             },
             {
               "repo": "vllm",
               "path": "vllm/v1/core/sched/scheduler.py",
-              "line": 3133,
-              "end": 3183,
-              "label": "接收后缓存与末 token 重算"
+              "line": 2745,
+              "label": "实际实现",
+              "end": 2748
             }
           ],
           "targets": [
             {
-              "label": "跳到 V1 第 9 步 · computed=63",
+              "label": "跳到 V1 第 9 步 · P 解除占用",
               "action": {
                 "mode": "v1",
                 "step": 9
               }
             }
           ],
-          "note": "V1 此直接PD路径只传KV，不使用 P 的 hidden 或 HTTP 首 token。Mamba/有界重放分支不在此主线。"
+          "note": "原图没有为此子调用增加独立快照；入口定位到所属阶段，细节以本节点的输入、状态与源码为准。"
         }
       ]
     }

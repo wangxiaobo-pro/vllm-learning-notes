@@ -95,6 +95,9 @@ h1 { font-size:clamp(25px, 4vw, 37px); line-height:1.33; letter-spacing:-.035em;
 .chain-node code { display:block; font-size:13px; font-weight:650; overflow-wrap:anywhere; }
 .chain-node small { display:block; margin-top:2px; color:var(--muted); font-size:12px; }
 .chain-detail { padding:17px; scroll-margin-top:14px; }
+.chain-path { display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 6px; padding-bottom:10px; margin-bottom:10px; border-bottom:1px solid var(--line); color:var(--muted); font-size:11px; overflow-wrap:anywhere; }
+.chain-path button { max-width:100%; border:0; padding:0; background:none; color:var(--green); text-align:left; text-decoration:underline; overflow-wrap:anywhere; font:inherit; }
+@media(max-width:400px) { .call-tree .call-tree { margin-left:3px !important; } .chain-node { grid-template-columns:minmax(0,1fr) !important; gap:2px !important; } .node-number { overflow-wrap:anywhere; } }
 .chain-detail h3 { margin:5px 0 7px; font-size:19px; line-height:1.4; overflow-wrap:anywhere; }
 .chain-detail .node-summary { font-size:14px; }
 .chain-data { margin-top:12px; font-size:13px; }
@@ -336,20 +339,21 @@ body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !importan
   <section id="chain-view" aria-labelledby="chain-title">
     <div class="chain-intro">
       <h2 id="chain-title">从一轮 EngineCore.step() 开始</h2>
-      <p>先看外层主链；点「＋」展开子调用，点名称查看输入、状态变化和返回续点，再进入对应的可视化步骤。</p>
+      <p>默认展开三层；点「＋」继续跟入子调用，点名称查看输入、状态变化和返回续点，再进入对应的可视化步骤。</p>
       <div class="source-baseline">源码仓库与 commit：<a id="source-revision"></a><br><span class="hint">调用行、定义行和可视化步骤的源码链接均固定到此提交。</span></div>
       <details class="chain-scope"><summary>调用链范围 · vLLM 295c062db8 · 同步 MRV1</summary>
-        <p>固定同步 Scheduler、ModelRunner V1、<code>batch_queue=None</code>，以本页两个教学算例走一轮或两轮。异步调度与 <code>step_with_batch_queue()</code> 不在此树内。</p>
+        <p>固定同步 Scheduler、ModelRunner V1、<code>batch_queue=None</code>，单一 FullAttention KV group、关闭前缀缓存且无外部 KV connector，以本页两个教学算例走一轮或两轮。异步调度与 <code>step_with_batch_queue()</code> 不在此树内。</p>
         <p>编号保持稳定；缩进表示调用或明确标记的控制块。「动作」是函数内部语句，「循环」「分支」是控制流。省略诊断日志、统计等辅助路径；执行器内部的 Worker、RPC、模型 forward 留在边界外。</p>
         <p>调用关系来自本地源码静态核对，token、容量与模型返回是教学取值。页面可离线查看，源码链接需要网络；可视化展示状态快照，不会启动推理。</p>
       </details>
     </div>
     <div class="chain-layout">
       <section class="panel chain-tree-panel" aria-label="按执行顺序排列的调用树">
-        <div class="tree-tools"><strong>调用与返回 · <span id="chain-count"></span> 个节点</strong><div><button type="button" id="expand-chain">全部展开</button> <button type="button" id="fold-chain">只看主链</button></div></div>
+        <div class="tree-tools"><strong>调用与返回 · <span id="chain-count"></span> 个节点</strong><div><button type="button" id="depth-chain">展开三层</button> <button type="button" id="expand-chain">全部展开</button> <button type="button" id="fold-chain">只看主链</button></div></div>
         <div class="tree-scroll" id="tree-scroll"><ol class="call-tree" id="call-tree"></ol></div>
       </section>
       <article id="chain-detail" class="panel chain-detail" aria-labelledby="chain-node-title" tabindex="-1">
+        <nav id="chain-path" class="chain-path" aria-label="当前调用路径"></nav>
         <div class="eyebrow" id="chain-node-kind"></div>
         <h3 id="chain-node-title"></h3><p class="node-summary" id="chain-summary"></p>
         <dl class="chain-data" id="chain-data"></dl>
@@ -1685,6 +1689,280 @@ const chainNodes = [
     ]
   },
   {
+    "id": "running-allocate-count",
+    "parent": "running-allocate",
+    "number": "1.3.1.1",
+    "kind": "调用",
+    "title": "KVCacheCoordinator.get_num_blocks_to_allocate()",
+    "summary": "逐 KV group 计算需要补充的块数。",
+    "input": "allocate_slots 计算的总位置数、请求已有块与空命中列表。",
+    "changes": "本例使用无前缀缓存 coordinator；将当前组传给 FullAttentionManager 的继承实现，并合计块数。",
+    "output": "所需新块数回到 allocate_slots，与空闲块数和预留量比较。",
+    "resume": "不足时返回 None；成功时才继续实际分配。",
+    "evidence": [
+      {
+        "path": "vllm/v1/core/kv_cache_manager.py",
+        "line": 561,
+        "end": 579,
+        "label": "调用及容量失败分支"
+      },
+      {
+        "path": "vllm/v1/core/kv_cache_coordinator.py",
+        "line": 208,
+        "end": 235,
+        "label": "逐组调用实现"
+      },
+      {
+        "path": "vllm/v1/core/kv_cache_coordinator.py",
+        "line": 1009,
+        "end": 1023,
+        "label": "无前缀缓存 coordinator 绑定"
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 3,
+        "label": "B 分配成功"
+      },
+      {
+        "mode": "pressure",
+        "step": 3,
+        "label": "B 首次分配失败"
+      },
+      {
+        "mode": "pressure",
+        "step": 5,
+        "label": "B 抢占后重试成功"
+      }
+    ],
+    "note": "固定单一 FullAttention KV group、关闭前缀缓存、无外部 KV connector。目标快照展示此子链产生的块账本，不能据此认为设备已经写入 KV。"
+  },
+  {
+    "id": "running-allocate-count-group",
+    "parent": "running-allocate-count",
+    "number": "1.3.1.1.1",
+    "kind": "调用",
+    "title": "FullAttentionManager.get_num_blocks_to_allocate()",
+    "summary": "把所需 token 槽换算成新块数。",
+    "input": "同一请求的 num_tokens、block_size、req_to_blocks。",
+    "changes": "继承 SingleTypeKVCacheManager：先计算 ceil(num_tokens / block_size)，再扣除已持有块；本例没有新前缀命中。",
+    "output": "返回非负整数；只是容量预测，没有移走空闲块。",
+    "resume": "返回 coordinator 合计，再返回 allocate_slots 的容量检查。",
+    "evidence": [
+      {
+        "path": "vllm/v1/core/kv_cache_coordinator.py",
+        "line": 225,
+        "end": 235,
+        "label": "调用位置"
+      },
+      {
+        "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+        "line": 216,
+        "end": 268,
+        "label": "无缓存时的通用容量计算"
+      },
+      {
+        "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+        "line": 747,
+        "end": 748,
+        "label": "实际类型继承"
+      },
+      {
+        "label": "FullAttentionSpec 对应管理器注册",
+        "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+        "line": 2659,
+        "end": 2663
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 3,
+        "label": "B 分配成功"
+      },
+      {
+        "mode": "pressure",
+        "step": 3,
+        "label": "B 首次分配失败"
+      },
+      {
+        "mode": "pressure",
+        "step": 5,
+        "label": "B 抢占后重试成功"
+      }
+    ],
+    "note": "固定单一 FullAttention KV group、关闭前缀缓存、无外部 KV connector。目标快照展示此子链产生的块账本，不能据此认为设备已经写入 KV。 本例关闭前缀缓存，未建立 num_cached_block 条目，因此实际走通用容量计算，不走已缓存账本的快速返回分支。"
+  },
+  {
+    "id": "running-allocate-allocate",
+    "parent": "running-allocate",
+    "number": "1.3.1.2",
+    "kind": "调用",
+    "title": "KVCacheCoordinator.allocate_new_blocks()",
+    "summary": "容量足够后向每组管理器真正申请新块。",
+    "input": "请求 ID 与 num_tokens_need_slot；容量检查已经通过。",
+    "changes": "逐组调用 manager.allocate_new_blocks，本例只有一个 FullAttention group。",
+    "output": "每组新块组成 tuple，返回 KVCacheManager。",
+    "resume": "继续 cache_blocks；本例关闭前缀缓存，随后包装成 KVCacheBlocks 返回 Scheduler。",
+    "evidence": [
+      {
+        "path": "vllm/v1/core/kv_cache_manager.py",
+        "line": 595,
+        "end": 618,
+        "label": "调用与返回续点"
+      },
+      {
+        "path": "vllm/v1/core/kv_cache_coordinator.py",
+        "line": 287,
+        "end": 320,
+        "label": "实际逐组分配"
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 3,
+        "label": "B 分配成功"
+      },
+      {
+        "mode": "pressure",
+        "step": 5,
+        "label": "B 抢占后重试成功"
+      }
+    ],
+    "note": "固定单一 FullAttention KV group、关闭前缀缓存、无外部 KV connector。目标快照展示此子链产生的块账本，不能据此认为设备已经写入 KV。 紧张场景首次容量检查失败时不会进入本子链；只在重试成功后调用。"
+  },
+  {
+    "id": "running-allocate-group-allocate",
+    "parent": "running-allocate-allocate",
+    "number": "1.3.1.2.1",
+    "kind": "调用",
+    "title": "FullAttentionManager.allocate_new_blocks()",
+    "summary": "把新块追加到该请求的持有列表。",
+    "input": "req_to_blocks、所需位置总数，本例不存在 partial-hit CoW。",
+    "changes": "继承实现计算新块差额；差额为零直接返回，否则调用 block_pool.get_new_blocks 并 extend 请求块列表。",
+    "output": "返回本次新块；跨轮持有列表已经更新。",
+    "resume": "返回 coordinator；Scheduler 接收块号形成该轮计划。",
+    "evidence": [
+      {
+        "path": "vllm/v1/core/kv_cache_coordinator.py",
+        "line": 311,
+        "end": 320,
+        "label": "调用位置"
+      },
+      {
+        "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+        "line": 402,
+        "end": 412,
+        "label": "实际差额与块表追加"
+      },
+      {
+        "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+        "line": 747,
+        "end": 748,
+        "label": "继承关系"
+      },
+      {
+        "label": "FullAttentionSpec 对应管理器注册",
+        "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+        "line": 2659,
+        "end": 2663
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 3,
+        "label": "B 分配成功"
+      },
+      {
+        "mode": "pressure",
+        "step": 5,
+        "label": "B 抢占后重试成功"
+      }
+    ],
+    "note": "固定单一 FullAttention KV group、关闭前缀缓存、无外部 KV connector。目标快照展示此子链产生的块账本，不能据此认为设备已经写入 KV。 紧张场景首次容量检查失败时不会进入本子链；只在重试成功后调用。"
+  },
+  {
+    "id": "running-allocate-pool",
+    "parent": "running-allocate-group-allocate",
+    "number": "1.3.1.2.1.1",
+    "kind": "调用",
+    "title": "BlockPool.get_new_blocks()",
+    "summary": "从空闲池取得块并增加引用计数。",
+    "input": "num_new_blocks 与 free_block_queue。",
+    "changes": "调用 popleft_n 移走空闲块；本例未启用缓存，逐块把 ref_cnt 从 0 增到 1。",
+    "output": "返回 KVCacheBlock 对象列表；这一步更新主机管理元数据。",
+    "resume": "返回 group manager，随后将块追加到 req_to_blocks。",
+    "evidence": [
+      {
+        "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+        "line": 408,
+        "end": 412,
+        "label": "调用与消费"
+      },
+      {
+        "path": "vllm/v1/core/block_pool.py",
+        "line": 666,
+        "end": 700,
+        "label": "空闲池申请实现"
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 3,
+        "label": "B 分配成功"
+      },
+      {
+        "mode": "pressure",
+        "step": 5,
+        "label": "B 抢占后重试成功"
+      }
+    ],
+    "note": "固定单一 FullAttention KV group、关闭前缀缓存、无外部 KV connector。目标快照展示此子链产生的块账本，不能据此认为设备已经写入 KV。 紧张场景首次容量检查失败时不会进入本子链；只在重试成功后调用。"
+  },
+  {
+    "id": "running-allocate-queue",
+    "parent": "running-allocate-pool",
+    "number": "1.3.1.2.1.1.1",
+    "kind": "调用",
+    "title": "FreeKVCacheBlockQueue.popleft_n()",
+    "summary": "更新空闲链表和空闲计数。",
+    "input": "空闲双向链表及本次要取出的 n 个块。",
+    "changes": "扣减 num_free_blocks，摘下前 n 个节点，断开被取出节点的链表指针并更新表头。",
+    "output": "返回块列表，引用计数尚由上层 BlockPool 更新。",
+    "resume": "回到 get_new_blocks 的 ref_cnt 更新，然后逐层返回。",
+    "evidence": [
+      {
+        "path": "vllm/v1/core/block_pool.py",
+        "line": 681,
+        "end": 681,
+        "label": "调用位置"
+      },
+      {
+        "path": "vllm/v1/core/kv_cache_utils.py",
+        "line": 336,
+        "end": 378,
+        "label": "链表操作实现"
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 3,
+        "label": "B 分配成功"
+      },
+      {
+        "mode": "pressure",
+        "step": 5,
+        "label": "B 抢占后重试成功"
+      }
+    ],
+    "note": "固定单一 FullAttention KV group、关闭前缀缓存、无外部 KV connector。目标快照展示此子链产生的块账本，不能据此认为设备已经写入 KV。 紧张场景首次容量检查失败时不会进入本子链；只在重试成功后调用。"
+  },
+  {
     "id": "rollback",
     "parent": "running",
     "number": "1.3.2",
@@ -1757,6 +2035,188 @@ const chainNodes = [
       }
     ],
     "note": "保留 A 的请求与已知 token，后续可以重算恢复。目标步骤同时展示调用前的预算回滚。"
+  },
+  {
+    "id": "preempt-free",
+    "parent": "preempt",
+    "number": "1.3.3.1",
+    "kind": "调用",
+    "title": "Scheduler._free_request_blocks()",
+    "summary": "检查能否归还被抢占请求的块。",
+    "input": "请求 A；本例同步执行，无异步 connector 在途写入。",
+    "changes": "调用 _request_blocks_can_be_freed 检查安全条件，当前直接调用 KVCacheManager.free。",
+    "output": "请求块引用归还到块池；保留 A 的 token 内容以便重算。",
+    "resume": "返回 _preempt_request，继续清理 encoder 状态、设置 PREEMPTED 与重置计数。",
+    "evidence": [
+      {
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1584,
+        "end": 1593,
+        "label": "调用与返回后的状态更新"
+      },
+      {
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 2758,
+        "end": 2774,
+        "label": "同步归还与延迟分支"
+      }
+    ],
+    "targets": [
+      {
+        "mode": "pressure",
+        "step": 4,
+        "label": "A 进入待恢复状态"
+      }
+    ],
+    "note": "固定单一 FullAttention KV group、关闭前缀缓存、无外部 KV connector。目标快照展示此子链产生的块账本，不能据此认为设备已经写入 KV。"
+  },
+  {
+    "id": "preempt-kv-free",
+    "parent": "preempt-free",
+    "number": "1.3.3.1.1",
+    "kind": "调用",
+    "title": "KVCacheManager.free()",
+    "summary": "把请求 ID 交给组协调器释放。",
+    "input": "仍持有 KV 块的请求 A。",
+    "changes": "通过 coordinator.free(request_id) 进入各组管理器。",
+    "output": "无返回值；各层管理器和块池状态被原地更新。",
+    "resume": "返回 _free_request_blocks，随后返回抢占接口。",
+    "evidence": [
+      {
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 2769,
+        "end": 2771,
+        "label": "调用位置"
+      },
+      {
+        "path": "vllm/v1/core/kv_cache_manager.py",
+        "line": 620,
+        "end": 629,
+        "label": "实际实现"
+      }
+    ],
+    "targets": [
+      {
+        "mode": "pressure",
+        "step": 4,
+        "label": "A 进入待恢复状态"
+      }
+    ],
+    "note": "固定单一 FullAttention KV group、关闭前缀缓存、无外部 KV connector。目标快照展示此子链产生的块账本，不能据此认为设备已经写入 KV。"
+  },
+  {
+    "id": "preempt-coordinator-free",
+    "parent": "preempt-kv-free",
+    "number": "1.3.3.1.1.1",
+    "kind": "调用",
+    "title": "KVCacheCoordinator.free()",
+    "summary": "遍历各 KV group 释放该请求。",
+    "input": "A 的 request_id 和 single_type_managers。",
+    "changes": "对每个组调用 manager.free；本例固定一个 FullAttention group。",
+    "output": "所有组均解除 A 的块引用。",
+    "resume": "返回 KVCacheManager.free。",
+    "evidence": [
+      {
+        "path": "vllm/v1/core/kv_cache_manager.py",
+        "line": 629,
+        "end": 629,
+        "label": "调用位置"
+      },
+      {
+        "path": "vllm/v1/core/kv_cache_coordinator.py",
+        "line": 393,
+        "end": 401,
+        "label": "逐组释放实现"
+      }
+    ],
+    "targets": [
+      {
+        "mode": "pressure",
+        "step": 4,
+        "label": "A 进入待恢复状态"
+      }
+    ],
+    "note": "固定单一 FullAttention KV group、关闭前缀缓存、无外部 KV connector。目标快照展示此子链产生的块账本，不能据此认为设备已经写入 KV。"
+  },
+  {
+    "id": "preempt-group-free",
+    "parent": "preempt-coordinator-free",
+    "number": "1.3.3.1.1.1.1",
+    "kind": "调用",
+    "title": "FullAttentionManager.free()",
+    "summary": "移除请求账本，再反向归还其块。",
+    "input": "A 的 req_to_blocks 列表。",
+    "changes": "继承实现先 pop_blocks_for_free 清除请求映射，再逆序传入 BlockPool.free_blocks。",
+    "output": "请求不再持有这些块；块池会进一步检查引用计数。",
+    "resume": "返回 coordinator，再返回抢占逻辑。",
+    "evidence": [
+      {
+        "path": "vllm/v1/core/kv_cache_coordinator.py",
+        "line": 400,
+        "end": 401,
+        "label": "调用位置"
+      },
+      {
+        "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+        "line": 565,
+        "end": 592,
+        "label": "账本移除与块池调用"
+      },
+      {
+        "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+        "line": 747,
+        "end": 748,
+        "label": "继承关系"
+      },
+      {
+        "label": "FullAttentionSpec 对应管理器注册",
+        "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+        "line": 2659,
+        "end": 2663
+      }
+    ],
+    "targets": [
+      {
+        "mode": "pressure",
+        "step": 4,
+        "label": "A 进入待恢复状态"
+      }
+    ],
+    "note": "固定单一 FullAttention KV group、关闭前缀缓存、无外部 KV connector。目标快照展示此子链产生的块账本，不能据此认为设备已经写入 KV。"
+  },
+  {
+    "id": "preempt-pool-free",
+    "parent": "preempt-group-free",
+    "number": "1.3.3.1.1.1.1.1",
+    "kind": "调用",
+    "title": "BlockPool.free_blocks()",
+    "summary": "引用归零的块重新进入可分配队列。",
+    "input": "逆序块列表；本例这些块没有其他请求引用。",
+    "changes": "逐块递减 ref_cnt；只有归零且非空哨兵的块才入队。关闭缓存时将块放到空闲队列前部。",
+    "output": "可用块数增加，使 B 后续重试能够成功。",
+    "resume": "逐层回到 _preempt_request；再回到 schedule 的 B 分配循环。",
+    "evidence": [
+      {
+        "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+        "line": 592,
+        "end": 592,
+        "label": "调用位置"
+      },
+      {
+        "path": "vllm/v1/core/block_pool.py",
+        "line": 774,
+        "end": 805,
+        "label": "引用递减与空闲队列归还"
+      }
+    ],
+    "targets": [
+      {
+        "mode": "pressure",
+        "step": 4,
+        "label": "A 进入待恢复状态"
+      }
+    ],
+    "note": "固定单一 FullAttention KV group、关闭前缀缓存、无外部 KV connector。目标快照展示此子链产生的块账本，不能据此认为设备已经写入 KV。"
   },
   {
     "id": "waiting",
@@ -1891,6 +2351,45 @@ const chainNodes = [
     "note": "此处是 WAITING 准入且计算游标为 0 的查询入口；本例未启用实际前缀匹配，不表示每轮 Decode 都查询。"
   },
   {
+    "id": "prefix-manager",
+    "parent": "prefix",
+    "number": "1.4.2.1",
+    "kind": "调用",
+    "title": "KVCacheManager.get_computed_blocks()",
+    "summary": "在本例中按缓存开关提前返回。",
+    "input": "等待准入的请求；本例 enable_caching=False。",
+    "changes": "先调用 prefix_cache_lookup_enabled；不进入 hash 查找或 coordinator 匹配。",
+    "output": "返回空 KVCacheBlocks、命中长度 0、共享前缀边界 0。",
+    "resume": "回到 _get_local_prefix_cache_hit；Scheduler 依据零命中计算新 token 预算。",
+    "evidence": [
+      {
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 547,
+        "end": 557,
+        "label": "调用位置"
+      },
+      {
+        "path": "vllm/v1/core/kv_cache_manager.py",
+        "line": 264,
+        "end": 287,
+        "label": "缓存检查与提前返回"
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 5,
+        "label": "C 无前缀命中"
+      },
+      {
+        "mode": "pressure",
+        "step": 9,
+        "label": "A 从零开始重算"
+      }
+    ],
+    "note": "此链严格对应当前页面关闭前缀缓存的例子。启用缓存后的深层匹配见前缀 KV 缓存主题。"
+  },
+  {
     "id": "waiting-allocate",
     "parent": "waiting",
     "number": "1.4.3",
@@ -1938,6 +2437,270 @@ const chainNodes = [
         "label": "为 A 的八个重算位置分配"
       }
     ]
+  },
+  {
+    "id": "waiting-allocate-count",
+    "parent": "waiting-allocate",
+    "number": "1.4.3.1",
+    "kind": "调用",
+    "title": "KVCacheCoordinator.get_num_blocks_to_allocate()",
+    "summary": "逐 KV group 计算需要补充的块数。",
+    "input": "allocate_slots 计算的总位置数、请求已有块与空命中列表。",
+    "changes": "本例使用无前缀缓存 coordinator；将当前组传给 FullAttentionManager 的继承实现，并合计块数。",
+    "output": "所需新块数回到 allocate_slots，与空闲块数和预留量比较。",
+    "resume": "不足时返回 None；成功时才继续实际分配。",
+    "evidence": [
+      {
+        "path": "vllm/v1/core/kv_cache_manager.py",
+        "line": 561,
+        "end": 579,
+        "label": "调用及容量失败分支"
+      },
+      {
+        "path": "vllm/v1/core/kv_cache_coordinator.py",
+        "line": 208,
+        "end": 235,
+        "label": "逐组调用实现"
+      },
+      {
+        "path": "vllm/v1/core/kv_cache_coordinator.py",
+        "line": 1009,
+        "end": 1023,
+        "label": "无前缀缓存 coordinator 绑定"
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 5,
+        "label": "为 C 的六个位置分配"
+      },
+      {
+        "mode": "pressure",
+        "step": 9,
+        "label": "为 A 的八个重算位置分配"
+      }
+    ],
+    "note": "固定单一 FullAttention KV group、关闭前缀缓存、无外部 KV connector。目标快照展示此子链产生的块账本，不能据此认为设备已经写入 KV。"
+  },
+  {
+    "id": "waiting-allocate-count-group",
+    "parent": "waiting-allocate-count",
+    "number": "1.4.3.1.1",
+    "kind": "调用",
+    "title": "FullAttentionManager.get_num_blocks_to_allocate()",
+    "summary": "把所需 token 槽换算成新块数。",
+    "input": "同一请求的 num_tokens、block_size、req_to_blocks。",
+    "changes": "继承 SingleTypeKVCacheManager：先计算 ceil(num_tokens / block_size)，再扣除已持有块；本例没有新前缀命中。",
+    "output": "返回非负整数；只是容量预测，没有移走空闲块。",
+    "resume": "返回 coordinator 合计，再返回 allocate_slots 的容量检查。",
+    "evidence": [
+      {
+        "path": "vllm/v1/core/kv_cache_coordinator.py",
+        "line": 225,
+        "end": 235,
+        "label": "调用位置"
+      },
+      {
+        "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+        "line": 216,
+        "end": 268,
+        "label": "无缓存时的通用容量计算"
+      },
+      {
+        "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+        "line": 747,
+        "end": 748,
+        "label": "实际类型继承"
+      },
+      {
+        "label": "FullAttentionSpec 对应管理器注册",
+        "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+        "line": 2659,
+        "end": 2663
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 5,
+        "label": "为 C 的六个位置分配"
+      },
+      {
+        "mode": "pressure",
+        "step": 9,
+        "label": "为 A 的八个重算位置分配"
+      }
+    ],
+    "note": "固定单一 FullAttention KV group、关闭前缀缓存、无外部 KV connector。目标快照展示此子链产生的块账本，不能据此认为设备已经写入 KV。 本例关闭前缀缓存，未建立 num_cached_block 条目，因此实际走通用容量计算，不走已缓存账本的快速返回分支。"
+  },
+  {
+    "id": "waiting-allocate-allocate",
+    "parent": "waiting-allocate",
+    "number": "1.4.3.2",
+    "kind": "调用",
+    "title": "KVCacheCoordinator.allocate_new_blocks()",
+    "summary": "容量足够后向每组管理器真正申请新块。",
+    "input": "请求 ID 与 num_tokens_need_slot；容量检查已经通过。",
+    "changes": "逐组调用 manager.allocate_new_blocks，本例只有一个 FullAttention group。",
+    "output": "每组新块组成 tuple，返回 KVCacheManager。",
+    "resume": "继续 cache_blocks；本例关闭前缀缓存，随后包装成 KVCacheBlocks 返回 Scheduler。",
+    "evidence": [
+      {
+        "path": "vllm/v1/core/kv_cache_manager.py",
+        "line": 595,
+        "end": 618,
+        "label": "调用与返回续点"
+      },
+      {
+        "path": "vllm/v1/core/kv_cache_coordinator.py",
+        "line": 287,
+        "end": 320,
+        "label": "实际逐组分配"
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 5,
+        "label": "为 C 的六个位置分配"
+      },
+      {
+        "mode": "pressure",
+        "step": 9,
+        "label": "为 A 的八个重算位置分配"
+      }
+    ],
+    "note": "固定单一 FullAttention KV group、关闭前缀缓存、无外部 KV connector。目标快照展示此子链产生的块账本，不能据此认为设备已经写入 KV。"
+  },
+  {
+    "id": "waiting-allocate-group-allocate",
+    "parent": "waiting-allocate-allocate",
+    "number": "1.4.3.2.1",
+    "kind": "调用",
+    "title": "FullAttentionManager.allocate_new_blocks()",
+    "summary": "把新块追加到该请求的持有列表。",
+    "input": "req_to_blocks、所需位置总数，本例不存在 partial-hit CoW。",
+    "changes": "继承实现计算新块差额；差额为零直接返回，否则调用 block_pool.get_new_blocks 并 extend 请求块列表。",
+    "output": "返回本次新块；跨轮持有列表已经更新。",
+    "resume": "返回 coordinator；Scheduler 接收块号形成该轮计划。",
+    "evidence": [
+      {
+        "path": "vllm/v1/core/kv_cache_coordinator.py",
+        "line": 311,
+        "end": 320,
+        "label": "调用位置"
+      },
+      {
+        "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+        "line": 402,
+        "end": 412,
+        "label": "实际差额与块表追加"
+      },
+      {
+        "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+        "line": 747,
+        "end": 748,
+        "label": "继承关系"
+      },
+      {
+        "label": "FullAttentionSpec 对应管理器注册",
+        "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+        "line": 2659,
+        "end": 2663
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 5,
+        "label": "为 C 的六个位置分配"
+      },
+      {
+        "mode": "pressure",
+        "step": 9,
+        "label": "为 A 的八个重算位置分配"
+      }
+    ],
+    "note": "固定单一 FullAttention KV group、关闭前缀缓存、无外部 KV connector。目标快照展示此子链产生的块账本，不能据此认为设备已经写入 KV。"
+  },
+  {
+    "id": "waiting-allocate-pool",
+    "parent": "waiting-allocate-group-allocate",
+    "number": "1.4.3.2.1.1",
+    "kind": "调用",
+    "title": "BlockPool.get_new_blocks()",
+    "summary": "从空闲池取得块并增加引用计数。",
+    "input": "num_new_blocks 与 free_block_queue。",
+    "changes": "调用 popleft_n 移走空闲块；本例未启用缓存，逐块把 ref_cnt 从 0 增到 1。",
+    "output": "返回 KVCacheBlock 对象列表；这一步更新主机管理元数据。",
+    "resume": "返回 group manager，随后将块追加到 req_to_blocks。",
+    "evidence": [
+      {
+        "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+        "line": 408,
+        "end": 412,
+        "label": "调用与消费"
+      },
+      {
+        "path": "vllm/v1/core/block_pool.py",
+        "line": 666,
+        "end": 700,
+        "label": "空闲池申请实现"
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 5,
+        "label": "为 C 的六个位置分配"
+      },
+      {
+        "mode": "pressure",
+        "step": 9,
+        "label": "为 A 的八个重算位置分配"
+      }
+    ],
+    "note": "固定单一 FullAttention KV group、关闭前缀缓存、无外部 KV connector。目标快照展示此子链产生的块账本，不能据此认为设备已经写入 KV。"
+  },
+  {
+    "id": "waiting-allocate-queue",
+    "parent": "waiting-allocate-pool",
+    "number": "1.4.3.2.1.1.1",
+    "kind": "调用",
+    "title": "FreeKVCacheBlockQueue.popleft_n()",
+    "summary": "更新空闲链表和空闲计数。",
+    "input": "空闲双向链表及本次要取出的 n 个块。",
+    "changes": "扣减 num_free_blocks，摘下前 n 个节点，断开被取出节点的链表指针并更新表头。",
+    "output": "返回块列表，引用计数尚由上层 BlockPool 更新。",
+    "resume": "回到 get_new_blocks 的 ref_cnt 更新，然后逐层返回。",
+    "evidence": [
+      {
+        "path": "vllm/v1/core/block_pool.py",
+        "line": 681,
+        "end": 681,
+        "label": "调用位置"
+      },
+      {
+        "path": "vllm/v1/core/kv_cache_utils.py",
+        "line": 336,
+        "end": 378,
+        "label": "链表操作实现"
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 5,
+        "label": "为 C 的六个位置分配"
+      },
+      {
+        "mode": "pressure",
+        "step": 9,
+        "label": "为 A 的八个重算位置分配"
+      }
+    ],
+    "note": "固定单一 FullAttention KV group、关闭前缀缓存、无外部 KV connector。目标快照展示此子链产生的块账本，不能据此认为设备已经写入 KV。"
   },
   {
     "id": "admit",
@@ -2690,7 +3453,12 @@ const chainNodes = [
   }
 ];
 const chainById = new Map(chainNodes.map(node => [node.id, node]));
-const collapsedNodes = new Set(chainNodes.filter(node => node.parent !== null).map(node => node.id));
+function chainDepth(node) {
+  let depth = 1;
+  while (node.parent !== null) { node = chainById.get(node.parent); depth++; }
+  return depth;
+}
+const collapsedNodes = new Set(chainNodes.filter(node => chainDepth(node) >= 3).map(node => node.id));
 
 function stateSnapshot() {
   return {mode, stepIndex, view, screen, selectedNode};
@@ -2779,6 +3547,15 @@ function scrollToChainSelection() {
 }
 function renderChain() {
   const node = chainById.get(selectedNode);
+  const ancestors = [];
+  for (let item = node; item; item = item.parent === null ? null : chainById.get(item.parent)) ancestors.unshift(item);
+  const path = byId('chain-path'); path.replaceChildren(element('span','调用路径'));
+  ancestors.forEach((item,index) => {
+    if (index) path.append(element('span','›'));
+    const part = element(index === ancestors.length - 1 ? 'span' : 'button',item.number + ' ' + item.title);
+    if (part.tagName === 'BUTTON') { part.type = 'button'; part.dataset.ancestor = item.id; }
+    path.append(part);
+  });
   document.querySelectorAll('[data-node]').forEach(button => {
     if (button.dataset.node === selectedNode) button.setAttribute('aria-current', 'true');
     else button.removeAttribute('aria-current');
@@ -3077,6 +3854,17 @@ byId('chain-targets').addEventListener('click', event => {
 });
 byId('expand-chain').addEventListener('click', () => {
   collapsedNodes.clear(); buildChain(); renderChain();
+});
+byId('depth-chain').addEventListener('click', () => {
+  collapsedNodes.clear();
+  chainNodes.filter(node => chainDepth(node) >= 3).forEach(node => collapsedNodes.add(node.id));
+  revealNode(); buildChain(); renderChain();
+});
+byId('chain-path').addEventListener('click', event => {
+  const button = event.target.closest('[data-ancestor]');
+  if (!button) return;
+  selectedNode = button.dataset.ancestor;
+  revealNode(); buildChain(); select(mode, stepIndex, 'push'); scrollToChainSelection();
 });
 byId('fold-chain').addEventListener('click', () => {
   chainNodes.filter(node => node.parent !== null).forEach(node => collapsedNodes.add(node.id));

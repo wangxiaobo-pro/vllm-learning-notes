@@ -25,3 +25,9 @@
 参考：[V1 chunked prefill 说明](https://docs.vllm.ai/en/v0.11.0/configuration/optimization.html#chunked-prefill)、[V1 Scheduler](https://github.com/vllm-project/vllm/blob/v0.11.0/vllm/v1/core/sched/scheduler.py#L179-L224)、[V0 prefill 优先说明](https://docs.vllm.ai/en/v0.6.6/usage/performance.html#chunked-prefill)、[V0 完整 prefill 时跳过 decode](https://github.com/vllm-project/vllm/blob/v0.6.6/vllm/core/scheduler.py#L1072-L1088)。页面内还保留输出判定和 KV / attention 的源码链接。
 
 返回[项目导航](../index.html)。
+
+### 深入调用链的阅读边界
+
+调用链按各自固定版本展开：V1 追踪输入打包、采样与未完成 Prefill 的输出过滤；V0 拆开 `schedule()`/`_schedule()`/`_schedule_default()`，并跟到单 GPU Worker、Runner 和单步输出处理器。整段侧三个内部观察片段仍属于同一次18-token Prefill，下一次 `_schedule_running()` 才是新的调度轮。
+
+子调用复用原图中对应阶段的入口；没有独立快照时，节点注明只定位所属阶段。调用编号可随展开调整，原节点 ID 保持稳定；源码证据的调用点与实现均以场景声明的完整 commit 为准。

@@ -22,7 +22,7 @@
         {
           "id": "setup",
           "parent": null,
-          "number": "P1",
+          "number": "1",
           "kind": "调用",
           "title": "NPUModelRunner.__init__() → create_offloader()",
           "summary": "运行前：选择 Ascend 预取后端。",
@@ -66,7 +66,7 @@
         {
           "id": "wrap",
           "parent": null,
-          "number": "P2",
+          "number": "2",
           "kind": "调用",
           "title": "make_layers() → AscendPrefetchOffloader.wrap_modules()",
           "summary": "建层时选出被卸载的层，并包装其 forward。",
@@ -108,9 +108,99 @@
           ]
         },
         {
-          "id": "cpu",
+          "id": "module-init",
           "parent": "wrap",
-          "number": "P2.1",
+          "number": "2.1",
+          "kind": "调用",
+          "title": "Ascend _ModuleOffloader.__init__() → VllmModuleOffloader.__init__()",
+          "summary": "被选中的每层创建独立 offloader，收集需要搬运的参数。",
+          "input": "group2/last1 选出的 L1 等模块、copy_stream、参数白名单与层序号。",
+          "changes": "Ascend 子类先调用基类构造，基类保存 module、流和事件状态，并为每个白名单参数创建参数 offloader；返回后 Ascend 再安装权重后处理的格式检测包装。",
+          "output": "module_offloaders 条目；其每个参数拥有 CPU 存储管理对象。",
+          "resume": "返回 wrap_modules 的构造循环；随后为这些模块安装 forward 包装器。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/offloader/prefetch.py",
+              "line": 215,
+              "end": 227,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/model_executor/offloader/prefetch.py",
+              "line": 193,
+              "end": 225,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/offloader/prefetch.py",
+              "line": 400,
+              "end": 447,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 1 步",
+              "action": {
+                "mode": "prefetch",
+                "step": 1
+              }
+            }
+          ],
+          "note": "原图第 1 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "param-factory",
+          "parent": "module-init",
+          "number": "2.1.1",
+          "kind": "调用",
+          "title": "_BaseParamOffloader.create() → _CpuParamOffloader.__init__()",
+          "summary": "按 mode=cpu 选择参数存储实现。",
+          "input": "module 和 param_name，例如 L1 的某个权重。",
+          "changes": "工厂返回 _CpuParamOffloader；构造函数建立状态并立即调用 _offload_to_cpu_internal。",
+          "output": "一个持有原参数定位方式和 CPU 存储的 offloader。",
+          "resume": "返回 _ModuleOffloader 的参数字典；后续 checkpoint 加载继续写 param.data 指向的 CPU 存储。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/offloader/prefetch.py",
+              "line": 444,
+              "end": 447,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/offloader/prefetch.py",
+              "line": 580,
+              "end": 586,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/offloader/prefetch.py",
+              "line": 637,
+              "end": 648,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 1 步",
+              "action": {
+                "mode": "prefetch",
+                "step": 1
+              }
+            }
+          ],
+          "note": "原图第 1 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "cpu",
+          "parent": "param-factory",
+          "number": "2.1.1.1",
           "kind": "调用",
           "title": "_CpuParamOffloader._offload_to_cpu_internal()",
           "summary": "为被选参数保留 CPU 存储。",
@@ -147,7 +237,7 @@
         {
           "id": "post",
           "parent": null,
-          "number": "P3",
+          "number": "3",
           "kind": "调用",
           "title": "NPUModelRunner.load_model() → AscendPrefetchOffloader.post_init()",
           "summary": "加载与后处理之后建立设备静态槽。",
@@ -184,7 +274,7 @@
         {
           "id": "pool",
           "parent": "post",
-          "number": "P3.1",
+          "number": "3.1",
           "kind": "调用",
           "title": "PrefetchOffloader.post_init() → assign_buffer_slot()",
           "summary": "按卸载序号对 prefetch_step 取模分配槽。",
@@ -226,9 +316,85 @@
           ]
         },
         {
+          "id": "bind-slot",
+          "parent": "pool",
+          "number": "3.1.1",
+          "kind": "调用",
+          "title": "_ModuleOffloader.assign_buffer_slot()",
+          "summary": "以 layer_idx % prefetch_step 将模块绑定到复用槽。",
+          "input": "StaticBufferPool、slot_idx；示例 L1/L5 使用 A，L3/L7 使用 B。",
+          "changes": "记录池与槽编号；按每个 CPU 参数的 shape/stride/dtype 调 pool.get_buffer，并调用 assign_static_buffer。",
+          "output": "各参数对应的静态设备 buffer view。",
+          "resume": "返回 PrefetchOffloader.post_init，完成剩余模块绑定后提交初始预取。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/offloader/prefetch.py",
+              "line": 371,
+              "end": 374,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/offloader/prefetch.py",
+              "line": 506,
+              "end": 527,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 2 步",
+              "action": {
+                "mode": "prefetch",
+                "step": 2
+              }
+            }
+          ],
+          "note": "原图第 2 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "bind-param",
+          "parent": "bind-slot",
+          "number": "3.1.1.1",
+          "kind": "调用",
+          "title": "_CpuParamOffloader.assign_static_buffer()",
+          "summary": "保留最终 CPU 权重，并将模型参数引用改到固定设备槽。",
+          "input": "gpu_buffer 与权重后处理结束后的当前参数。",
+          "changes": "刷新 _cpu_storage 引用；设置 _gpu_buffer；把 param.data 绑定到 gpu_buffer。",
+          "output": "模型看到固定设备地址，CPU 副本仍由 offloader 保存；此调用本身不完成 H2D。",
+          "resume": "返回 assign_buffer_slot；start_onload_to_static 随后填充同一静态 buffer。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/offloader/prefetch.py",
+              "line": 527,
+              "end": 527,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/offloader/prefetch.py",
+              "line": 713,
+              "end": 742,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 2 步",
+              "action": {
+                "mode": "prefetch",
+                "step": 2
+              }
+            }
+          ],
+          "note": "原图第 2 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
           "id": "initial",
           "parent": "post",
-          "number": "P3.2",
+          "number": "3.2",
           "kind": "提交",
           "title": "_ModuleOffloader.start_onload_to_static()",
           "summary": "初始化提交首批权重预取。",
@@ -272,7 +438,7 @@
         {
           "id": "forward",
           "parent": null,
-          "number": "1",
+          "number": "4",
           "kind": "调用",
           "title": "PrefetchOffloader._hook_module_forward().forward()",
           "summary": "运行主线：一次卸载层调用的等待、计算、预取与返回。",
@@ -302,12 +468,12 @@
         {
           "id": "wait",
           "parent": "forward",
-          "number": "1.1",
+          "number": "4.1",
           "kind": "等待",
-          "title": "torch.ops.vllm.wait_prefetch() → PrefetchOffloader._wait_for_layer()",
+          "title": "torch.ops.vllm.wait_prefetch() → _wait_prefetch_impl()",
           "summary": "计算流等待本层权重复制完成。",
           "input": "input_tensor 作为编译依赖；layer_idx 指定本层 copy_done。",
-          "changes": "custom op 通过 get_offloader() 转调；eager 优先 wait_event，无有效事件才退回 wait_stream。",
+          "changes": "已注册 custom op 接收层序号；实现通过 get_offloader() 读取当前 offloader，并调用其 _wait_for_layer。",
           "output": "计算流上的等待依赖；不会把 input_tensor 搬到 CPU。",
           "resume": "返回包装器第 246 行，才允许 original_forward 读取设备槽。",
           "evidence": [
@@ -352,9 +518,80 @@
           ]
         },
         {
+          "id": "wait-dispatch",
+          "parent": "wait",
+          "number": "4.1.1",
+          "kind": "调用",
+          "title": "PrefetchOffloader._wait_for_layer()",
+          "summary": "取出当前层的完成事件，建立新层读取前的流依赖。",
+          "input": "layer_idx；module_offloaders[layer_idx] 的 _copy_done_event 与有效性标记。",
+          "changes": "本页 eager 路径优先 current_stream().wait_event(copy_done)；事件不可用时回退 wait_stream(copy_stream)。",
+          "output": "计算流被排入等待，后续该层算子不会早于权重复制完成。",
+          "resume": "返回 custom op，再回 forward 包装器的 original_forward 调用；不是主机同步读取权重。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/offloader/prefetch_ops.py",
+              "line": 19,
+              "end": 34,
+              "label": "分派调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/offloader/prefetch.py",
+              "line": 269,
+              "end": 299,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 8 步并展开双流",
+              "action": {
+                "mode": "prefetch",
+                "step": 8,
+                "focus": true
+              }
+            }
+          ],
+          "note": "原图第 8 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "wait-event",
+          "parent": "wait-dispatch",
+          "number": "4.1.1.1",
+          "kind": "等待",
+          "title": "current_stream().wait_event(_copy_done_event)",
+          "summary": "把当前层 H2D 完成与模型读取连接起来。",
+          "input": "copy_done_event；计算流和预取流是不同流。",
+          "changes": "向计算流排入事件等待，仅约束该层权重所需的依赖；其他无依赖预取仍可重叠。",
+          "output": "设备执行顺序保证，不返回参数数据。",
+          "resume": "wait_prefetch 返回后 original_forward 使用已绑定的静态参数槽。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/offloader/prefetch.py",
+              "line": 291,
+              "end": 299,
+              "label": "eager 分支实际等待"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 8 步并展开双流",
+              "action": {
+                "mode": "prefetch",
+                "step": 8,
+                "focus": true
+              }
+            }
+          ],
+          "note": "原图第 8 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
           "id": "compute",
           "parent": "forward",
-          "number": "1.2",
+          "number": "4.2",
           "kind": "边界",
           "title": "original_forward(*args, **kwargs)",
           "summary": "原始层在计算流读取已就绪的参数。",
@@ -384,7 +621,7 @@
         {
           "id": "target",
           "parent": "forward",
-          "number": "1.3",
+          "number": "4.3",
           "kind": "调用",
           "title": "_get_next_prefetch_index()",
           "summary": "在卸载层序列上前进两项，并保持槽归属。",
@@ -422,12 +659,12 @@
         {
           "id": "start",
           "parent": "forward",
-          "number": "1.4",
+          "number": "4.4",
           "kind": "提交",
-          "title": "torch.ops.vllm.start_prefetch() → PrefetchOffloader._start_prefetch()",
+          "title": "torch.ops.vllm.start_prefetch() → _start_prefetch_impl()",
           "summary": "在本层计算之后提交同槽下一层的拷贝。",
           "input": "本层输出建立顺序依赖；next_index=2 选择 W5。",
-          "changes": "custom op 取当前 offloader，再转调目标 _ModuleOffloader。",
+          "changes": "注册的 custom op 通过 get_offloader() 取得当前 offloader，按目标 layer_idx 分派 _start_prefetch。",
           "output": "异步预取任务；本层输出值仍由模型继续使用。",
           "resume": "提交后返回层包装器；L2/L3/L4 可继续计算，L5 会等待 W5。",
           "evidence": [
@@ -472,9 +709,48 @@
           ]
         },
         {
-          "id": "copy",
+          "id": "start-dispatch",
           "parent": "start",
-          "number": "1.4.1",
+          "number": "4.4.1",
+          "kind": "调用",
+          "title": "PrefetchOffloader._start_prefetch()",
+          "summary": "通过目标层序号找出要覆盖复用槽的模块 offloader。",
+          "input": "下一层预取序号，例如 offloaded index 2 对应 L5。",
+          "changes": "读取 module_offloaders[layer_idx]，调用 start_onload_to_static。",
+          "output": "在目标模块对象上登记的一次异步复制。",
+          "resume": "返回 custom op 和包装器；包装器恢复 module.forward 后返回本层 output，复制可继续在途。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/offloader/prefetch_ops.py",
+              "line": 40,
+              "end": 55,
+              "label": "custom op 分派"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/offloader/prefetch.py",
+              "line": 310,
+              "end": 313,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 5 步并展开双流",
+              "action": {
+                "mode": "prefetch",
+                "step": 5,
+                "focus": true
+              }
+            }
+          ],
+          "note": "原图第 5 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "copy",
+          "parent": "start-dispatch",
+          "number": "4.4.1.1",
           "kind": "调用",
           "title": "_ModuleOffloader.start_onload_to_static()",
           "summary": "建立旧层读完、槽覆盖和新层读取之间的两段依赖。",
@@ -512,7 +788,7 @@
         {
           "id": "fork",
           "parent": "copy",
-          "number": "1.4.1.1",
+          "number": "4.4.1.1.1",
           "kind": "等待",
           "title": "计算流 record_event → 拷贝流 wait_event",
           "summary": "旧层读槽完毕后才允许覆盖 A。",
@@ -543,7 +819,7 @@
         {
           "id": "complete",
           "parent": "copy",
-          "number": "1.4.1.2",
+          "number": "4.4.1.1.2",
           "kind": "提交",
           "title": "gpu_buffer.copy_() → _copy_done_event.record()",
           "summary": "提交非阻塞复制并记录完成标记。",
@@ -574,7 +850,7 @@
         {
           "id": "return",
           "parent": "forward",
-          "number": "1.5",
+          "number": "4.5",
           "kind": "返回",
           "title": "恢复包装器并 return output",
           "summary": "激活继续向后流动，末层为下一轮补回首批权重。",

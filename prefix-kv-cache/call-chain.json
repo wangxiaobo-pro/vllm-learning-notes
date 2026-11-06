@@ -17,7 +17,7 @@
         {
           "id": "prior",
           "parent": null,
-          "number": "P1",
+          "number": "1",
           "kind": "边界",
           "title": "KVCacheManager.allocate_slots()：R1 的既有缓存",
           "summary": "前置条件：R1=ABCDEF 已完成前向，完整块 KV 仍可复用。",
@@ -61,7 +61,7 @@
         {
           "id": "request",
           "parent": null,
-          "number": "1",
+          "number": "2",
           "kind": "调用",
           "title": "Request.__init__() → update_block_hashes()",
           "summary": "R2 入队前生成链式块哈希，尚未查 KV。",
@@ -98,7 +98,7 @@
         {
           "id": "hash",
           "parent": "request",
-          "number": "1.1",
+          "number": "2.1",
           "kind": "调用",
           "title": "get_request_block_hasher().request_block_hasher()",
           "summary": "逐完整块串联父哈希、token 和额外隔离键。",
@@ -140,9 +140,47 @@
           ]
         },
         {
+          "id": "hash-block",
+          "parent": "hash",
+          "number": "2.1.1",
+          "kind": "调用",
+          "title": "hash_block_tokens()",
+          "summary": "把当前完整块和之前的整个前缀共同编码成 cache key。",
+          "input": "前块哈希、当前块 token IDs 与 extra_keys；本页两 token 一块为教学尺寸。",
+          "changes": "首块用 NONE_HASH；后续块将 parent hash、token tuple、extra_keys 一起交给 caching_hash_fn。",
+          "output": "当前 BlockHash；R2 的 C,X 不同使 h4 不同，后面的 E,F 也继承不同 parent。",
+          "resume": "返回 request_block_hasher 循环，追加 new_block_hashes 并把该值设为下一块 parent hash。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_utils.py",
+              "line": 984,
+              "end": 997,
+              "label": "调用位置与循环续点"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_utils.py",
+              "line": 696,
+              "end": 726,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 2 步",
+              "action": {
+                "mode": "vllm",
+                "step": 2
+              }
+            }
+          ],
+          "note": "原图第 2 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
           "id": "schedule",
           "parent": null,
-          "number": "2",
+          "number": "3",
           "kind": "调用",
           "title": "Scheduler.schedule()",
           "summary": "等待请求准入时查找可复用前缀。",
@@ -186,7 +224,7 @@
         {
           "id": "prefix",
           "parent": "schedule",
-          "number": "2.1",
+          "number": "3.1",
           "kind": "调用",
           "title": "Scheduler._get_local_prefix_cache_hit()",
           "summary": "把请求交给 KV 管理器，并保留单组命中信息。",
@@ -223,7 +261,7 @@
         {
           "id": "manager",
           "parent": "prefix",
-          "number": "2.1.1",
+          "number": "3.1.1",
           "kind": "调用",
           "title": "KVCacheManager.get_computed_blocks()",
           "summary": "限制可复用长度，并调用单组协调器。",
@@ -260,7 +298,7 @@
         {
           "id": "coordinator",
           "parent": "manager",
-          "number": "2.1.1.1",
+          "number": "3.1.1.1",
           "kind": "调用",
           "title": "UnitaryKVCacheCoordinator.find_longest_cache_hit()",
           "summary": "将单缓存组 g0 的查找转交 FullAttentionManager。",
@@ -297,7 +335,7 @@
         {
           "id": "scan",
           "parent": "coordinator",
-          "number": "2.1.1.1.1",
+          "number": "3.1.1.1.1",
           "kind": "循环",
           "title": "FullAttentionManager.find_longest_cache_hit()",
           "summary": "从头逐完整块查找，首个未命中即停止。",
@@ -334,7 +372,7 @@
         {
           "id": "lookup",
           "parent": "scan",
-          "number": "2.1.1.1.1.1",
+          "number": "3.1.1.1.1.1",
           "kind": "调用",
           "title": "BlockPool.get_cached_block()",
           "summary": "以块 hash 和缓存组组成键查元数据表。",
@@ -371,7 +409,7 @@
         {
           "id": "allocate",
           "parent": "schedule",
-          "number": "2.2",
+          "number": "3.2",
           "kind": "调用",
           "title": "KVCacheManager.allocate_slots()",
           "summary": "固定命中块引用，并分配未命中后缀。",
@@ -413,14 +451,142 @@
           ]
         },
         {
+          "id": "claim-hits",
+          "parent": "allocate",
+          "number": "3.2.1",
+          "kind": "调用",
+          "title": "KVCacheCoordinator.allocate_new_computed_blocks()",
+          "summary": "在申请新块前先固定本地前缀命中块。",
+          "input": "R2 命中的 block7 与 num_local_computed_tokens=2；本页无外部命中。",
+          "changes": "逐 group 调 add_local_computed_blocks；先 touch 全部本地命中，外部块分配分支在本页不执行。",
+          "output": "R2 的请求块表已包含受保护的命中块。",
+          "resume": "返回 allocate_slots，随后才调用 allocate_new_blocks 申请 [C,X]、[E,F] 的空间。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 581,
+              "end": 593,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 267,
+              "end": 285,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 6 步",
+              "action": {
+                "mode": "vllm",
+                "step": 6
+              }
+            }
+          ],
+          "note": "原图第 6 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "claim-type",
+          "parent": "claim-hits",
+          "number": "3.2.1.1",
+          "kind": "调用",
+          "title": "FullAttentionManager.add_local_computed_blocks() [继承实现]",
+          "summary": "把命中的 block7 记为 R2 已有块并维护缓存计数。",
+          "input": "request_id=R2、new_computed_blocks=[block7]；普通 full-attention 不跳过前缀。",
+          "changes": "调用 BlockPool.touch 后将命中块追加 req_to_blocks，并更新 num_cached_block；不重新存储已有 K/V。",
+          "output": "R2 已有的缓存块列表和对应引用。",
+          "resume": "返回 coordinator；之后新增块容量只需覆盖剩余 token。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 271,
+              "end": 277,
+              "label": "分派调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 270,
+              "end": 281,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 305,
+              "end": 320,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 747,
+              "end": 747,
+              "label": "FullAttentionManager 继承关系"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 6 步",
+              "action": {
+                "mode": "vllm",
+                "step": 6
+              }
+            }
+          ],
+          "note": "原图第 6 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "claim-pool",
+          "parent": "claim-type",
+          "number": "3.2.1.1.1",
+          "kind": "调用",
+          "title": "BlockPool.touch()",
+          "summary": "保护命中块，防止同一轮新块分配将它淘汰。",
+          "input": "命中 block7；它可能已有请求引用，也可能 ref_cnt=0。",
+          "changes": "若引用为零则从 free queue 移除，再增加 ref_cnt。",
+          "output": "被 R2 引用的 block7；物理 KV 仍保留原内容。",
+          "resume": "返回 add_local_computed_blocks；释放请求时再配对减引用。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 305,
+              "end": 307,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/block_pool.py",
+              "line": 752,
+              "end": 766,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 6 步",
+              "action": {
+                "mode": "vllm",
+                "step": 6
+              }
+            }
+          ],
+          "note": "原图第 6 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
           "id": "new-blocks",
           "parent": "allocate",
-          "number": "2.2.1",
+          "number": "3.2.2",
           "kind": "调用",
-          "title": "coordinator.allocate_new_blocks() → BlockPool.get_new_blocks()",
+          "title": "KVCacheCoordinator.allocate_new_blocks()",
           "summary": "经单组管理器取得新的物理块 ID。",
           "input": "R2 需要的槽位总量和已有块链。",
-          "changes": "单组管理器计算差额后向空闲队列取块；旧哈希若被复用则驱逐。",
+          "changes": "遍历 single_type_managers，给每个组调用 allocate_new_blocks，并返回按组排列的新块列表；本页一个 full-attention 组。",
           "output": "教学新块 #24、#31；引用计数归该请求占用。",
           "resume": "返回 allocate_slots()；随后 cache_blocks 登记该请求完整块键。",
           "evidence": [
@@ -464,9 +630,92 @@
           ]
         },
         {
+          "id": "allocate-type",
+          "parent": "new-blocks",
+          "number": "3.2.2.1",
+          "kind": "调用",
+          "title": "FullAttentionManager.allocate_new_blocks() [继承实现]",
+          "summary": "按 token 总容量减已有块数确定还缺几块。",
+          "input": "R2 6 个 token、block_size=2、已有命中块7；本页无 partial-hit CoW。",
+          "changes": "需要 ceil(6/2)=3 块，已有1块，调用 block_pool.get_new_blocks(2)，并追加 req_to_blocks。",
+          "output": "本次新块 [24,31] 与请求完整块表 [7,24,31]。",
+          "resume": "返回 coordinator，再回 allocate_slots；这些块尚待本轮模型写入 K/V。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 311,
+              "end": 320,
+              "label": "分派调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 372,
+              "end": 412,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 747,
+              "end": 747,
+              "label": "FullAttentionManager 继承关系"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 6 步",
+              "action": {
+                "mode": "vllm",
+                "step": 6
+              }
+            }
+          ],
+          "note": "原图第 6 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "allocate-pool",
+          "parent": "allocate-type",
+          "number": "3.2.2.1.1",
+          "kind": "调用",
+          "title": "BlockPool.get_new_blocks()",
+          "summary": "从空闲队列取出两块并清理旧缓存身份。",
+          "input": "num_blocks=2 与空闲块队列。",
+          "changes": "popleft_n 取块；prefix caching 开启时移除被复用块的旧 hash 映射，并把 ref_cnt 从0增加到1。",
+          "output": "被 R2 独占的新逻辑块 ID [24,31]。",
+          "resume": "返回 single-type manager；当前请求的 hash 登记发生在 allocate_slots 后续 cache_blocks 路径，实际 KV 写入更晚。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 407,
+              "end": 412,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/block_pool.py",
+              "line": 666,
+              "end": 700,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 6 步",
+              "action": {
+                "mode": "vllm",
+                "step": 6
+              }
+            }
+          ],
+          "note": "原图第 6 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
           "id": "pack",
           "parent": "schedule",
-          "number": "2.3",
+          "number": "3.3",
           "kind": "动作",
           "title": "构造 SchedulerOutput 并推进调度游标",
           "summary": "计划携带 Worker 所需的块 ID 和本轮原起点。",
@@ -510,7 +759,7 @@
         {
           "id": "execute",
           "parent": null,
-          "number": "3",
+          "number": "4",
           "kind": "边界",
           "title": "EngineCore.step() → model_executor.execute_model()",
           "summary": "Worker 消费块表，读取已有 AB，生成 CXEF 的新 KV。",
@@ -547,7 +796,7 @@
         {
           "id": "consume",
           "parent": null,
-          "number": "4",
+          "number": "5",
           "kind": "调用",
           "title": "Scheduler.update_from_output()",
           "summary": "消费本轮模型回报，完成调度计数闭环。",
@@ -591,12 +840,12 @@
         {
           "id": "free",
           "parent": null,
-          "number": "5",
+          "number": "6",
           "kind": "返回",
-          "title": "KVCacheManager.free() → BlockPool.free_blocks()",
+          "title": "KVCacheManager.free()",
           "summary": "请求结束时释放使用权，完整前缀仍可作为缓存留存。",
           "input": "请求块链；每块 ref_cnt 与已登记 hash。",
-          "changes": "引用计数减 1；归零块进入可回收队列，但缓存键保留到实际复用/驱逐。",
+          "changes": "委托 coordinator.free(request_id) 释放各类型请求块引用；hash 缓存记录与可复用的物理内容不会因请求结束一并清零。",
           "output": "后续请求仍可能命中完整块；它们也可能因容量压力被回收。",
           "resume": "下一个请求从 Request 哈希与 schedule() 查找重新开始。该释放没有独立教学快照。",
           "evidence": [
@@ -631,6 +880,89 @@
               }
             }
           ]
+        },
+        {
+          "id": "free-coordinator",
+          "parent": "free",
+          "number": "6.1",
+          "kind": "调用",
+          "title": "KVCacheCoordinator.free() → SingleTypeKVCacheManager.free()",
+          "summary": "请求退出时依次释放其各组块列表。",
+          "input": "完成的 R2 request_id 与 req_to_blocks。",
+          "changes": "逐 manager 调 free；single-type manager 取走请求 bookkeeping，并按尾块优先的逆序交给 BlockPool.free_blocks。",
+          "output": "请求持有的块引用被交还块池。",
+          "resume": "逐层返回 KVCacheManager.free；其他请求仍持有的共享块不能回空闲队列。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 620,
+              "end": 633,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 393,
+              "end": 401,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 584,
+              "end": 592,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 8 步",
+              "action": {
+                "mode": "vllm",
+                "step": 8
+              }
+            }
+          ],
+          "note": "原图第 8 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "free-pool",
+          "parent": "free-coordinator",
+          "number": "6.1.1",
+          "kind": "调用",
+          "title": "BlockPool.free_blocks()",
+          "summary": "减少请求引用，零引用块进入可复用队列。",
+          "input": "按逆序返回的块列表；可能同时被其他请求引用。",
+          "changes": "逐块减 ref_cnt；只有 ref_cnt=0 且非 null block 才成为 free queue 候选。",
+          "output": "可回收块队列更新；仍可保留 prefix hash 供下次命中。",
+          "resume": "返回 free；后续 get_new_blocks 真正复用该块时才移除它的旧 hash 身份。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 591,
+              "end": 592,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/block_pool.py",
+              "line": 774,
+              "end": 808,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 8 步",
+              "action": {
+                "mode": "vllm",
+                "step": 8
+              }
+            }
+          ],
+          "note": "原图第 8 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
         }
       ]
     },
@@ -649,7 +981,7 @@
         {
           "id": "prior",
           "parent": null,
-          "number": "P1",
+          "number": "1",
           "kind": "调用",
           "title": "UnifiedRadixCache.checkpoint() → checkpoint_into_tree()",
           "summary": "前置 R1 的已计算 KV 被登记进压缩前缀树。",
@@ -693,7 +1025,7 @@
         {
           "id": "init",
           "parent": null,
-          "number": "1",
+          "number": "2",
           "kind": "调用",
           "title": "Req.init_next_round_input()",
           "summary": "等待扫描给 R2 准备本轮输入和前缀查询。",
@@ -730,7 +1062,7 @@
         {
           "id": "match",
           "parent": "init",
-          "number": "1.1",
+          "number": "2.1",
           "kind": "调用",
           "title": "match_kv_cache()",
           "summary": "统一构造 RadixKey 并把匹配结果写回 Req。",
@@ -767,7 +1099,7 @@
         {
           "id": "cache",
           "parent": "match",
-          "number": "1.1.1",
+          "number": "2.1.1",
           "kind": "调用",
           "title": "UnifiedRadixCache.match_prefix() → _match_tree()",
           "summary": "本例没有 session 命中，进入所选树核心。",
@@ -811,7 +1143,7 @@
         {
           "id": "tree",
           "parent": "cache",
-          "number": "1.1.1.1",
+          "number": "2.1.1.1",
           "kind": "调用",
           "title": "UnifiedTreeCore.match_prefix() → _match_prefix_helper()",
           "summary": "固定 Python tree core：按 token 前缀沿压缩边行走。",
@@ -862,7 +1194,7 @@
         {
           "id": "split",
           "parent": "tree",
-          "number": "1.1.1.1.1",
+          "number": "2.1.1.1.1",
           "kind": "调用",
           "title": "UnifiedTreeCore._split_node()",
           "summary": "把 ABCDEF 拆成公共 ABC 和剩余 DEF。",
@@ -899,7 +1231,7 @@
         {
           "id": "matched",
           "parent": "tree",
-          "number": "1.1.1.1.2",
+          "number": "2.1.1.1.2",
           "kind": "返回",
           "title": "UnifiedTreeCore._match_post_processor()",
           "summary": "把内部节点转成外部可保存的 NodeId。",
@@ -936,7 +1268,7 @@
         {
           "id": "batch",
           "parent": null,
-          "number": "2",
+          "number": "3",
           "kind": "调用",
           "title": "ScheduleBatch.prepare_for_extend()",
           "summary": "准入后只把未命中的后缀放入本轮输入。",
@@ -980,7 +1312,7 @@
         {
           "id": "alloc",
           "parent": "batch",
-          "number": "2.1",
+          "number": "3.1",
           "kind": "调用",
           "title": "alloc_for_extend()",
           "summary": "先取旧前缀索引，再为新 token 申请槽。",
@@ -1024,7 +1356,7 @@
         {
           "id": "indices",
           "parent": "alloc",
-          "number": "2.1.1",
+          "number": "3.1.1",
           "kind": "调用",
           "title": "_prefix_kv_indices() → UnifiedRadixCache.prefix_device_indices()",
           "summary": "通过命中 NodeId 取出真正的旧设备槽位。",
@@ -1061,7 +1393,7 @@
         {
           "id": "row",
           "parent": "alloc",
-          "number": "2.1.2",
+          "number": "3.1.2",
           "kind": "动作",
           "title": "构造 req_to_token 行并返回 out_cache_loc",
           "summary": "把历史读位置与本轮写位置放到各自字段。",
@@ -1098,7 +1430,7 @@
         {
           "id": "execute",
           "parent": null,
-          "number": "3",
+          "number": "4",
           "kind": "边界",
           "title": "Scheduler.run_batch() → model_worker.forward_batch_generation()",
           "summary": "执行器消费 extend batch，复用 ABC 并计算 XEF。",
@@ -1135,9 +1467,9 @@
         {
           "id": "result",
           "parent": null,
-          "number": "4",
+          "number": "5",
           "kind": "调用",
-          "title": "Scheduler.process_batch_result()",
+          "title": "Scheduler.process_batch_result() → SchedulerBatchResultProcessor.process_batch_result_prefill()",
           "summary": "在实际模型回报后进入 prefill 结果处理。",
           "input": "GenerationBatchResult 与该 extend batch。",
           "changes": "普通非 PD、非 diffusion 路径调用 batch_result_processor.process_batch_result_prefill()。",
@@ -1157,6 +1489,27 @@
               "line": 418,
               "end": 447,
               "label": "实际实现"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/managers/scheduler.py",
+              "line": 5224,
+              "end": 5232,
+              "label": "EXTEND 分派调用"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/managers/scheduler_components/batch_result_processor.py",
+              "line": 310,
+              "end": 322,
+              "label": "结果处理实现"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/managers/scheduler_components/batch_result_processor.py",
+              "line": 432,
+              "end": 447,
+              "label": "继续请求的 checkpoint 调用"
             }
           ],
           "targets": [
@@ -1172,7 +1525,7 @@
         {
           "id": "checkpoint",
           "parent": "result",
-          "number": "4.1",
+          "number": "5.1",
           "kind": "调用",
           "title": "checkpoint_kv_cache() → UnifiedRadixCache.checkpoint()",
           "summary": "将 R2 已计算的 XEF 作为新分支发布。",
@@ -1221,9 +1574,54 @@
           ]
         },
         {
-          "id": "insert",
+          "id": "checkpoint-tree",
           "parent": "checkpoint",
-          "number": "4.1.1",
+          "number": "5.1.1",
+          "kind": "调用",
+          "title": "UnifiedRadixCache.checkpoint_into_tree()",
+          "summary": "将已经执行完成的请求 KV 索引整理为可复用的 radix 前缀。",
+          "input": "R2 的完整输入 token IDs、up_to 与 req_to_token 行 [40,41,42,70,71,72]；本页无 session 接管。",
+          "changes": "取得有效缓存长度；按 page_size=1 对齐 key，从请求行复制 int64 KV 索引为 InsertParams.value，再调用 insert。",
+          "output": "待插入 key=ABCXEF 和对应物理 token 索引；写回后更新 request cache_inserted_len。",
+          "resume": "insert 返回后 record_insert；继续更新请求树锁与组件状态，最后回到 checkpoint_kv_cache。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 1196,
+              "end": 1208,
+              "label": "调用位置与入口"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 1216,
+              "end": 1247,
+              "label": "实际实现"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 1268,
+              "end": 1293,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 8 步",
+              "action": {
+                "mode": "sglang",
+                "step": 8
+              }
+            }
+          ],
+          "note": "原图第 8 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "insert",
+          "parent": "checkpoint-tree",
+          "number": "5.1.1.1",
           "kind": "调用",
           "title": "UnifiedRadixCache.insert()",
           "summary": "通过树核心插入步进器完成结构与所有权动作。",
@@ -1263,6 +1661,210 @@
               }
             }
           ]
+        },
+        {
+          "id": "insert-begin",
+          "parent": "insert",
+          "number": "5.1.1.1.1",
+          "kind": "调用",
+          "title": "UnifiedTreeCore.begin_insert()",
+          "summary": "建立一次不可重入的 radix 插入遍历状态。",
+          "input": "InsertParams 中的 key/value 与已有 ABC→DEF 树结构。",
+          "changes": "校验无正在进行的 insert，做页对齐；保存 WALK 阶段、root、剩余 key/value 和 InsertResult 后调用 _advance_insert。",
+          "output": "InsertStepResult：可能带完成结果，也可能带需要应用的 actions。",
+          "resume": "返回 UnifiedRadixCache.insert；外层先应用 actions，必要时调用 resume_insert。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 697,
+              "end": 705,
+              "label": "调用位置与续点"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py",
+              "line": 1135,
+              "end": 1153,
+              "label": "实际实现"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py",
+              "line": 1178,
+              "end": 1190,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 8 步",
+              "action": {
+                "mode": "sglang",
+                "step": 8
+              }
+            }
+          ],
+          "note": "原图第 8 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "insert-advance",
+          "parent": "insert-begin",
+          "number": "5.1.1.1.1.1",
+          "kind": "循环",
+          "title": "UnifiedTreeCore._advance_insert()",
+          "summary": "推进 WALK / OVERLAP / COMMIT / TAIL 状态机直到屏障或完成。",
+          "input": "_ongoing_insert_walk_state；本例已有 ABC 命中，随后插入新 XEF 分支。",
+          "changes": "按 state.phase 调相应步进方法；遇需立即执行的 action 返回屏障，否则继续；TAIL 完成时清空 ongoing state 并返回 result。",
+          "output": "InsertStepResult(actions,result)；这里返回的是控制结果和索引管理动作，不是 attention 输出。",
+          "resume": "初次回 begin_insert；若由 resume_insert 再进入，则回 resume_insert。两条入口均交给 UnifiedRadixCache.insert 消费。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py",
+              "line": 1190,
+              "end": 1190,
+              "label": "初次调用"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py",
+              "line": 1238,
+              "end": 1242,
+              "label": "恢复调用"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py",
+              "line": 1254,
+              "end": 1278,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 8 步",
+              "action": {
+                "mode": "sglang",
+                "step": 8
+              }
+            }
+          ],
+          "note": "原图第 8 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "insert-actions",
+          "parent": "insert",
+          "number": "5.1.1.1.2",
+          "kind": "调用",
+          "title": "UnifiedRadixCache._apply_cache_actions()",
+          "summary": "在继续树遍历之前消费当前 step 的动作。",
+          "input": "InsertStepResult.actions；本页只涉及本地设备索引管理，无 HiCache/远端备份。",
+          "changes": "反转列表后逐个 pop，并调用 _apply_cache_action；动作被消费后不会再次执行。",
+          "output": "已应用的组件/分配器副作用，动作列表被清空。",
+          "resume": "返回 insert 循环；有 result 即返回，否则调用 tree_core.resume_insert 继续。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 698,
+              "end": 705,
+              "label": "调用位置与续点"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 1413,
+              "end": 1422,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 8 步",
+              "action": {
+                "mode": "sglang",
+                "step": 8
+              }
+            }
+          ],
+          "note": "原图第 8 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "insert-action-dispatch",
+          "parent": "insert-actions",
+          "number": "5.1.1.1.2.1",
+          "kind": "分支",
+          "title": "UnifiedRadixCache._apply_cache_action()",
+          "summary": "将树核心返回的动作分派给真正持有存储的对象。",
+          "input": "单个 CacheAction / ComponentAction。",
+          "changes": "ComponentAction 转对应组件；FreeDeviceKV 通过 kv_storage().free_token_rows 释放冗余索引；本页关闭 BackupKV 相关路径。",
+          "output": "分配器/组件状态变化；树节点引用仍指向有效 KV 索引。",
+          "resume": "返回 _apply_cache_actions，处理下一动作后回 insert 循环。动作列表可能为空，本节点不声称本例必有冗余释放。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 1419,
+              "end": 1420,
+              "label": "分派调用"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 1424,
+              "end": 1456,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 8 步",
+              "action": {
+                "mode": "sglang",
+                "step": 8
+              }
+            }
+          ],
+          "note": "原图第 8 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "insert-resume",
+          "parent": "insert",
+          "number": "5.1.1.1.3",
+          "kind": "返回",
+          "title": "UnifiedTreeCore.resume_insert() / end_insert()",
+          "summary": "屏障动作应用后恢复遍历，并在退出时清理残留状态。",
+          "input": "仍存在的 _ongoing_insert_walk_state；或最终/异常退出时尚未应用的 actions。",
+          "changes": "resume_insert 调 _advance_insert；外层 insert 的 finally 总会 end_insert 并应用残余动作，最后清除 session_id。",
+          "output": "恢复产生下一 InsertStepResult；退出清理返回残余 actions 并置空 ongoing state。",
+          "resume": "resume 返回 insert 的下一轮循环；最终 InsertResult 回到 checkpoint_into_tree，更新 R2 插入记录。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 705,
+              "end": 713,
+              "label": "恢复与 finally 调用"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py",
+              "line": 1238,
+              "end": 1252,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 8 步",
+              "action": {
+                "mode": "sglang",
+                "step": 8
+              }
+            }
+          ],
+          "note": "原图第 8 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
         }
       ]
     }

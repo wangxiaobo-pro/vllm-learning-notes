@@ -57,6 +57,172 @@
           ]
         },
         {
+          "id": "store-jobs",
+          "parent": "plan",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "OffloadingConnectorScheduler._build_store_jobs()",
+          "summary": "从本轮已具备保存条件的 token 范围生成普通保存作业。",
+          "input": "SchedulerOutput、请求的 offload keys 与尚未保存范围。",
+          "changes": "跳过空范围；调用 manager.prepare_store 预留 CPU 目标；成功后构造 NPU 源块与 CPU 目标的作业。",
+          "output": "normal_store_jobs；请求保存游标与待完成 job 状态。",
+          "resume": "返回 build_connector_meta，与 load_jobs 和其他维护作业合并为本轮 metadata。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/offloading/scheduler.py",
+              "line": 1880,
+              "end": 1884,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/offloading/scheduler.py",
+              "line": 1570,
+              "end": 1579,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/offloading/scheduler.py",
+              "line": 1728,
+              "end": 1746,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 1 步",
+              "action": {
+                "mode": "offload",
+                "step": 1
+              }
+            }
+          ],
+          "note": "原图第 1 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "store-prepare",
+          "parent": "store-jobs",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "CPUOffloadingManager.prepare_store()",
+          "summary": "保存前先建立不可读取的 CPU chunk 元数据。",
+          "input": "new_offload_keys、本请求 ReqContext；默认准入阈值 1。",
+          "changes": "筛出未驻留 keys；检查可用容量，必要时淘汰空闲 chunk；分配 chunk 并插入 policy，增加 write_pending 计数。",
+          "output": "PrepareStoreOutput(keys_to_store, store_spec, evicted_keys)，失败返回 None。",
+          "resume": "返回 _build_store_jobs；此时仅分配目标，D2H 未执行，更不能据此报告 CPU HIT。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/offloading/scheduler.py",
+              "line": 1732,
+              "end": 1734,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/kv_offload/cpu/manager.py",
+              "line": 251,
+              "end": 269,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/kv_offload/cpu/manager.py",
+              "line": 303,
+              "end": 361,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 1 步",
+              "action": {
+                "mode": "offload",
+                "step": 1
+              }
+            }
+          ],
+          "note": "原图第 1 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "store-chunks",
+          "parent": "store-prepare",
+          "number": "1.1.1.1",
+          "kind": "调用",
+          "title": "CPUOffloadingManager._allocate_chunks()",
+          "summary": "把待保存 key 的数量转换成 CPU chunk ID。",
+          "input": "keys_to_store；_num_allocated_chunks 和 _free_list。",
+          "changes": "先分配从未用过的 chunk_id，再从 free_list 复用剩余 ID；维护分配计数。",
+          "output": "ChunkStatus 列表，例如教学目标 H3。",
+          "resume": "回到 prepare_store 插入 policy，再通过 _get_load_store_spec 生成传输目标。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/kv_offload/cpu/manager.py",
+              "line": 345,
+              "end": 356,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/kv_offload/cpu/manager.py",
+              "line": 97,
+              "end": 111,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 1 步",
+              "action": {
+                "mode": "offload",
+                "step": 1
+              }
+            }
+          ],
+          "note": "原图第 1 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "store-spec",
+          "parent": "store-prepare",
+          "number": "1.1.1.2",
+          "kind": "调用",
+          "title": "CPUOffloadingManager._get_load_store_spec()",
+          "summary": "把主机 chunk 状态变成可传递的 CPU 目标描述。",
+          "input": "本次 keys 与新分配的 chunks。",
+          "changes": "只抽取 chunk.chunk_id 构造 CPULoadStoreSpec，不访问或拷贝 K/V 内容。",
+          "output": "CPU block_ids 描述符。",
+          "resume": "prepare_store 将它装入 PrepareStoreOutput 返回保存作业生成器。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/kv_offload/cpu/manager.py",
+              "line": 355,
+              "end": 361,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/kv_offload/cpu/manager.py",
+              "line": 116,
+              "end": 121,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 1 步",
+              "action": {
+                "mode": "offload",
+                "step": 1
+              }
+            }
+          ],
+          "note": "原图第 1 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
           "id": "queue",
           "parent": null,
           "number": "2",
@@ -142,10 +308,10 @@
           "parent": "start-store",
           "number": "3.1",
           "kind": "提交",
-          "title": "NPUOffloadingWorker.submit_store() → transfer_async()",
+          "title": "NPUOffloadingWorker.submit_store()",
           "summary": "将 D7、D11 的 KV 复制到 H3 两个子块。",
           "input": "设备块/CPU chunk 描述符和已注册的各层 K/V 地址。",
-          "changes": "生成拷贝描述符；D2H 流先等模型流写完，再调用 swap_blocks_batch 并记录 end_event。",
+          "changes": "把 job_id、NPU 源描述与 CPU 目标描述直接交给 _store_handler.transfer_async；该 handler 在初始化时固定 npu_to_cpu=True。",
           "output": "CPU 内存中的副本最终与源块一致；原设备副本不因复制而删除。",
           "resume": "返回 true 表示已排队；Worker 后续查询 end_event。",
           "evidence": [
@@ -187,6 +353,127 @@
               }
             }
           ]
+        },
+        {
+          "id": "d2h-transfer",
+          "parent": "d2h",
+          "number": "3.1.1",
+          "kind": "调用",
+          "title": "SingleDirectionNPUOffloadingHandler.transfer_async()",
+          "summary": "把保存描述翻译成异步 D2H 拷贝并登记完成事件。",
+          "input": "GPULoadStoreSpec 源块、CPULoadStoreSpec 目标 chunk 与已绑定的 rank-local tensor views。",
+          "changes": "生成各层页面地址和大小；D2H 流等待模型流已有写入，提交 swap_blocks_batch 后记录 end_event，并将 Transfer 放入队列。",
+          "output": "True 表示已提交；_transfer_events[job_id] 与 _transfers 持有尚未完成的任务。",
+          "resume": "返回 submit_store，再回 start_kv_transfers；完成要由后续 get_finished 查询。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/distributed/kv_transfer/kv_pool/kv_offload/native/cpu_npu.py",
+              "line": 331,
+              "end": 337,
+              "label": "handler 绑定"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/distributed/kv_transfer/kv_pool/kv_offload/native/cpu_npu.py",
+              "line": 359,
+              "end": 365,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/distributed/kv_transfer/kv_pool/kv_offload/native/cpu_npu.py",
+              "line": 104,
+              "end": 123,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/distributed/kv_transfer/kv_pool/kv_offload/native/cpu_npu.py",
+              "line": 196,
+              "end": 231,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 2 步",
+              "action": {
+                "mode": "offload",
+                "step": 2
+              }
+            }
+          ],
+          "note": "原图第 2 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "d2h-addresses",
+          "parent": "d2h-transfer",
+          "number": "3.1.1.1",
+          "kind": "动作",
+          "title": "transfer_async()：生成源地址、目标地址与字节数",
+          "summary": "按缓存组和 canonical data_ref 构造批量拷贝描述符。",
+          "input": "block_ids、group_sizes、block_indices 和每个 tensor 的 page_size_bytes。",
+          "changes": "根据 chunk 内偏移计算源/目标子块；调用 compute_sub_block_ptrs 填地址，sizes 填页面字节数。",
+          "output": "只位于 CPU 的地址/字节数数组；没有在此复制 K/V。",
+          "resume": "回到 transfer_async 的流依赖设置，然后将三组描述符交给 swap_blocks_batch。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/distributed/kv_transfer/kv_pool/kv_offload/native/cpu_npu.py",
+              "line": 125,
+              "end": 140,
+              "label": "描述符分配"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/distributed/kv_transfer/kv_pool/kv_offload/native/cpu_npu.py",
+              "line": 146,
+              "end": 194,
+              "label": "调用位置与地址构造"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 2 步",
+              "action": {
+                "mode": "offload",
+                "step": 2
+              }
+            }
+          ],
+          "note": "原图第 2 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "d2h-enqueue",
+          "parent": "d2h-transfer",
+          "number": "3.1.1.2",
+          "kind": "提交",
+          "title": "transfer_async()：提交 swap_blocks_batch 并记录 end_event",
+          "summary": "保持传输顺序，在专用流上异步执行页面复制。",
+          "input": "地址/大小描述符和 direction（D2H=1，H2D=0）。",
+          "changes": "同向新任务等待上一项 end_event；D2H 额外等模型当前流。算子之后记录 end_event，保存描述符以覆盖异步生命周期。",
+          "output": "已排入 NPU 流的复制与完成事件。",
+          "resume": "立即返回提交结果；query 为真后才允许上报完成和回收描述符。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/distributed/kv_transfer/kv_pool/kv_offload/native/cpu_npu.py",
+              "line": 196,
+              "end": 231,
+              "label": "提交与登记实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 2 步",
+              "action": {
+                "mode": "offload",
+                "step": 2
+              }
+            }
+          ],
+          "note": "设备算子为本链展开边界：解释描述符和流契约，不宣称执行过 NPU 传输。 原图第 2 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
         },
         {
           "id": "poll",
@@ -233,9 +520,47 @@
           ]
         },
         {
-          "id": "event",
+          "id": "poll-worker",
           "parent": "poll",
           "number": "4.1",
+          "kind": "调用",
+          "title": "NPUOffloadingWorker.get_finished()",
+          "summary": "分别轮询 D2H 与 H2D handler，再合并 TransferResult。",
+          "input": "两个 handler 的在途 Transfer 队列。",
+          "changes": "依次调用 _store_handler.get_finished 和 _load_handler.get_finished，合并各自已完成的结果。",
+          "output": "零个或多个 TransferResult；未完成作业继续留在 handler 队列。",
+          "resume": "返回 OffloadingConnectorWorker.get_finished，后者更新作业 metadata 与 finished_recving。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/offloading/worker.py",
+              "line": 285,
+              "end": 287,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/distributed/kv_transfer/kv_pool/kv_offload/native/cpu_npu.py",
+              "line": 375,
+              "end": 376,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 3 步",
+              "action": {
+                "mode": "offload",
+                "step": 3
+              }
+            }
+          ],
+          "note": "原图第 3 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "event",
+          "parent": "poll-worker",
+          "number": "4.1.1",
           "kind": "等待",
           "title": "SingleDirectionNPUOffloadingHandler.get_finished()",
           "summary": "以 end_event.query() 判定实际完成。",
@@ -275,6 +600,37 @@
               }
             }
           ]
+        },
+        {
+          "id": "event-query",
+          "parent": "event",
+          "number": "4.1.1.1",
+          "kind": "循环",
+          "title": "SingleDirectionNPUOffloadingHandler.get_finished()：query / 回收",
+          "summary": "只在队首事件已完成时取走任务，循环处理已完成前缀。",
+          "input": "_transfers[0].end_event；同向传输通过事件串联。",
+          "changes": "query 不阻塞主机；已完成任务转为 TransferResult，流/事件/描述符归还池，并删除 job→event 映射。",
+          "output": "已完成结果与可复用资源池。",
+          "resume": "返回 NPUOffloadingWorker.get_finished；待完成队首会终止当前轮询。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/distributed/kv_transfer/kv_pool/kv_offload/native/cpu_npu.py",
+              "line": 233,
+              "end": 256,
+              "label": "事件轮询与资源回收"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 3 步",
+              "action": {
+                "mode": "offload",
+                "step": 3
+              }
+            }
+          ],
+          "note": "原图第 3 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
         },
         {
           "id": "store-report",
@@ -388,6 +744,134 @@
           ]
         },
         {
+          "id": "lookup-chunks",
+          "parent": "hit",
+          "number": "6.1",
+          "kind": "调用",
+          "title": "OffloadingConnectorScheduler._lookup() → _lookup_complete_chunks()",
+          "summary": "普通完整 chunk 路径先计算可复用的连续长度。",
+          "input": "B 的 num_locally_computed_tokens、offload_keys、最大可回载 token 范围。",
+          "changes": "约束到 chunk 边界；本链 full-attention 组调用 _maximal_prefix_lookup，不走 sliding-window 或 partial-tail。",
+          "output": "命中 token 数；若后端尚未可读则为 None。",
+          "resume": "返回 get_num_new_matched_tokens，由其告知 Scheduler 外部命中长度与异步载入标记。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/offloading/scheduler.py",
+              "line": 1082,
+              "end": 1097,
+              "label": "上游调用与返回"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/offloading/scheduler.py",
+              "line": 966,
+              "end": 974,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/offloading/scheduler.py",
+              "line": 752,
+              "end": 774,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/offloading/scheduler.py",
+              "line": 843,
+              "end": 857,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 4 步",
+              "action": {
+                "mode": "offload",
+                "step": 4
+              }
+            }
+          ],
+          "note": "原图第 4 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "lookup-prefix",
+          "parent": "lookup-chunks",
+          "number": "6.1.1",
+          "kind": "调用",
+          "title": "OffloadingConnectorScheduler._maximal_prefix_lookup()",
+          "summary": "逐 key 查询 CPU 缓存，遇到首个缺失停止。",
+          "input": "按前缀顺序排列的 offload_keys。",
+          "changes": "调用 manager.lookup；HIT 增长命中，MISS 截断；HIT_PENDING/RETRY 将本轮查询标为需等待。",
+          "output": "连续命中 chunk 数，或延迟标记 None。",
+          "resume": "_lookup_complete_chunks 把 chunk 数换成 token 边界，再返回 _lookup。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/offloading/scheduler.py",
+              "line": 850,
+              "end": 857,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/offloading/scheduler.py",
+              "line": 674,
+              "end": 706,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 4 步",
+              "action": {
+                "mode": "offload",
+                "step": 4
+              }
+            }
+          ],
+          "note": "原图第 4 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "lookup-manager",
+          "parent": "lookup-prefix",
+          "number": "6.1.1.1",
+          "kind": "调用",
+          "title": "CPUOffloadingManager.lookup()",
+          "summary": "查 metadata 区分不存在、写入中和可读取。",
+          "input": "OffloadKey 与 CPU cache policy 中的 ChunkStatus。",
+          "changes": "_policy.get(key)；缺失返回 MISS；存在但 !is_ready 返回 HIT_PENDING；可读才返回 HIT。",
+          "output": "LookupResult，不是 KV tensor 或传输结果。",
+          "resume": "返回 _maximal_prefix_lookup，决定连续命中是否可以用于 B。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/offloading/scheduler.py",
+              "line": 686,
+              "end": 705,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/kv_offload/cpu/manager.py",
+              "line": 189,
+              "end": 195,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 4 步",
+              "action": {
+                "mode": "offload",
+                "step": 4
+              }
+            }
+          ],
+          "note": "原图第 4 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
           "id": "allocate",
           "parent": null,
           "number": "7",
@@ -469,6 +953,82 @@
           ]
         },
         {
+          "id": "load-pin",
+          "parent": "pin",
+          "number": "7.1.1",
+          "kind": "调用",
+          "title": "CPUOffloadingManager._prepare_load()",
+          "summary": "固定 CPU 源 chunk，避免 H2D 在途时被淘汰。",
+          "input": "B 要读取的 keys 与已 ready 的 chunks。",
+          "changes": "检查存在且 ready；ref_cnt 0→1 时移出可回收集合，逐项加引用并记录本请求访问。",
+          "output": "CPULoadStoreSpec 和被固定的 CPU 源 chunk。",
+          "resume": "prepare_load 返回 scheduler，后者构造 load_job；complete_load 才释放这次读取引用。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/kv_offload/cpu/manager.py",
+              "line": 204,
+              "end": 209,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/kv_offload/cpu/manager.py",
+              "line": 211,
+              "end": 231,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 4 步",
+              "action": {
+                "mode": "offload",
+                "step": 4
+              }
+            }
+          ],
+          "note": "原图第 4 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "load-spec",
+          "parent": "load-pin",
+          "number": "7.1.1.1",
+          "kind": "调用",
+          "title": "CPUOffloadingManager._get_load_store_spec()",
+          "summary": "将已固定 chunk 转为 H2D 源描述。",
+          "input": "B 持有引用的 CPU chunks。",
+          "changes": "提取 chunk_id 为 CPULoadStoreSpec；源内容留在 CPU 存储。",
+          "output": "供 NPUOffloadingWorker.submit_load 使用的 CPU block_ids。",
+          "resume": "返回 _prepare_load，再逐层回 update_state_after_alloc；设备复制在随后 worker 提交阶段发生。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/kv_offload/cpu/manager.py",
+              "line": 229,
+              "end": 231,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/kv_offload/cpu/manager.py",
+              "line": 116,
+              "end": 121,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 4 步",
+              "action": {
+                "mode": "offload",
+                "step": 4
+              }
+            }
+          ],
+          "note": "原图第 4 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
           "id": "start-load",
           "parent": null,
           "number": "8",
@@ -506,9 +1066,54 @@
           ]
         },
         {
-          "id": "h2d",
+          "id": "load-submit",
           "parent": "start-load",
           "number": "8.1",
+          "kind": "调用",
+          "title": "NPUOffloadingWorker.submit_load()",
+          "summary": "选择初始化时固定为 H2D 的 handler。",
+          "input": "job_id、CPU src_spec、NPU dst_spec。",
+          "changes": "把三个描述参数转交 _load_handler.transfer_async；本节点不等待完成。",
+          "output": "True 提交成功标志。",
+          "resume": "回到 OffloadingConnectorWorker.start_kv_transfers；由后续 get_finished 触发 B 的完成通知。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/kv_transfer/kv_connector/v1/offloading/worker.py",
+              "line": 253,
+              "end": 257,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/distributed/kv_transfer/kv_pool/kv_offload/native/cpu_npu.py",
+              "line": 338,
+              "end": 344,
+              "label": "handler 绑定"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/distributed/kv_transfer/kv_pool/kv_offload/native/cpu_npu.py",
+              "line": 367,
+              "end": 373,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 5 步",
+              "action": {
+                "mode": "offload",
+                "step": 5
+              }
+            }
+          ],
+          "note": "原图第 5 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "h2d",
+          "parent": "load-submit",
+          "number": "8.1.1",
           "kind": "提交",
           "title": "SingleDirectionNPUOffloadingHandler.transfer_async()",
           "summary": "将 H3 两个子块回载到新设备块。",
@@ -548,6 +1153,75 @@
               }
             }
           ]
+        },
+        {
+          "id": "h2d-addresses",
+          "parent": "h2d",
+          "number": "8.1.1.1",
+          "kind": "动作",
+          "title": "transfer_async()：生成源地址、目标地址与字节数",
+          "summary": "按缓存组和 canonical data_ref 构造批量拷贝描述符。",
+          "input": "block_ids、group_sizes、block_indices 和每个 tensor 的 page_size_bytes。",
+          "changes": "根据 chunk 内偏移计算源/目标子块；调用 compute_sub_block_ptrs 填地址，sizes 填页面字节数。",
+          "output": "只位于 CPU 的地址/字节数数组；没有在此复制 K/V。",
+          "resume": "回到 transfer_async 的流依赖设置，然后将三组描述符交给 swap_blocks_batch。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/distributed/kv_transfer/kv_pool/kv_offload/native/cpu_npu.py",
+              "line": 125,
+              "end": 140,
+              "label": "描述符分配"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/distributed/kv_transfer/kv_pool/kv_offload/native/cpu_npu.py",
+              "line": 146,
+              "end": 194,
+              "label": "调用位置与地址构造"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 5 步",
+              "action": {
+                "mode": "offload",
+                "step": 5
+              }
+            }
+          ],
+          "note": "原图第 5 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "h2d-enqueue",
+          "parent": "h2d",
+          "number": "8.1.1.2",
+          "kind": "提交",
+          "title": "transfer_async()：提交 swap_blocks_batch 并记录 end_event",
+          "summary": "保持传输顺序，在专用流上异步执行页面复制。",
+          "input": "地址/大小描述符和 direction（D2H=1，H2D=0）。",
+          "changes": "同向新任务等待上一项 end_event；D2H 额外等模型当前流。算子之后记录 end_event，保存描述符以覆盖异步生命周期。",
+          "output": "已排入 NPU 流的复制与完成事件。",
+          "resume": "立即返回提交结果；query 为真后才允许上报完成和回收描述符。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/distributed/kv_transfer/kv_pool/kv_offload/native/cpu_npu.py",
+              "line": 196,
+              "end": 231,
+              "label": "提交与登记实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 5 步",
+              "action": {
+                "mode": "offload",
+                "step": 5
+              }
+            }
+          ],
+          "note": "设备算子为本链展开边界：解释描述符和流契约，不宣称执行过 NPU 传输。 原图第 5 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
         },
         {
           "id": "load-report",

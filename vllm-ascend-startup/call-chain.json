@@ -288,175 +288,6 @@
           "note": "节点编号表示阅读顺序；不表示 rank 0 必须完成后 rank 1 才能初始化。"
         },
         {
-          "id": "worker",
-          "parent": null,
-          "number": "3",
-          "kind": "边界",
-          "title": "WorkerProc.worker_main() → WorkerProc.__init__()",
-          "summary": "每个 Worker 进程建立 NPUWorker，并依次初始化设备、加载模型。",
-          "input": "本 rank 配置、local_rank、分布式地址与 RPC 队列。",
-          "changes": "WorkerWrapperBase 创建平台 worker；WorkerProc 调用 init_device 再调用 load_model。NPUWorker 构造时安装平台所需 patch 与算子。",
-          "output": "每个 rank 的 NPUWorker、Runner 与已加载模型；worker_main 发送 Worker READY 并进入 RPC 循环。",
-          "resume": "Worker READY 只表示 Worker 初始化阶段完成；Core 随后仍需请求 KVSpec、规划 KV、分配缓存与预热。",
-          "evidence": [
-            {
-              "repo": "vllm",
-              "path": "vllm/v1/executor/multiproc_executor.py",
-              "line": 646,
-              "end": 686,
-              "label": "调用位置 / 实现"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/v1/executor/multiproc_executor.py",
-              "line": 919,
-              "end": 943,
-              "label": "调用位置 / 实现"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/v1/worker/worker_base.py",
-              "line": 334,
-              "end": 348,
-              "label": "调用位置 / 实现"
-            },
-            {
-              "repo": "ascend",
-              "path": "vllm_ascend/worker/worker.py",
-              "line": 136,
-              "end": 153,
-              "label": "Ascend 实现"
-            }
-          ],
-          "targets": [
-            {
-              "label": "跳到第 7 步：Worker patch 与算子",
-              "action": {
-                "mode": "startup",
-                "step": 7
-              }
-            },
-            {
-              "label": "跳到第 12 步：Worker READY 与 RPC 循环",
-              "action": {
-                "mode": "startup",
-                "step": 12
-              }
-            }
-          ]
-        },
-        {
-          "id": "device",
-          "parent": "worker",
-          "number": "3.1",
-          "kind": "调用",
-          "title": "NPUWorker.init_device()",
-          "summary": "各 rank 绑定设备，建立 HCCL / TP 通信组并构造 MRV1 Runner。",
-          "input": "rank 0→NPU 0、rank 1→NPU 1；world_size=2。",
-          "changes": "_init_device 设置 NPU；初始化 HCCL world 与模型并行组；MRV2 关闭时创建 NPUModelRunner。",
-          "output": "本 rank 的 device、通信组和 Runner。",
-          "resume": "返回 WorkerProc.__init__，接着调用 load_model。",
-          "evidence": [
-            {
-              "repo": "ascend",
-              "path": "vllm_ascend/worker/worker.py",
-              "line": 431,
-              "end": 438,
-              "label": "Ascend 实现"
-            },
-            {
-              "repo": "ascend",
-              "path": "vllm_ascend/worker/worker.py",
-              "line": 487,
-              "end": 511,
-              "label": "Ascend 实现"
-            },
-            {
-              "repo": "ascend",
-              "path": "vllm_ascend/worker/worker.py",
-              "line": 1302,
-              "end": 1322,
-              "label": "Ascend 实现"
-            }
-          ],
-          "targets": [
-            {
-              "label": "跳到第 8 步：HCCL 与 TP 组",
-              "action": {
-                "mode": "startup",
-                "step": 8
-              }
-            },
-            {
-              "label": "跳到第 9 步：MRV1 Runner",
-              "action": {
-                "mode": "startup",
-                "step": 9
-              }
-            }
-          ],
-          "note": "TP 两卡共享一次逻辑请求调度，但设备张量和 KV 内存均由各 rank 本地持有。"
-        },
-        {
-          "id": "load",
-          "parent": "worker",
-          "number": "3.2",
-          "kind": "调用",
-          "title": "NPUWorker.load_model() → NPUModelRunner.load_model()",
-          "summary": "每卡构造其模型结构并加载本 rank 需要的参数。",
-          "input": "模型配置、checkpoint 与 TP rank。",
-          "changes": "Runner 调用 get_model；模型加载器创建模型、加载权重并做权重后处理；Runner 完成自身加载收尾。",
-          "output": "可执行的 rank-local 模型与权重。",
-          "resume": "返回 WorkerProc 构造；worker_main 再发 Worker READY，执行器得以继续。",
-          "evidence": [
-            {
-              "repo": "ascend",
-              "path": "vllm_ascend/worker/worker.py",
-              "line": 842,
-              "end": 853,
-              "label": "Ascend 实现"
-            },
-            {
-              "repo": "ascend",
-              "path": "vllm_ascend/worker/model_runner_v1.py",
-              "line": 4490,
-              "end": 4496,
-              "label": "Ascend 实现"
-            },
-            {
-              "repo": "vllm",
-              "path": "vllm/model_executor/model_loader/base_loader.py",
-              "line": 62,
-              "end": 106,
-              "label": "调用位置 / 实现"
-            },
-            {
-              "repo": "ascend",
-              "path": "vllm_ascend/worker/model_runner_v1.py",
-              "line": 4647,
-              "end": 4651,
-              "label": "Ascend 实现"
-            }
-          ],
-          "targets": [
-            {
-              "label": "跳到第 10 步：模型类与分片参数",
-              "action": {
-                "mode": "startup",
-                "step": 10
-              }
-            },
-            {
-              "label": "跳到第 11 步：Checkpoint 加载",
-              "action": {
-                "mode": "startup",
-                "step": 11
-              }
-            }
-          ],
-          "note": "这里没有指定具体模型的 weight_loader；图中两卡参数分片是 TP 教学结构，不承诺每个参数都均分。"
-        },
-        {
           "id": "kv",
           "parent": "core",
           "number": "2.2",
@@ -667,10 +498,10 @@
           "parent": "kv",
           "number": "2.2.4",
           "kind": "边界",
-          "title": "Executor.initialize_from_config() → NPUModelRunner.initialize_kv_cache()",
-          "summary": "通过 RPC 把每卡配置落为本卡设备缓存并绑定到 attention 上下文。",
+          "title": "Executor.initialize_from_config()：RPC 提交与等待",
+          "summary": "Core 将各 rank 的 KVCacheConfig 发给 Worker 并等待 RPC 完成。",
           "input": "Core 的 KVCacheConfig 列表；Worker 按 global rank 取对应配置。",
-          "changes": "NPUWorker 调用 Runner.initialize_kv_cache；Runner 分配原始缓冲、reshape 为后端布局，再 bind_kv_cache。",
+          "changes": "collective_rpc(\"initialize_from_config\", args=(kv_cache_configs,))；WorkerWrapperBase 按 global_rank 选出本 rank 配置后调用平台 Worker。实际设备分配见独立 Worker RPC 子树。",
           "output": "每卡独立的 KV 张量、Runner 缓存列表和 attention forward_context 引用；RPC 返回完成。",
           "resume": "Core 等待本轮 RPC 完成，然后发起 compile_or_warm_up_model。",
           "evidence": [
@@ -747,7 +578,7 @@
               }
             }
           ],
-          "note": "跨 RPC 的方法在同一节点展开便于追踪；父节点表示 Core 发起调用，不把 NPU 设备内存当作 Core 主机对象。"
+          "note": "跨进程调用在独立 Worker RPC 子树展开；本 Core 节点只持有配置和 RPC 返回，不持有远端 KV 设备 tensor。"
         },
         {
           "id": "warm",
@@ -846,9 +677,590 @@
           ]
         },
         {
-          "id": "ready",
+          "id": "worker",
+          "parent": null,
+          "number": "3",
+          "kind": "边界",
+          "title": "WorkerProc.worker_main() → WorkerProc.__init__()",
+          "summary": "每个 Worker 进程建立 NPUWorker，并依次初始化设备、加载模型。",
+          "input": "本 rank 配置、local_rank、分布式地址与 RPC 队列。",
+          "changes": "WorkerWrapperBase 创建平台 worker；WorkerProc 调用 init_device 再调用 load_model。NPUWorker 构造时安装平台所需 patch 与算子。",
+          "output": "每个 rank 的 NPUWorker、Runner 与已加载模型；worker_main 发送 Worker READY 并进入 RPC 循环。",
+          "resume": "Worker READY 只表示 Worker 初始化阶段完成；Core 随后仍需请求 KVSpec、规划 KV、分配缓存与预热。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/multiproc_executor.py",
+              "line": 646,
+              "end": 686,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/multiproc_executor.py",
+              "line": 919,
+              "end": 943,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/worker_base.py",
+              "line": 334,
+              "end": 348,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 136,
+              "end": 153,
+              "label": "Ascend 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 7 步：Worker patch 与算子",
+              "action": {
+                "mode": "startup",
+                "step": 7
+              }
+            },
+            {
+              "label": "跳到第 12 步：Worker READY 与 RPC 循环",
+              "action": {
+                "mode": "startup",
+                "step": 12
+              }
+            }
+          ]
+        },
+        {
+          "id": "device",
+          "parent": "worker",
+          "number": "3.1",
+          "kind": "调用",
+          "title": "NPUWorker.init_device()",
+          "summary": "各 rank 绑定设备，建立 HCCL / TP 通信组并构造 MRV1 Runner。",
+          "input": "rank 0→NPU 0、rank 1→NPU 1；world_size=2。",
+          "changes": "_init_device 设置 NPU；初始化 HCCL world 与模型并行组；MRV2 关闭时创建 NPUModelRunner。",
+          "output": "本 rank 的 device、通信组和 Runner。",
+          "resume": "返回 WorkerProc.__init__，接着调用 load_model。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 431,
+              "end": 438,
+              "label": "Ascend 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 487,
+              "end": 511,
+              "label": "Ascend 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 1302,
+              "end": 1322,
+              "label": "Ascend 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 8 步：HCCL 与 TP 组",
+              "action": {
+                "mode": "startup",
+                "step": 8
+              }
+            },
+            {
+              "label": "跳到第 9 步：MRV1 Runner",
+              "action": {
+                "mode": "startup",
+                "step": 9
+              }
+            }
+          ],
+          "note": "TP 两卡共享一次逻辑请求调度，但设备张量和 KV 内存均由各 rank 本地持有。"
+        },
+        {
+          "id": "device-local",
+          "parent": "device",
+          "number": "3.1.1",
+          "kind": "调用",
+          "title": "NPUWorker._init_device()",
+          "summary": "在构造 Runner 前完成本 rank 的设备与分布式环境初始化。",
+          "input": "local_rank、可见 NPU 列表、并行配置及内存配置。",
+          "changes": "选定并设置 torch.npu device，记录初始化内存状态，再调用 _init_worker_distributed_environment。",
+          "output": "当前 Worker 的 device；HCCL 和模型并行组已建立。",
+          "resume": "返回 init_device；随后初始化 workspace 并构造 MRV1 NPUModelRunner。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 496,
+              "end": 511,
+              "label": "调用位置与返回续点"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 431,
+              "end": 438,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 487,
+              "end": 494,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 8 步：HCCL 与 TP 组",
+              "action": {
+                "mode": "startup",
+                "step": 8
+              }
+            }
+          ],
+          "note": "原图第 8 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "device-groups",
+          "parent": "device-local",
+          "number": "3.1.1.1",
+          "kind": "调用",
+          "title": "NPUWorker._init_worker_distributed_environment()",
+          "summary": "按 TP=2 / PP=1 的配置建立通信进程组。",
+          "input": "world_size=2、rank、local_rank 与 init_method。",
+          "changes": "调用 init_distributed_environment(backend=\"hccl\")，再 ensure_model_parallel_initialized 与 init_ascend_model_parallel。",
+          "output": "本 rank 可使用的 world/TP 等组；没有在这里分配共享 KV 张量。",
+          "resume": "返回 _init_device；设随机种子和设备属性后将 device 返回 init_device。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 488,
+              "end": 488,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 1302,
+              "end": 1322,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 8 步：HCCL 与 TP 组",
+              "action": {
+                "mode": "startup",
+                "step": 8
+              }
+            }
+          ],
+          "note": "原图第 8 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "load",
+          "parent": "worker",
+          "number": "3.2",
+          "kind": "调用",
+          "title": "NPUWorker.load_model() → NPUModelRunner.load_model()",
+          "summary": "每卡构造其模型结构并加载本 rank 需要的参数。",
+          "input": "模型配置、checkpoint 与 TP rank。",
+          "changes": "Runner 调用 get_model；模型加载器创建模型、加载权重并做权重后处理；Runner 完成自身加载收尾。",
+          "output": "可执行的 rank-local 模型与权重。",
+          "resume": "返回 WorkerProc 构造；worker_main 再发 Worker READY，执行器得以继续。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 842,
+              "end": 853,
+              "label": "Ascend 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 4490,
+              "end": 4496,
+              "label": "Ascend 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/model_loader/base_loader.py",
+              "line": 62,
+              "end": 106,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 4647,
+              "end": 4651,
+              "label": "Ascend 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 10 步：模型类与分片参数",
+              "action": {
+                "mode": "startup",
+                "step": 10
+              }
+            },
+            {
+              "label": "跳到第 11 步：Checkpoint 加载",
+              "action": {
+                "mode": "startup",
+                "step": 11
+              }
+            }
+          ],
+          "note": "这里没有指定具体模型的 weight_loader；图中两卡参数分片是 TP 教学结构，不承诺每个参数都均分。"
+        },
+        {
+          "id": "worker-kv-init",
           "parent": null,
           "number": "4",
+          "kind": "边界",
+          "title": "NPUWorker.initialize_from_config() [Worker RPC 消费]",
+          "summary": "消费 Core 的缓存初始化 RPC，将本 rank 配置交给 Runner。",
+          "input": "WorkerWrapperBase 按 global_rank 选出的 KVCacheConfig；已加载权重的 NPUWorker。",
+          "changes": "初始化所需连接器/上下文；调用 self.model_runner.initialize_kv_cache。",
+          "output": "本 rank 缓存初始化完成；方法返回 None 经 RPC 回传。",
+          "resume": "返回 Worker RPC 循环；Core 的 initialize_from_config 收齐返回后继续预热。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/worker_base.py",
+              "line": 340,
+              "end": 344,
+              "label": "RPC 分派调用"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 1183,
+              "end": 1206,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 20 步：设备缓存分配与绑定",
+              "action": {
+                "mode": "startup",
+                "step": 20
+              }
+            }
+          ],
+          "note": "原图第 20 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "runner-kv-init",
+          "parent": "worker-kv-init",
+          "number": "4.1",
+          "kind": "调用",
+          "title": "NPUModelRunner.initialize_kv_cache()",
+          "summary": "固定当前 rank 的缓存规划并准备 attention 后端。",
+          "input": "本 rank KVCacheConfig；可选分配上下文。",
+          "changes": "deepcopy 保存 self.kv_cache_config，建立 attention groups 与 kernel block sizes，再调用 initialize_kv_cache_tensors。",
+          "output": "绑定后的缓存以及后续预热需要的 Runner 状态。",
+          "resume": "返回 NPUWorker.initialize_from_config；RPC 完成之前不会开始 Core 发来的下一轮预热。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 1203,
+              "end": 1206,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 4674,
+              "end": 4705,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 4721,
+              "end": 4725,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 20 步：设备缓存分配与绑定",
+              "action": {
+                "mode": "startup",
+                "step": 20
+              }
+            }
+          ],
+          "note": "原图第 20 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "kv-tensors",
+          "parent": "runner-kv-init",
+          "number": "4.1.1",
+          "kind": "调用",
+          "title": "NPUModelRunner.initialize_kv_cache_tensors()",
+          "summary": "按分配、布局、绑定的顺序建立各层实际 KV 缓存。",
+          "input": "KVCacheConfig、kernel_block_sizes 和 allocation_context。",
+          "changes": "先 _allocate_kv_cache_tensors；再 _reshape_kv_cache_tensors；普通模型最后调用 patched bind_kv_cache。",
+          "output": "layer_name → KV tensor view 的字典；Runner 与 Attention 持有相同缓存引用。",
+          "resume": "返回 initialize_kv_cache，继续其后置准备；不是模型 forward 写入 token KV 的阶段。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 4721,
+              "end": 4725,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 4833,
+              "end": 4856,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 4884,
+              "end": 4896,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 20 步：设备缓存分配与绑定",
+              "action": {
+                "mode": "startup",
+                "step": 20
+              }
+            }
+          ],
+          "note": "原图第 20 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "kv-raw",
+          "parent": "kv-tensors",
+          "number": "4.1.1.1",
+          "kind": "调用",
+          "title": "NPUModelRunner._allocate_kv_cache_tensors()",
+          "summary": "依据每层页大小和 block 数创建本卡 K/V 底层存储。",
+          "input": "普通 attention spec；num_blocks × page_size_bytes；关闭 KVPP、SFA/MLA 等分支。",
+          "changes": "按 K/V head 维分拆字节数；每层调用 _allocate_int8_cache_tensor 分配私有 K 和 V region。",
+          "output": "每层的 int8 原始缓冲区对；int8 表示字节存储视图，不表示启用 INT8 KV 量化。",
+          "resume": "返回 initialize_kv_cache_tensors，再进入 reshape。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 4852,
+              "end": 4852,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 5038,
+              "end": 5061,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 5365,
+              "end": 5385,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 5405,
+              "end": 5428,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 20 步：设备缓存分配与绑定",
+              "action": {
+                "mode": "startup",
+                "step": 20
+              }
+            }
+          ],
+          "note": "原图第 20 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "kv-bytes",
+          "parent": "kv-raw",
+          "number": "4.1.1.1.1",
+          "kind": "调用",
+          "title": "NPUModelRunner._allocate_int8_cache_tensor()",
+          "summary": "用设备 tensor 为缓存保留实际字节空间。",
+          "input": "正数 numel；本页无 kv_transfer_config。",
+          "changes": "普通路径 torch.zeros(numel,dtype=int8,device=self.device)；传输路径才额外分配并做对齐切片。",
+          "output": "当前 rank NPU 上的 raw tensor。",
+          "resume": "返回 _allocate_kv_cache_tensors，随后 typed view 将这块存储解释为实际 KV dtype/shape。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 5414,
+              "end": 5423,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 4960,
+              "end": 4981,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 20 步：设备缓存分配与绑定",
+              "action": {
+                "mode": "startup",
+                "step": 20
+              }
+            }
+          ],
+          "note": "原图第 20 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "kv-reshape",
+          "parent": "kv-tensors",
+          "number": "4.1.1.2",
+          "kind": "调用",
+          "title": "NPUModelRunner._reshape_kv_cache_tensors()",
+          "summary": "把原始字节存储转换成所选后端的 K/V 视图。",
+          "input": "raw K/V buffers、attention backend、block size、head 数和 dtype。",
+          "changes": "调用后端 get_kv_cache_shape；普通 attention 从返回 shape 去掉 K/V 选择轴，view 成 k_shape/v_shape。",
+          "output": "K/V tensor views；与 raw buffer 共享底层存储。",
+          "resume": "返回 initialize_kv_cache_tensors，由 bind_kv_cache 把视图交给 Runner 和 Attention。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 4854,
+              "end": 4856,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 5474,
+              "end": 5490,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 5820,
+              "end": 5825,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 5922,
+              "end": 5927,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 5952,
+              "end": 5970,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 20 步：设备缓存分配与绑定",
+              "action": {
+                "mode": "startup",
+                "step": 20
+              }
+            }
+          ],
+          "note": "原图第 20 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "kv-bind",
+          "parent": "kv-tensors",
+          "number": "4.1.1.3",
+          "kind": "调用",
+          "title": "Ascend patch：bind_kv_cache()",
+          "summary": "将已分配的缓存引用发布给执行时的 attention 消费者。",
+          "input": "layer_name→kv_cache 字典、static_forward_context 和 Runner.kv_caches。",
+          "changes": "按层索引填 Runner 列表；给 forward_context[layer_name].kv_cache 赋同一引用；函数替换上游 utils.bind_kv_cache。",
+          "output": "两个消费者指向本 rank 同一层缓存；无跨 rank 拷贝。",
+          "resume": "返回 initialize_kv_cache_tensors；之后 attention 的 get_attention_context 会从层对象读出该缓存。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 4885,
+              "end": 4894,
+              "label": "导入与调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/patch/worker/__init__.py",
+              "line": 35,
+              "end": 35,
+              "label": "安装 patch"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/patch/worker/patch_bind_kv_cache.py",
+              "line": 14,
+              "end": 20,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/patch/worker/patch_bind_kv_cache.py",
+              "line": 37,
+              "end": 60,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 20 步：设备缓存分配与绑定",
+              "action": {
+                "mode": "startup",
+                "step": 20
+              }
+            }
+          ],
+          "note": "原图第 20 步是包含本子过程的阶段快照；没有单独模拟此接口的执行现场，具体调用与返回以本节点源码证据为准。"
+        },
+        {
+          "id": "ready",
+          "parent": null,
+          "number": "5",
           "kind": "返回",
           "title": "EngineCoreProc._perform_handshake()：退出上下文发送 READY",
           "summary": "Core 启动全部完成后向前端发 READY，解除客户端启动等待。",
@@ -907,7 +1319,7 @@
         {
           "id": "serve",
           "parent": null,
-          "number": "5",
+          "number": "6",
           "kind": "调用",
           "title": "run_server_worker() → build_and_serve()",
           "summary": "前端获得可用引擎后设置应用状态并启动 HTTP 服务。",

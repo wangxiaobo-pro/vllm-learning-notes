@@ -123,6 +123,88 @@
           ]
         },
         {
+          "id": "capture-python",
+          "parent": "active",
+          "number": "1.1.1.1",
+          "kind": "调用",
+          "title": "torch_npu.npu.NPUGraph.capture_begin()",
+          "summary": "UpdatableGraph 先调用父类开始录制，再设置活动图 ContextVar。",
+          "input": "pool、capture_error_mode、当前 capture stream。",
+          "changes": "调用 _NPUGraph C++ 绑定，report_shape=True。",
+          "output": "C++ capture 已启动。",
+          "resume": "返回 UpdatableGraph.capture_begin，随后绑定 _ACTIVE_GRAPH。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 88,
+              "end": 90,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "torch_npu",
+              "path": "torch_npu/npu/graphs.py",
+              "line": 608,
+              "end": 625,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "capture",
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "capture-cpp",
+          "parent": "capture-python",
+          "number": "1.1.1.1.1",
+          "kind": "边界",
+          "title": "c10_npu::NPUGraph::capture_begin()",
+          "summary": "Python 字符串捕获模式经 pybind 映射到 ACL enum。",
+          "input": "pool、capture_mode、report_shape。",
+          "changes": "校验非默认流和未持有旧图；绑定 allocator pool；调用 AclmdlRICaptureBegin。",
+          "output": "活动 capture stream、model_ri_ 与图内存池。",
+          "resume": "返回 Python；此时继续执行模型以录制任务。",
+          "evidence": [
+            {
+              "repo": "torch_npu",
+              "path": "torch_npu/npu/graphs.py",
+              "line": 625,
+              "end": 625,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "torch_npu",
+              "path": "torch_npu/csrc/npu/Graph.cpp",
+              "line": 750,
+              "end": 778,
+              "label": "Python/C++ 绑定"
+            },
+            {
+              "repo": "torch_npu",
+              "path": "torch_npu/csrc/core/npu/NPUGraph.cpp",
+              "line": 150,
+              "end": 223,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "capture",
+                "step": 1
+              }
+            }
+          ],
+          "note": "ACL/CANN 库内部为边界；捕获登记不等于立即执行全部设备任务。"
+        },
+        {
           "id": "model",
           "parent": "wrapper",
           "number": "1.2",
@@ -229,9 +311,85 @@
           ]
         },
         {
-          "id": "backend",
+          "id": "attention-layer",
           "parent": "attention",
           "number": "1.2.1.1.1",
+          "kind": "调用",
+          "title": "Attention.forward()",
+          "summary": "Qwen2 的 self.attn 是公共 Attention 层。",
+          "input": "Q/K/V、持久 KV cache、forward context metadata。",
+          "changes": "调整 head 视图；Ascend backend 内部包含 KV 更新，因此分派 Attention output 算子。",
+          "output": "Attention 的 output tensor。",
+          "resume": "返回 Qwen2Attention.forward，再做 o_proj。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/qwen2.py",
+              "line": 233,
+              "end": 235,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 488,
+              "end": 579,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "capture",
+                "step": 2,
+                "operator": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "attention-dispatch",
+          "parent": "attention-layer",
+          "number": "1.2.1.1.1.1",
+          "kind": "调用",
+          "title": "unified_attention_with_output()",
+          "summary": "公共算子按层名找到 Attention 对象与后端。",
+          "input": "Q/K/V/output、layer_name、当前 metadata。",
+          "changes": "get_attention_context 后调用 self.impl.forward。",
+          "output": "后端写入 output。",
+          "resume": "返回公共 Attention 层。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 540,
+              "end": 578,
+              "label": "直接/注册算子调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 767,
+              "end": 794,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "capture",
+                "step": 2,
+                "operator": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "backend",
+          "parent": "attention-dispatch",
+          "number": "1.2.1.1.1.1.1",
           "kind": "调用",
           "title": "AscendAttentionBackendImpl.forward()",
           "summary": "CustomOp/Attention 分派后的 Ascend 后端入口。",
@@ -240,6 +398,13 @@
           "output": "缓存更新及写入 output 的 Attention 结果。",
           "resume": "返回 Attention 封装层后继续 o_proj。",
           "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 784,
+              "end": 786,
+              "label": "实际调用位置"
+            },
             {
               "repo": "ascend",
               "path": "vllm_ascend/attention/attention_v1.py",
@@ -272,14 +437,166 @@
               }
             }
           ],
-          "note": "合并展示 Attention layer/custom-op 分派包装；backend 并非 Qwen2Attention 直接持有的普通 Python callable。"
+          "note": "分派包装已分别展开为父节点；本节点仅表示 Ascend backend 的 forward。"
+        },
+        {
+          "id": "backend-impl",
+          "parent": "backend",
+          "number": "1.2.1.1.1.1.1.1",
+          "kind": "分支",
+          "title": "AscendAttentionBackendImpl.forward_impl()",
+          "summary": "缓存准备完成后选择 PA 或 FIA；本场景固定 FIA。",
+          "input": "query/key/value、kv_cache、metadata、output。",
+          "changes": "DecodeOnly 且满足 using_paged_attention 才走 PA；其余进入 forward_fused_infer_attention。",
+          "output": "写入 output 的 Attention 结果。",
+          "resume": "返回 backend.forward，复制有效 token 区域。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 1368,
+              "end": 1370,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 1281,
+              "end": 1302,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "capture",
+                "step": 2,
+                "operator": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "fia-dispatch",
+          "parent": "backend-impl",
+          "number": "1.2.1.1.1.1.1.1.1",
+          "kind": "分支",
+          "title": "AscendAttentionBackendImpl.forward_fused_infer_attention()",
+          "summary": "捕获标志与 sinks 决定 FULL FIA 版本。",
+          "input": "Q/K/V、metadata 与 output。",
+          "changes": "_EXTRA_CTX.capturing 且 sinks=None 时调用 full_graph_fia。",
+          "output": "FIA output 与有效 token 数。",
+          "resume": "返回 forward_impl；非捕获分支不走登记逻辑。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 1300,
+              "end": 1302,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 908,
+              "end": 1052,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "capture",
+                "step": 2,
+                "operator": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "fia-capture",
+          "parent": "fia-dispatch",
+          "number": "1.2.1.1.1.1.1.1.1.1",
+          "kind": "调用",
+          "title": "AscendAttentionBackendImpl.full_graph_fia()",
+          "summary": "为可更新图准备 FIA 参数、workspace 和 provider。",
+          "input": "Q、KV cache views、block table、序列长度、output。",
+          "changes": "选择 layout/cache 参数；取捕获资源；register_task 登记 FIA out operation。",
+          "output": "output 引用与本次 token 数，另保存动态任务信息。",
+          "resume": "返回 FIA dispatcher，再回模型。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 926,
+              "end": 928,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 650,
+              "end": 749,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "capture",
+                "step": 2,
+                "operator": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "register-dispatch",
+          "parent": "fia-capture",
+          "number": "1.2.1.1.1.1.1.1.1.1.1",
+          "kind": "调用",
+          "title": "register_task() [updatable_graph 模块入口]",
+          "summary": "用活动图 ContextVar 决定直接执行还是登记。",
+          "input": "operation=npu_fused_infer_attention_score.out、kwargs、FIAParamProvider。",
+          "changes": "_ACTIVE_GRAPH 非空时 graph.register_task；为空时直接 operation。",
+          "output": "任务已登记，或普通 operation 已调用。",
+          "resume": "返回 full_graph_fia。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 720,
+              "end": 722,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 177,
+              "end": 186,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "capture",
+                "step": 2,
+                "operator": 5
+              }
+            }
+          ]
         },
         {
           "id": "register",
-          "parent": "backend",
-          "number": "1.2.1.1.1.1",
+          "parent": "register-dispatch",
+          "number": "1.2.1.1.1.1.1.1.1.1.1.1",
           "kind": "调用",
-          "title": "forward_impl() → forward_fused_infer_attention() → full_graph_fia() → register_task()",
+          "title": "UpdatableGraph.register_task()",
           "summary": "捕获期登记可更新 FIA 任务组与 event。",
           "input": "operation、kwargs、ParamProvider。",
           "changes": "event.wait/reset → task_group_begin → operation → task_group_end；保存 handle。",
@@ -289,42 +606,136 @@
             {
               "repo": "ascend",
               "path": "vllm_ascend/compilation/updatable_graph.py",
-              "line": 120,
-              "label": "实际实现",
-              "end": 145
-            },
-            {
-              "repo": "ascend",
-              "path": "vllm_ascend/attention/attention_v1.py",
-              "line": 1281,
-              "label": "FIA 与 PagedAttention 互斥选择",
-              "end": 1302
-            },
-            {
-              "repo": "ascend",
-              "path": "vllm_ascend/attention/attention_v1.py",
-              "line": 916,
-              "label": "FULL FIA 调用位置",
-              "end": 928
-            },
-            {
-              "repo": "ascend",
-              "path": "vllm_ascend/attention/attention_v1.py",
-              "line": 720,
-              "label": "注册任务调用",
-              "end": 749
+              "line": 186,
+              "end": 186,
+              "label": "实际调用位置"
             },
             {
               "repo": "ascend",
               "path": "vllm_ascend/compilation/updatable_graph.py",
-              "line": 177,
-              "label": "当前图查询与转调",
-              "end": 186
+              "line": 120,
+              "end": 145,
+              "label": "实际实现"
             }
           ],
           "targets": [
             {
               "label": "查看对应流程",
+              "action": {
+                "mode": "capture",
+                "step": 2,
+                "operator": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "capture-group-begin",
+          "parent": "register",
+          "number": "1.2.1.1.1.1.1.1.1.1.1.1.1",
+          "kind": "边界",
+          "title": "torch.npu.graph_task_group_begin()",
+          "summary": "开始记录这一组可更新任务。",
+          "input": "当前 capture stream；前面已设置 ExternalEvent wait/reset。",
+          "changes": "转入 torch_npu._C 的 task group begin 接口。",
+          "output": "图上的任务组开始标记。",
+          "resume": "返回 register_task，下一句执行 FIA operation。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 130,
+              "end": 132,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "torch_npu",
+              "path": "torch_npu/npu/graphs.py",
+              "line": 87,
+              "end": 88,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "capture",
+                "step": 2,
+                "operator": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "capture-fia-op",
+          "parent": "register",
+          "number": "1.2.1.1.1.1.1.1.1.1.1.1.2",
+          "kind": "边界",
+          "title": "torch_npu.npu_fused_infer_attention_score.out()",
+          "summary": "operation(**kwargs) 在捕获流录入本组 FIA。",
+          "input": "固定地址 Q/K/V、output/workspace、长度与块表参数。",
+          "changes": "通过 torch_npu 算子接口录制 FIA；实现位于算子库边界。",
+          "output": "图中 FIA 任务与输出引用。",
+          "resume": "返回 register_task，随后结束任务组并保存 handle。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 131,
+              "end": 133,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 720,
+              "end": 748,
+              "label": "operation 绑定与完整实参"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "capture",
+                "step": 2,
+                "operator": 7
+              }
+            }
+          ],
+          "note": "此仓库快照未展开配套 op-plugin/CANN 算子实现；不据此声称内部 kernel 数或 tiling。"
+        },
+        {
+          "id": "capture-group-end",
+          "parent": "register",
+          "number": "1.2.1.1.1.1.1.1.1.1.1.1.3",
+          "kind": "边界",
+          "title": "torch.npu.graph_task_group_end()",
+          "summary": "结束任务组并拿到后续参数更新所需 handle。",
+          "input": "当前 capture stream。",
+          "changes": "转入 torch_npu._C task group end。",
+          "output": "task group handle。",
+          "resume": "返回 register_task，构造 GraphUpdateTask 并追加 tasks。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 132,
+              "end": 134,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "torch_npu",
+              "path": "torch_npu/npu/graphs.py",
+              "line": 91,
+              "end": 92,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
               "action": {
                 "mode": "capture",
                 "step": 2,
@@ -365,9 +776,219 @@
           ]
         },
         {
-          "id": "exit",
+          "id": "gate-up",
+          "parent": "mlp",
+          "number": "1.2.1.2.1",
+          "kind": "调用",
+          "title": "AscendMergedColumnParallelLinear.forward()",
+          "summary": "插件绑定 Qwen2 gate_up_proj 的实际类，固定 TP=1、未量化、custom_op=None。",
+          "input": "post-attention norm hidden、合并 gate/up 权重。",
+          "changes": "通过 super().forward 进入上游 ColumnParallelLinear；其 quant_method 已在 AscendLinearBase 初始化。",
+          "output": "gate_up 的本地投影。",
+          "resume": "返回 Qwen2MLP 的 act_fn。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/qwen2.py",
+              "line": 112,
+              "end": 114,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/utils.py",
+              "line": 870,
+              "end": 883,
+              "label": "插件类映射"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/linear.py",
+              "line": 295,
+              "end": 302,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/linear.py",
+              "line": 167,
+              "end": 170,
+              "label": "未量化方法绑定"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "capture",
+                "step": 2,
+                "operator": 10
+              }
+            }
+          ]
+        },
+        {
+          "id": "gate-column",
+          "parent": "gate-up",
+          "number": "1.2.1.2.1.1",
+          "kind": "调用",
+          "title": "ColumnParallelLinear.forward()",
+          "summary": "Ascend merged-column 未启用 custom_op 时复用的父类实现。",
+          "input": "hidden 与 Ascend quant_method。",
+          "changes": "self.quant_method.apply；TP=1 不执行输出 All-Gather。",
+          "output": "gate_up 张量与可选 bias。",
+          "resume": "返回 AscendMergedColumnParallelLinear。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/linear.py",
+              "line": 302,
+              "end": 302,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/linear.py",
+              "line": 603,
+              "end": 621,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "capture",
+                "step": 2,
+                "operator": 10
+              }
+            }
+          ]
+        },
+        {
+          "id": "gate-apply",
+          "parent": "gate-column",
+          "number": "1.2.1.2.1.1.1",
+          "kind": "调用",
+          "title": "AscendUnquantizedLinearMethod.apply()",
+          "summary": "在 common Linear 接口内转入 Ascend GEMM 算子。",
+          "input": "hidden、layer.weight、bias。",
+          "changes": "torch.ops.vllm.unquantized_gemm。",
+          "output": "未量化 GEMM 结果。",
+          "resume": "返回 ColumnParallelLinear。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/linear.py",
+              "line": 610,
+              "end": 612,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/linear.py",
+              "line": 133,
+              "end": 139,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "capture",
+                "step": 2,
+                "operator": 10
+              }
+            }
+          ]
+        },
+        {
+          "id": "gate-op",
+          "parent": "gate-apply",
+          "number": "1.2.1.2.1.1.1.1",
+          "kind": "边界",
+          "title": "unquantized_gemm() → torch.nn.functional.linear()",
+          "summary": "PrivateUse1 自定义算子的注册实现。",
+          "input": "X、weight[out,in]、bias。",
+          "changes": "执行 F.linear；torch_npu 后续设备分派为外部边界。",
+          "output": "gate/up 投影结果。",
+          "resume": "逐层返回 Qwen2MLP，随后 SiLU-and-multiply。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/linear.py",
+              "line": 139,
+              "end": 139,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/linear.py",
+              "line": 65,
+              "end": 71,
+              "label": "注册绑定"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/linear.py",
+              "line": 49,
+              "end": 54,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "capture",
+                "step": 2,
+                "operator": 10
+              }
+            }
+          ]
+        },
+        {
+          "id": "capture-context-exit",
           "parent": "wrapper",
           "number": "1.3",
+          "kind": "调用",
+          "title": "torch_npu.npu.graph.__exit__()",
+          "summary": "runnable 返回后由 with 语句退出捕获上下文。",
+          "input": "capture stream 与 UpdatableGraph。",
+          "changes": "调用 npu_graph.capture_end，再退出 dispatch/stream 上下文。",
+          "output": "捕获上下文已结束。",
+          "resume": "返回 ACLGraphWrapper 保存 output 与 graph。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/acl_graph.py",
+              "line": 208,
+              "end": 218,
+              "label": "with 上下文调用位置"
+            },
+            {
+              "repo": "torch_npu",
+              "path": "torch_npu/npu/graphs.py",
+              "line": 916,
+              "end": 931,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "capture",
+                "step": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "parent": "capture-context-exit",
+          "number": "1.3.1",
           "kind": "调用",
           "title": "UpdatableGraph.capture_end()",
           "summary": "退出捕获上下文，恢复当前图引用。",
@@ -376,6 +997,13 @@
           "output": "可回放图及资源弱引用。",
           "resume": "回到 wrapper 保存 output 与 aclgraph。",
           "evidence": [
+            {
+              "repo": "torch_npu",
+              "path": "torch_npu/npu/graphs.py",
+              "line": 928,
+              "end": 930,
+              "label": "实际调用位置"
+            },
             {
               "repo": "ascend",
               "path": "vllm_ascend/compilation/updatable_graph.py",
@@ -387,6 +1015,87 @@
           "targets": [
             {
               "label": "查看对应流程",
+              "action": {
+                "mode": "capture",
+                "step": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "capture-end-python",
+          "parent": "exit",
+          "number": "1.3.1.1",
+          "kind": "调用",
+          "title": "torch_npu.npu.NPUGraph.capture_end()",
+          "summary": "UpdatableGraph 的父类结束实际图录制。",
+          "input": "当前 capture stream 与 graph 对象。",
+          "changes": "调用 _NPUGraph.capture_end 的 C++ 绑定。",
+          "output": "可回放图。",
+          "resume": "返回 UpdatableGraph，随后清理 ContextVar。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 94,
+              "end": 96,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "torch_npu",
+              "path": "torch_npu/npu/graphs.py",
+              "line": 627,
+              "end": 636,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "capture",
+                "step": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "capture-end-cpp",
+          "parent": "capture-end-python",
+          "number": "1.3.1.1.1",
+          "kind": "边界",
+          "title": "c10_npu::NPUGraph::capture_end()",
+          "summary": "结束捕获并保留图执行状态。",
+          "input": "捕获时同一 stream、model_ri_、allocator pool。",
+          "changes": "AclmdlRICaptureEnd；结束 pool 捕获；校验 model ID，设置 has_graph_exec_。",
+          "output": "可回放的 model_ri 与资源状态。",
+          "resume": "返回 Python；后续 replay 才提交图执行。",
+          "evidence": [
+            {
+              "repo": "torch_npu",
+              "path": "torch_npu/npu/graphs.py",
+              "line": 636,
+              "end": 636,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "torch_npu",
+              "path": "torch_npu/csrc/npu/Graph.cpp",
+              "line": 779,
+              "end": 785,
+              "label": "C++ 绑定"
+            },
+            {
+              "repo": "torch_npu",
+              "path": "torch_npu/csrc/core/npu/NPUGraph.cpp",
+              "line": 225,
+              "end": 263,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
               "action": {
                 "mode": "capture",
                 "step": 3
@@ -539,7 +1248,7 @@
           "parent": "replay",
           "number": "1.2.1",
           "kind": "调用",
-          "title": "UpdatableGraph.resolve_tasks() → GraphUpdateTask.bind()",
+          "title": "UpdatableGraph.resolve_tasks()",
           "summary": "将本轮参数绑定到捕获期任务。",
           "input": "ParamProvider 与 ContextSource metadata。",
           "changes": "按 provider/index 对齐 params，覆盖 kwargs。",
@@ -564,6 +1273,117 @@
           "targets": [
             {
               "label": "查看对应流程",
+              "action": {
+                "mode": "replay",
+                "step": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "provider-source",
+          "parent": "bind",
+          "number": "1.2.1.1",
+          "kind": "调用",
+          "title": "ContextSource.get()",
+          "summary": "resolve_tasks 按 provider 获取本轮参数。",
+          "input": "forward_context.attn_metadata 与 FIAParamProvider。",
+          "changes": "provider.resolve(context)，封装成单元素参数序列。",
+          "output": "该 provider 对应的 runtime params。",
+          "resume": "返回 resolve_tasks 的 params_by_provider。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 151,
+              "end": 153,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 33,
+              "end": 37,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "replay",
+                "step": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "fia-provider",
+          "parent": "provider-source",
+          "number": "1.2.1.1.1",
+          "kind": "调用",
+          "title": "FIAParamProvider.resolve()",
+          "summary": "只替换本轮动态序列参数，沿用捕获期固定 tensor 地址。",
+          "input": "当前层 metadata、sliding_window/is_draft/is_non_pa 标志。",
+          "changes": "读取 actual_seq_lengths_q、seq_lens_list；按分支提供 block_table。",
+          "output": "动态 kwargs 字典。",
+          "resume": "返回 ContextSource.get，再交给 task.bind。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 37,
+              "end": 37,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 520,
+              "end": 533,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "replay",
+                "step": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "task-bind",
+          "parent": "bind",
+          "number": "1.2.1.2",
+          "kind": "调用",
+          "title": "GraphUpdateTask.bind()",
+          "summary": "每个任务接收所属 provider/index 的本轮参数。",
+          "input": "捕获期 kwargs、本轮 params。",
+          "changes": "合并 {**kwargs, **params}，replace 产生新的 task 描述。",
+          "output": "resolved task，捕获 task 原记录不被直接改写。",
+          "resume": "返回 resolve_tasks；wrapper 随后 replay/update。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 154,
+              "end": 154,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 68,
+              "end": 70,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
               "action": {
                 "mode": "replay",
                 "step": 4
@@ -684,6 +1504,117 @@
           "targets": [
             {
               "label": "查看对应流程",
+              "action": {
+                "mode": "replay",
+                "step": 6
+              }
+            }
+          ]
+        },
+        {
+          "id": "update-begin",
+          "parent": "apply",
+          "number": "1.2.3.1.1",
+          "kind": "边界",
+          "title": "torch.npu.graph_task_update_begin()",
+          "summary": "开始替换已捕获 task group 的动态参数。",
+          "input": "update_stream 与捕获时保存的 task.handle。",
+          "changes": "转入 torch_npu._C graph task update 接口。",
+          "output": "进入该任务组的参数更新范围。",
+          "resume": "返回 GraphUpdateTask.apply，下一句重调 operation。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 73,
+              "end": 75,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "torch_npu",
+              "path": "torch_npu/npu/graphs.py",
+              "line": 95,
+              "end": 96,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "replay",
+                "step": 6
+              }
+            }
+          ]
+        },
+        {
+          "id": "update-fia-op",
+          "parent": "apply",
+          "number": "1.2.3.1.2",
+          "kind": "边界",
+          "title": "torch_npu.npu_fused_infer_attention_score.out() [更新范围]",
+          "summary": "以本轮 kwargs 更新已捕获 FIA 任务。",
+          "input": "原 operation、已 bind 的长度/块表与固定 Q/K/V/output 地址。",
+          "changes": "operation(**kwargs) 位于 update_begin/end 之间。",
+          "output": "更新后的任务参数。",
+          "resume": "返回 apply；update_end 后 event.record 释放图内等待。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 74,
+              "end": 76,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 720,
+              "end": 748,
+              "label": "捕获期 operation 与 provider 绑定"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
+              "action": {
+                "mode": "replay",
+                "step": 6
+              }
+            }
+          ]
+        },
+        {
+          "id": "update-end",
+          "parent": "apply",
+          "number": "1.2.3.1.3",
+          "kind": "边界",
+          "title": "torch.npu.graph_task_update_end()",
+          "summary": "关闭任务参数更新范围。",
+          "input": "update_stream。",
+          "changes": "转入 torch_npu._C 的 update_end。",
+          "output": "更新提交结束。",
+          "resume": "返回 apply，接着 event.record(update_stream)。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 75,
+              "end": 76,
+              "label": "实际调用位置"
+            },
+            {
+              "repo": "torch_npu",
+              "path": "torch_npu/npu/graphs.py",
+              "line": 99,
+              "end": 100,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看上层数据边界（原图未单列此调用）",
               "action": {
                 "mode": "replay",
                 "step": 6
