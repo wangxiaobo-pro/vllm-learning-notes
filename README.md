@@ -30,7 +30,8 @@
 vllm-learning-notes/
 ├── README.md                          # 项目说明与维护指南
 ├── index.html                         # 按模块组织的紧凑流程目录
-├── assets/                            # 首页样式、搜索与模块导航脚本
+├── assets/                            # 统一主题、调用链界面、首页与范围元数据
+├── scripts/                           # 离线页面生成、源码版本与引用校验
 ├── transform/                         # Transformer 结构讲解与矩阵计算
 ├── hyper-connections/                 # Decoder 残差连接、HC 与 mHC 对比
 ├── attention-mechanisms/              # 注意力机制的逐步演算与动画
@@ -65,6 +66,42 @@ GitHub 仓库中的 HTML 链接通常显示源码；本地演示需要用浏览�
 各入口顶部统一提供「本页范围与源码版本」，区分源码快照、历史版本对照和算法教学，并列出后端、配置、流程范围与教学假设。首页也显示对应类型，可以搜索「历史版本」「算法教学」等关键词。
 
 这些说明统一维护在 [assets/topic-scopes.json](assets/topic-scopes.json)。修改后运行 `python scripts/update_scope_headers.py`，将说明内联到各独立 HTML；运行 `python scripts/update_scope_headers.py --check` 可检查是否同步。生成内容不依赖网络、JavaScript 或额外运行服务。更新图源与导出页后，再运行此生成器保留统一说明。
+
+## 从调用链进入可视化
+
+Scheduler 和其余 14 个涉及框架实现的主题，默认先展示整体调用链。选择实现或场景，再点节点查看输入、状态变化、输出消费者和返回续点；节点下的入口会定位原图中的模式与步骤。点击「返回调用链」回到刚才的节点，地址栏支持复制深链接与浏览器前进、后退。直接选择「可视化执行」仍可自由探索原图；手动切换图中模式或步骤后，会解除与源码节点的定位绑定。
+
+覆盖请求生命周期、批处理、Chunked Prefill、DPLB/EPLB、PD 分离、启动、PagedAttention、前缀缓存、KV Offloading、权重卸载与预取、并行机制、投机解码、Ascend 图优化及模型架构。历史 V0/V1、GPU/Ascend 和 SGLang 路径按场景分开，不能把它们串成同一次运行。静态批处理对照明确标为算法教学；训练 DP 和通信原语、Transformer、注意力数学、HC/mHC 等基础演算不冒充 vLLM 执行链。
+
+图中的张量、步数和时间是教学示例；调用链依据静态源码，跳转只切换教学页面，不启动模型或硬件执行。详细范围以各场景的说明为准。
+
+### 统一主题与离线生成
+
+所有入口、图源和内嵌画布使用 Scheduler 的配色：浅色背景 `#f5f5ef`、面板 `#fffefa`，深色背景 `#141c19`、面板 `#1b2520`。原图用来区分设备、张量、专家和状态的颜色保留。公共配色维护在 [assets/lesson-theme.css](assets/lesson-theme.css)。
+
+新增的调用链由各主题的 `call-chain.json` 描述，`call-chain-adapter.js` 将节点映射到原图已有控件。公共界面、样式与 iframe 通信在 `assets/call-chain.*` 和 `assets/call-chain-bridge.js`。修改图源后，先运行该主题原有的导出脚本，再生成范围说明与公共界面：
+
+```powershell
+python scripts/update_scope_headers.py
+python scripts/build_learning_ui.py
+python scripts/update_scope_headers.py --check
+python scripts/build_learning_ui.py --check
+```
+
+生成器把主题、调用链数据和交互代码内联到 HTML，包括 sandbox iframe；新增调用链无需启动服务或联网。标记为 `lesson-theme`、`call-adapter`、`call-ui` 的区域由生成器维护，不应直接编辑导出副本。
+
+### 调用位置必须与源码 commit 匹配
+
+每个场景单独声明源码仓库 URL 与完整 40 位 commit；所有证据链接使用 `/blob/<commit>/<path>#L<line>`，不依赖可移动分支或本地当前行号。源码 commit 与本学习笔记仓库的提交互相独立。
+
+```powershell
+node scripts/verify_call_chains.mjs --repo vllm=E:/code/vllm --repo ascend=E:/code/vllm-ascend --repo sglang=E:/code/sglang --repo torch_npu=E:/code/torch_npu
+node scheduler/verify-source.mjs --repo E:/code/vllm
+```
+
+通用校验器用 `git show <commit>:<path>` 核对文件、行范围、Git blob、片段 SHA-256，以及每个节点与证据的绑定，逐主题保存在 `call-chain.lock.json`，并检查 HTML 内联数据是否同步。源码仓库只需包含对应 Git 对象，无需切换分支；可加 `--topic <目录名>` 单独检查。Scheduler 保留原有专用校验器与 `source-lock.json`。
+
+升级源码或修改调用位置时，先重新走读该 commit 的调用关系和行号，更新数据与版本说明，再给通用校验命令添加 `--write-lock` 生成指纹，重新生成页面并运行默认校验。指纹检查能发现引用漂移，不能替代对调用语义和教学步骤的审阅。
 
 ## 首页目录维护
 

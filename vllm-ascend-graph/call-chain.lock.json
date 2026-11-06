@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "repositories": {
+    "capture:vllm": {
+      "url": "https://github.com/vllm-project/vllm",
+      "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9"
+    },
+    "capture:ascend": {
+      "url": "https://github.com/vllm-project/vllm-ascend",
+      "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875"
+    },
+    "capture:torch_npu": {
+      "url": "https://github.com/Ascend/pytorch",
+      "commit": "62b9115da8019f002da386f8866839121aff89af"
+    },
+    "replay:ascend": {
+      "url": "https://github.com/vllm-project/vllm-ascend",
+      "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875"
+    },
+    "replay:torch_npu": {
+      "url": "https://github.com/Ascend/pytorch",
+      "commit": "62b9115da8019f002da386f8866839121aff89af"
+    }
+  },
+  "files": {
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/acl_graph.py": "da6f9c96861e22b22eec95a904c87e6670015475",
+    "https://github.com/Ascend/pytorch@62b9115da8019f002da386f8866839121aff89af/torch_npu/npu/graphs.py": "d6224546dd66007e340c90bd841548fb1fdc00e7",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/updatable_graph.py": "d554510e3a64a75b0e6388702fae5f347806c63e",
+    "https://github.com/vllm-project/vllm@295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/qwen2.py": "88600b3767c2199f1cb94c9a2007201fa337b0bf",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/attention/attention_v1.py": "21aa0dee316c93c5b0d599725719972318290034",
+    "https://github.com/vllm-project/vllm@295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/layers/attention/attention.py": "bec1856d93ad6f6e8083b45ac5b8dedd5d5f5178",
+    "https://github.com/Ascend/pytorch@62b9115da8019f002da386f8866839121aff89af/torch_npu/csrc/core/npu/NPUGraph.cpp": "aa5182b999d4e33e7bd330a62e517dc754107814"
+  },
+  "bindings": {
+    "capture:wrapper:0": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/acl_graph.py#L156-L188",
+    "capture:enter:0": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/acl_graph.py#L208-L213",
+    "capture:enter:1": "https://github.com/Ascend/pytorch@62b9115da8019f002da386f8866839121aff89af/torch_npu/npu/graphs.py#L899-L914",
+    "capture:active:0": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/updatable_graph.py#L87-L90",
+    "capture:model:0": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/acl_graph.py#L210-L218",
+    "capture:model:1": "https://github.com/vllm-project/vllm@295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/qwen2.py#L500-L510",
+    "capture:model:2": "https://github.com/vllm-project/vllm@295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/qwen2.py#L402-L451",
+    "capture:layer:0": "https://github.com/vllm-project/vllm@295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/qwen2.py#L291-L311",
+    "capture:attention:0": "https://github.com/vllm-project/vllm@295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/qwen2.py#L208-L235",
+    "capture:backend:0": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/attention/attention_v1.py#L1304-L1372",
+    "capture:backend:1": "https://github.com/vllm-project/vllm@295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/layers/attention/attention.py#L488-L579",
+    "capture:backend:2": "https://github.com/vllm-project/vllm@295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/layers/attention/attention.py#L767-L794",
+    "capture:register:0": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/updatable_graph.py#L120-L145",
+    "capture:register:1": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/attention/attention_v1.py#L1281-L1302",
+    "capture:register:2": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/attention/attention_v1.py#L916-L928",
+    "capture:register:3": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/attention/attention_v1.py#L720-L749",
+    "capture:register:4": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/updatable_graph.py#L177-L186",
+    "capture:mlp:0": "https://github.com/vllm-project/vllm@295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/qwen2.py#L111-L115",
+    "capture:exit:0": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/updatable_graph.py#L92-L99",
+    "capture:return:0": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/acl_graph.py#L263-L273",
+    "replay:wrapper:0": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/acl_graph.py#L156-L176",
+    "replay:barrier:0": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/acl_graph.py#L284-L298",
+    "replay:replay:0": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/acl_graph.py#L304-L319",
+    "replay:bind:0": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/updatable_graph.py#L147-L154",
+    "replay:bind:1": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/updatable_graph.py#L68-L70",
+    "replay:python:0": "https://github.com/Ascend/pytorch@62b9115da8019f002da386f8866839121aff89af/torch_npu/npu/graphs.py#L638-L645",
+    "replay:runtime:0": "https://github.com/Ascend/pytorch@62b9115da8019f002da386f8866839121aff89af/torch_npu/csrc/core/npu/NPUGraph.cpp#L265-L284",
+    "replay:update:0": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/updatable_graph.py#L156-L174",
+    "replay:apply:0": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/updatable_graph.py#L72-L76",
+    "replay:output:0": "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/acl_graph.py#L298-L302"
+  },
+  "ranges": {
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/acl_graph.py#L156-L188": "fe247d34bf1ed817ff7b415ff9fd94d3863c2e1cca292f1b9e1490dbacd04142",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/acl_graph.py#L208-L213": "325ae3dab225b53bb5f977801119973d2e362039bbca94d585eebcf69ad85a2c",
+    "https://github.com/Ascend/pytorch@62b9115da8019f002da386f8866839121aff89af/torch_npu/npu/graphs.py#L899-L914": "6e5101560ec6a362ea86fba5c7c851be3ffe941a72850290efec71f45550bea8",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/updatable_graph.py#L87-L90": "0dfeff096442b9ef34a3a26a2961ff7baa26c686e1e9e7656a52271f6ed64d53",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/acl_graph.py#L210-L218": "74d6049ce697d6beb7ca861a53a89928759d3f50f6cf37c7676b4ef681f91683",
+    "https://github.com/vllm-project/vllm@295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/qwen2.py#L500-L510": "c66a20c4c5ce0239b509f85982b299bd0036f1c428060aaa61b4c7dbeaec790f",
+    "https://github.com/vllm-project/vllm@295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/qwen2.py#L402-L451": "78dd4f6386da27a9f62ed9f9e9cc7cf625b1ea052062a252a0df98b82287d3ea",
+    "https://github.com/vllm-project/vllm@295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/qwen2.py#L291-L311": "042c2fc18af98dc84c30dce1686f0b3c43cbd198a61ad51c99bfc143d9cc4313",
+    "https://github.com/vllm-project/vllm@295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/qwen2.py#L208-L235": "05170190e9d354058ba0414bb4462b932182d126be4817495de681eb06ec42b6",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/attention/attention_v1.py#L1304-L1372": "6d4d42a15e2c4167e817fe7ddbdc765e3d9a74b1f0e6ce39781f1e404019ecf8",
+    "https://github.com/vllm-project/vllm@295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/layers/attention/attention.py#L488-L579": "4b0031aa04d72d75bea5c64400e05cf7909b5692a97c403b924228636d6995ef",
+    "https://github.com/vllm-project/vllm@295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/layers/attention/attention.py#L767-L794": "79b98cef475f5bcabafafd2cf5af4c51b73c85ac843d4d4502b9966ba89a974b",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/updatable_graph.py#L120-L145": "bb9d7c5c47703a9a1e36e3f7ba23fa1ba533efb9906dfbb6c43d0afa4229b642",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/attention/attention_v1.py#L1281-L1302": "3160e59de5bcd59f34acf426647863b944c2c08e3f1ba18e4a1ac504e375a492",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/attention/attention_v1.py#L916-L928": "42c3e9877a8aeecc16323e7a6a95dc0aa0f6c49e0a04e53ce35279bb1339d820",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/attention/attention_v1.py#L720-L749": "d34f10d60f08d6bcf737958df547dfb7af4568659e5c20ec912677adfa611c35",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/updatable_graph.py#L177-L186": "c4e3d562270b0b2978ee6a3c3ed63048f29a700517356b52eb37c92cdf591d0b",
+    "https://github.com/vllm-project/vllm@295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/qwen2.py#L111-L115": "6336b9a612c749bd5390e5d6d1e9a4ee042f255789e361f33b0914ae65382bef",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/updatable_graph.py#L92-L99": "b930934c69e7fd15ba0ead2fac2970bbb4dcb6c9ef41316326110d831e910111",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/acl_graph.py#L263-L273": "79e69d0e3a94396aaa686227d696d5917109a806c3b715ed6db621dca2b1b776",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/acl_graph.py#L156-L176": "04fdecd2bc8a207839877e8458f489a5f966c53afe6963b64b101e9e97a76e6e",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/acl_graph.py#L284-L298": "c287de0c62a5302eaaba1bc156e0fc4848a8f767136e5e11c459394a6210bc3c",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/acl_graph.py#L304-L319": "b1270b112c8765ef3ebad6efdf6ecbbf803a4f72845f6d5411fd8cbe1413fa6c",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/updatable_graph.py#L147-L154": "65dbd8050693873d0318335904a5777b554135aeb06e8fec39f143d3bb01e1d9",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/updatable_graph.py#L68-L70": "2284327a12f908190748a95615cca02ba548d84be2d3ccb8770ac055a2ad6aaf",
+    "https://github.com/Ascend/pytorch@62b9115da8019f002da386f8866839121aff89af/torch_npu/npu/graphs.py#L638-L645": "525f9f40e0229ec93d640c934e0a2f0f78b06bf4af201a928c83812e4f84386f",
+    "https://github.com/Ascend/pytorch@62b9115da8019f002da386f8866839121aff89af/torch_npu/csrc/core/npu/NPUGraph.cpp#L265-L284": "fa126d189ed36f39d8a685caa4c88ba6aa14e84aab12748c1b1df78ef226be87",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/updatable_graph.py#L156-L174": "bacb966dcc52294630d58a2a455102438ee40097598624ea38895cce81fe2a74",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/updatable_graph.py#L72-L76": "90330da1d7ec2fe5f7bd0be5d870ba7a2f6a6a3db51f65a503ff0e04a83f4883",
+    "https://github.com/vllm-project/vllm-ascend@94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/compilation/acl_graph.py#L298-L302": "a38a6cf0f4c73581d2536699b11eed8f52b591fdc8148c3ebceeaf56a21a8565"
+  }
+}

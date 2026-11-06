@@ -35,4 +35,12 @@
 
 已检查阻断网络后的首页入口、7 步捕获与回放、12 组算子的 Capture/Replay 切换、展开补充视图、首尾按钮以及刷新后的状态恢复。在 1440px、1920px 窗口及 352px、320px 内容宽度下检查了居中、换行、明暗主题与文本边界。
 
+## 真实捕获与回放调用链
+
+[call-chain.json](call-chain.json) 分为首次捕获和命中图后回放，共 20 个节点。捕获链从已完成预热的 `ACLGraphWrapper.__call__` 进入模型，追踪 Attention 的 custom-op 分派、`forward_impl` 的互斥选择、FIA 任务注册及图保存。固定 FIA、`sinks=None`，不把 PagedAttention 或 FIA-v2 混入同一次执行。
+
+回放链固定非 ENPU FULL updatable graph：解析本轮参数，提交 `replay`，再提交更新并记录 event。ENPU 的 update→replay 是另一分支。函数返回输出 buffer 引用、ACL 异步提交与设备计算完成分别说明；没有从静态代码推断实际 kernel 数量或性能。
+
+[call-chain-adapter.js](call-chain-adapter.js) 实际切换 Capture/Replay、阶段步骤和展开算子，读取计数器验证状态。完整固定基线：vLLM `295c062db8a48ea73bbd05d1174cb37d24bf86f9`、vLLM-Ascend `94e3e25f836d79b5ee5c1aed257999ee61d10875`、torch_npu `62b9115da8019f002da386f8866839121aff89af`。
+
 返回[项目导航](../index.html)。

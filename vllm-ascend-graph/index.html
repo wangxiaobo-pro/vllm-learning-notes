@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-visualize-standalone>
+<html lang="zh-CN" data-visualize-standalone data-lesson-topic="vllm-ascend-graph" data-lesson-palette="mcp">
 <head>
 <meta charset="utf-8">
 <!-- learning-scope-style:start -->
@@ -24,7 +24,74 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com https://persistent.oaistatic.com/plugins/visualize/; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>vLLM-Ascend 图优化：捕获、回放与底层调用</title>
 <style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;max-width:736px;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
-
+<!-- lesson-theme:start -->
+<style>
+/* Scheduler palette. Inlined into each document by scripts/build_learning_ui.py. */
+:root {
+  color-scheme:light !important;
+  --lesson-bg:#f5f5ef; --lesson-panel:#fffefa; --lesson-ink:#192923;
+  --lesson-muted:#52655b; --lesson-line:#d5ddd2; --lesson-grid:#e4e8e0;
+  --lesson-green:#12634b; --lesson-mint:#e7f3e8; --lesson-amber:#8a4a18;
+  --lesson-sand:#fcf0dc; --lesson-shade:#f0f3eb;
+}
+@media(prefers-color-scheme:dark) {
+  :root:not([data-theme=light]) {
+    color-scheme:dark !important;
+    --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+    --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+    --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+    --lesson-sand:#473625; --lesson-shade:#212f27;
+  }
+}
+:root[data-theme=dark] {
+  color-scheme:dark !important;
+  --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+  --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+  --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+  --lesson-sand:#473625; --lesson-shade:#212f27;
+}
+:root {
+  --bg:var(--lesson-bg) !important; --background:var(--lesson-bg) !important;
+  --panel:var(--lesson-panel) !important; --surface:var(--lesson-panel) !important;
+  --card:var(--lesson-panel) !important; --popover:var(--lesson-panel) !important;
+  --ink:var(--lesson-ink) !important; --fg:var(--lesson-ink) !important;
+  --text:var(--lesson-ink) !important; --foreground:var(--lesson-ink) !important;
+  --card-foreground:var(--lesson-ink) !important; --popover-foreground:var(--lesson-ink) !important;
+  --muted-foreground:var(--lesson-muted) !important; --sub:var(--lesson-muted) !important;
+  --line:var(--lesson-line) !important; --border:var(--lesson-line) !important;
+  --grid:var(--lesson-grid) !important; --shade:var(--lesson-shade) !important;
+  --muted:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+  --accent-foreground:var(--lesson-ink) !important;
+  --primary:var(--lesson-green) !important; --primary-foreground:var(--lesson-panel) !important;
+  --accent-soft:var(--lesson-mint) !important; --hover:var(--lesson-shade) !important;
+  --mint:var(--lesson-mint) !important; --sand:var(--lesson-sand) !important;
+  --color-background-primary:var(--lesson-bg) !important;
+  --color-background-secondary:var(--lesson-panel) !important;
+  --color-background-tertiary:var(--lesson-shade) !important;
+  --color-text-primary:var(--lesson-ink) !important;
+  --color-text-secondary:var(--lesson-muted) !important;
+  --color-border-secondary:var(--lesson-line) !important;
+  --viz-panel:var(--lesson-panel) !important;
+  --viz-border:var(--lesson-line) !important;
+  --viz-muted:var(--lesson-muted) !important;
+  background:var(--lesson-bg) !important;
+}
+:root[data-lesson-palette=text] {
+  --muted:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+}
+:root[data-lesson-topic=model-architecture] {
+  --soft:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+}
+:root[data-lesson-palette=matrix] {
+  --soft:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+  --wash:var(--lesson-mint) !important;
+}
+body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !important; }
+.learning-scope-shell { color:var(--lesson-muted) !important; }
+.learning-scope { background:var(--lesson-shade) !important; border-color:var(--lesson-line) !important; }
+.learning-scope-kind { color:var(--lesson-green) !important; }
+</style>
+<!-- lesson-theme:end -->
 </head>
 <body>
 <!-- learning-scope:start -->
@@ -39,7 +106,7 @@
 </aside>
 <!-- learning-scope:end -->
 <iframe id="codex-visualization" sandbox="allow-scripts" referrerpolicy="no-referrer" title="vLLM-Ascend 图优化：捕获、回放与底层调用" data-srcdoc="&lt;!doctype html&gt;
-&lt;html lang=&quot;zh-CN&quot; data-visualize-standalone&gt;
+&lt;html lang=&quot;zh-CN&quot; data-visualize-standalone data-lesson-topic=&quot;vllm-ascend-graph&quot; data-lesson-palette=&quot;mcp&quot;&gt;
 &lt;head&gt;
 &lt;meta charset=&quot;utf-8&quot;&gt;
 &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
@@ -2370,6 +2437,136 @@ return: output[0], output[3], output[2]
  drawCallLayers();drawUpdateCalls();update();updateStages();drawStorage();drawFusion();restore(window.openai?.widgetState);
 })();
 &lt;/script&gt;
+&lt;!-- lesson-theme:start --&gt;
+&lt;style&gt;
+/* Scheduler palette. Inlined into each document by scripts/build_learning_ui.py. */
+:root {
+  color-scheme:light !important;
+  --lesson-bg:#f5f5ef; --lesson-panel:#fffefa; --lesson-ink:#192923;
+  --lesson-muted:#52655b; --lesson-line:#d5ddd2; --lesson-grid:#e4e8e0;
+  --lesson-green:#12634b; --lesson-mint:#e7f3e8; --lesson-amber:#8a4a18;
+  --lesson-sand:#fcf0dc; --lesson-shade:#f0f3eb;
+}
+@media(prefers-color-scheme:dark) {
+  :root:not([data-theme=light]) {
+    color-scheme:dark !important;
+    --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+    --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+    --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+    --lesson-sand:#473625; --lesson-shade:#212f27;
+  }
+}
+:root[data-theme=dark] {
+  color-scheme:dark !important;
+  --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+  --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+  --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+  --lesson-sand:#473625; --lesson-shade:#212f27;
+}
+:root {
+  --bg:var(--lesson-bg) !important; --background:var(--lesson-bg) !important;
+  --panel:var(--lesson-panel) !important; --surface:var(--lesson-panel) !important;
+  --card:var(--lesson-panel) !important; --popover:var(--lesson-panel) !important;
+  --ink:var(--lesson-ink) !important; --fg:var(--lesson-ink) !important;
+  --text:var(--lesson-ink) !important; --foreground:var(--lesson-ink) !important;
+  --card-foreground:var(--lesson-ink) !important; --popover-foreground:var(--lesson-ink) !important;
+  --muted-foreground:var(--lesson-muted) !important; --sub:var(--lesson-muted) !important;
+  --line:var(--lesson-line) !important; --border:var(--lesson-line) !important;
+  --grid:var(--lesson-grid) !important; --shade:var(--lesson-shade) !important;
+  --muted:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+  --accent-foreground:var(--lesson-ink) !important;
+  --primary:var(--lesson-green) !important; --primary-foreground:var(--lesson-panel) !important;
+  --accent-soft:var(--lesson-mint) !important; --hover:var(--lesson-shade) !important;
+  --mint:var(--lesson-mint) !important; --sand:var(--lesson-sand) !important;
+  --color-background-primary:var(--lesson-bg) !important;
+  --color-background-secondary:var(--lesson-panel) !important;
+  --color-background-tertiary:var(--lesson-shade) !important;
+  --color-text-primary:var(--lesson-ink) !important;
+  --color-text-secondary:var(--lesson-muted) !important;
+  --color-border-secondary:var(--lesson-line) !important;
+  --viz-panel:var(--lesson-panel) !important;
+  --viz-border:var(--lesson-line) !important;
+  --viz-muted:var(--lesson-muted) !important;
+  background:var(--lesson-bg) !important;
+}
+:root[data-lesson-palette=text] {
+  --muted:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+}
+:root[data-lesson-topic=model-architecture] {
+  --soft:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+}
+:root[data-lesson-palette=matrix] {
+  --soft:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+  --wash:var(--lesson-mint) !important;
+}
+body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !important; }
+.learning-scope-shell { color:var(--lesson-muted) !important; }
+.learning-scope { background:var(--lesson-shade) !important; border-color:var(--lesson-line) !important; }
+.learning-scope-kind { color:var(--lesson-green) !important; }
+&lt;/style&gt;
+&lt;!-- lesson-theme:end --&gt;
+&lt;!-- call-adapter:start --&gt;
+&lt;script&gt;
+(() =&gt; {
+  const settle = () =&gt; new Promise(resolve =&gt; requestAnimationFrame(() =&gt; requestAnimationFrame(resolve)));
+  window.openLessonTarget = async action =&gt; {
+    const root = document.getElementById(&#x27;ascend-op-detail&#x27;);
+    if (!root) throw new Error(&#x27;未找到图捕获可视化 document&#x27;);
+    const get = id =&gt; { const el = root.querySelector(&#x27;#&#x27; + id); if (!el) throw new Error(&#x27;缺少控件：&#x27; + id); return el; };
+    if (![&#x27;capture&#x27;, &#x27;replay&#x27;].includes(action.mode)) throw new Error(&#x27;未知捕获模式&#x27;);
+    const step = Number(action.step ?? 0), operator = Number(action.operator ?? 0);
+    if (!Number.isInteger(step) || step &lt; 0 || step &gt; 7 || !Number.isInteger(operator) || operator &lt; 0 || operator &gt; 12) throw new Error(&#x27;图步骤越界&#x27;);
+    get(&#x27;od-mode&#x27;).value = action.mode; get(&#x27;od-mode&#x27;).dispatchEvent(new Event(&#x27;change&#x27;, {bubbles:true}));
+    get(&#x27;od-both&#x27;).click();
+    for (let i = 0; i &lt; step; i++) get(&#x27;od-stage-next&#x27;).click();
+    get(&#x27;od-all&#x27;).click();
+    if (operator) { get(&#x27;od-expanded&#x27;).open = true; for (let i = 0; i &lt; operator; i++) get(&#x27;od-next&#x27;).click(); }
+    await settle();
+    if (get(&#x27;od-mode&#x27;).value !== action.mode || (step &amp;&amp; !get(&#x27;od-stage-count&#x27;).textContent.startsWith(step + &#x27; /&#x27;))) throw new Error(&#x27;图状态未切换成功&#x27;);
+    if (operator &amp;&amp; !get(&#x27;od-count&#x27;).textContent.startsWith(operator + &#x27; /&#x27;)) throw new Error(&#x27;算子状态未切换成功&#x27;);
+    return {label: `${get(&#x27;od-mode&#x27;).selectedOptions[0].textContent} · ${get(&#x27;od-stage-count&#x27;).textContent}${operator ? &#x27; · &#x27; + get(&#x27;od-count&#x27;).textContent : &#x27;&#x27;}`};
+  };
+})();
+// Runs in the visualization document, including sandboxed srcdoc frames.
+(() =&gt; {
+  const pending = new Map();
+  let queue = Promise.resolve();
+  const ready = document.readyState === &#x27;loading&#x27;
+    ? new Promise(resolve =&gt; document.addEventListener(&#x27;DOMContentLoaded&#x27;,resolve,{once:true}))
+    : Promise.resolve();
+  const pause = () =&gt; document.querySelectorAll(&#x27;button&#x27;).forEach(button =&gt; {
+    if (/^(暂停(?:流程|播放|动画)?|停止播放)$/.test(button.textContent.trim())) button.click();
+  });
+  window.addEventListener(&#x27;lesson-pause-visual&#x27;,pause);
+  if (parent === window) return;
+  const post = data =&gt; parent.postMessage(data,&#x27;*&#x27;);
+  window.addEventListener(&#x27;message&#x27;,async event =&gt; {
+    if (event.source !== parent || !event.data || typeof event.data !== &#x27;object&#x27;) return;
+    const {type,id,action} = event.data;
+    if (type === &#x27;lesson-call-ping&#x27;) {
+      await ready; post({type:&#x27;lesson-call-ready&#x27;}); return;
+    }
+    if (type === &#x27;lesson-call-pause&#x27;) { pause(); return; }
+    if (type !== &#x27;lesson-call-open&#x27; || typeof id !== &#x27;string&#x27;) return;
+    if (!pending.has(id)) {
+      const work = queue.then(() =&gt; ready).then(() =&gt; {
+        if (typeof window.openLessonTarget !== &#x27;function&#x27;) throw new Error(&#x27;可视化步骤入口尚未就绪&#x27;);
+        return window.openLessonTarget(action);
+      });
+      pending.set(id,work);
+      queue = work.catch(() =&gt; {});
+      if (pending.size &gt; 16) pending.delete(pending.keys().next().value);
+    }
+    try { post({type:&#x27;lesson-call-result&#x27;,id,ok:true,result:await pending.get(id)}); }
+    catch (error) { post({type:&#x27;lesson-call-result&#x27;,id,ok:false,error:error.message}); }
+  });
+  for (const name of [&#x27;click&#x27;,&#x27;change&#x27;]) document.addEventListener(name,event =&gt; {
+    if (event.isTrusted &amp;&amp; event.target.closest(&#x27;button,select,input&#x27;)) post({type:&#x27;lesson-call-edited&#x27;});
+  },true);
+  ready.then(() =&gt; post({type:&#x27;lesson-call-ready&#x27;}));
+})();
+&lt;/script&gt;
+&lt;!-- call-adapter:end --&gt;
 
 &lt;script&gt;
 (() =&gt; {
@@ -3235,5 +3432,355 @@ return: output[0], output[3], output[2]
   delete frame.dataset.srcdoc;
 })();
 </script>
+<!-- call-ui:start -->
+<style>
+/* Scope every rule: the visualizations keep their original layout and semantics. */
+.code-walkthrough { width:100%; max-width:960px; margin:18px auto 24px; color:var(--lesson-ink); font:14px/1.6 system-ui,"Microsoft YaHei",sans-serif; text-align:left; }
+.code-walkthrough * { box-sizing:border-box; }
+.code-walkthrough [hidden],.lesson-original.lesson-hidden { display:none !important; }
+html[data-call-chain-ready=true],html[data-call-chain-ready=true] body { overflow-anchor:none; }
+.code-walkthrough[data-cw-screen=visual] { padding-top:55px; }
+.code-walkthrough[data-cw-screen=visual] .cw-nav { position:fixed; z-index:100; top:8px; left:50%; transform:translateX(-50%); width:calc(100% - 32px); max-width:960px; margin:0; padding:7px 9px; border:1px solid var(--lesson-line); border-radius:9px; background:var(--lesson-bg); box-shadow:0 3px 12px #0000000b; }
+.code-walkthrough h1,.code-walkthrough h2,.code-walkthrough h3,.code-walkthrough p,.code-walkthrough dl,.code-walkthrough dd { margin:0; }
+.code-walkthrough button,.code-walkthrough select { font:inherit; color:inherit; cursor:pointer; }
+.code-walkthrough button:disabled { cursor:wait; opacity:.6; }
+.code-walkthrough a { color:var(--lesson-green); text-underline-offset:3px; }
+.code-walkthrough :is(button,select,a,summary):focus-visible { outline:3px solid var(--lesson-amber); outline-offset:3px; }
+.code-walkthrough code { font-family:ui-monospace,Consolas,"Microsoft YaHei",monospace; overflow-wrap:anywhere; }
+.cw-header { padding:8px 0 16px; }
+.cw-header>a { font-size:12px; text-decoration:none; }
+.cw-header h1 { font-size:clamp(24px,4vw,34px); line-height:1.35; margin:13px 0 8px; font-weight:700; letter-spacing:-.025em; }
+.cw-header p { color:var(--lesson-muted); font-size:13px; }
+.cw-nav { display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin:12px 0; }
+.code-walkthrough .cw-nav button,.cw-tools button,.cw-jump { border:1px solid var(--lesson-line); border-radius:7px; padding:7px 12px; background:var(--lesson-panel); font-size:13px; font-weight:650; }
+.code-walkthrough .cw-nav button[aria-pressed=true],.cw-jump { background:var(--lesson-mint); color:var(--lesson-green); border-color:var(--lesson-green); }
+.cw-variant { display:grid; grid-template-columns:minmax(0,1fr); gap:7px; padding:13px 15px; margin:12px 0; border:1px solid var(--lesson-line); border-radius:10px; background:var(--lesson-panel); }
+.cw-variant label { display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-size:13px; font-weight:650; }
+.cw-variant select { padding:5px 9px; max-width:100%; min-width:0; border:1px solid var(--lesson-line); border-radius:6px; background:var(--lesson-panel); font-size:13px; }
+.cw-variant p,.cw-scope { font-size:12px; color:var(--lesson-muted); overflow-wrap:anywhere; }
+.cw-scope summary { cursor:pointer; color:var(--lesson-green); font-weight:650; }
+.cw-scope a { display:block; margin-top:4px; overflow-wrap:anywhere; }
+.cw-guide { color:var(--lesson-muted); font-size:12px; margin:12px 0 !important; }
+.cw-layout { display:grid; grid-template-columns:minmax(0,1.12fr) minmax(0,1fr); gap:14px; align-items:start; }
+.cw-tree-panel,.cw-detail { min-width:0; background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:12px; }
+.cw-tree-panel { overflow:hidden; }
+.cw-tools { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:5px; padding:10px 12px; border-bottom:1px solid var(--lesson-line); }
+.cw-tools strong { font-size:13px; }
+.cw-tools button { padding:3px 7px; font-size:11px; }
+.cw-tree-scroll { max-height:680px; overflow:auto; padding:12px 9px; scrollbar-gutter:stable; }
+.code-walkthrough .cw-tree { padding:0; margin:0; list-style:none; min-width:0; }
+.code-walkthrough .cw-tree li { padding:0; margin:0; }
+.code-walkthrough .cw-tree .cw-tree { margin-left:12px; border-left:1px solid var(--lesson-line); }
+.cw-row { display:flex; align-items:flex-start; min-width:0; margin:2px 0; }
+.code-walkthrough .cw-toggle,.cw-branch { flex:0 0 22px; width:22px; padding:7px 0; border:0; background:transparent; text-align:center; color:var(--lesson-green); font:13px/1.5 ui-monospace,Consolas,monospace; }
+.code-walkthrough .cw-node { min-width:0; flex:1; display:grid; grid-template-columns:auto minmax(0,1fr); align-items:start; gap:5px; padding:7px; text-align:left; border:1px solid transparent; border-radius:6px; background:transparent; line-height:1.45; }
+.code-walkthrough .cw-node:hover { background:var(--lesson-shade); }
+.code-walkthrough .cw-node[aria-current=true] { background:var(--lesson-mint); border-color:var(--lesson-green); }
+.cw-number { padding-top:1px; color:var(--lesson-green); font:600 11px/1.6 ui-monospace,Consolas,monospace; }
+.cw-node code { display:block; font-size:13px; font-weight:650; }
+.cw-node small { display:block; margin-top:2px; color:var(--lesson-muted); font-size:12px; }
+.cw-detail { padding:17px; scroll-margin-top:14px; }
+.cw-kicker { color:var(--lesson-green); font:700 11px/1.5 ui-monospace,Consolas,monospace; }
+.cw-detail h2 { margin:5px 0 7px; font-size:19px; line-height:1.4; overflow-wrap:anywhere; }
+.cw-summary { font-size:14px; }
+.cw-data { margin-top:12px !important; font-size:13px; }
+.cw-data dt { margin-top:12px; color:var(--lesson-green); font-weight:700; }
+.cw-data dd { margin-top:3px; overflow-wrap:anywhere; }
+.code-walkthrough .cw-note { padding:9px 10px; margin-top:12px; border-left:3px solid var(--lesson-amber); background:var(--lesson-sand); color:var(--lesson-amber); font-size:12px; }
+.cw-evidence,.cw-targets { margin-top:14px; padding-top:10px; border-top:1px solid var(--lesson-line); }
+.cw-evidence h3,.cw-targets h3 { margin:0 0 5px; font-size:13px; }
+.cw-evidence a { display:block; margin-top:6px; font-size:11px; overflow-wrap:anywhere; }
+.cw-evidence a small { display:block; color:var(--lesson-muted); font:10px/1.5 ui-monospace,Consolas,monospace; }
+.cw-targets p { color:var(--lesson-muted); font-size:12px; margin-bottom:7px; }
+.cw-jump { display:block; margin:7px 0 0; max-width:100%; text-align:left; white-space:normal; }
+.cw-context { padding:9px 12px; border:1px solid var(--lesson-line); background:var(--lesson-shade); border-radius:8px; font-size:12px; color:var(--lesson-muted); overflow-wrap:anywhere; }
+.cw-error { margin:10px 0 !important; border:1px solid var(--lesson-amber); padding:10px; background:var(--lesson-sand); color:var(--lesson-amber); border-radius:7px; }
+@media(max-width:760px) { .cw-layout { grid-template-columns:minmax(0,1fr); } .cw-tree-scroll { max-height:420px; } .cw-detail { padding:14px; } }
+@media(max-width:400px) { .code-walkthrough .cw-tree .cw-tree { margin-left:7px; } .code-walkthrough .cw-toggle,.cw-branch { flex-basis:18px; width:18px; } .code-walkthrough .cw-node { padding:6px 4px; gap:4px; } }
+</style>
+<script type="application/json" id="lesson-call-chain-data">{"title":"ACL Graph 捕获与回放：真实调用链","defaultVariant":"capture","variants":[{"id":"capture","title":"首次捕获","scope":"静态源码：Qwen2 dense、TP=1、BF16、FULL、标准 AscendAttentionBackendImpl、非 ENPU；预热已完成，固定命中 FIA 且 sinks=None，不走 PagedAttention / FIA-v2 分支。设备算子不展开内部 tiling。","entry":"wrapper","repositories":{"vllm":{"url":"https://github.com/vllm-project/vllm","commit":"295c062db8a48ea73bbd05d1174cb37d24bf86f9","label":"vLLM"},"ascend":{"url":"https://github.com/vllm-project/vllm-ascend","commit":"94e3e25f836d79b5ee5c1aed257999ee61d10875","label":"vLLM-Ascend"},"torch_npu":{"url":"https://github.com/Ascend/pytorch","commit":"62b9115da8019f002da386f8866839121aff89af","label":"torch_npu"}},"nodes":[{"id":"wrapper","parent":null,"number":"1","kind":"调用","title":"ACLGraphWrapper.__call__()","summary":"从已预热的 dummy forward 进入 FULL wrapper。","input":"固定地址输入、forward_context.batch_descriptor。","changes":"核对 runtime_mode，并按 batch_descriptor 查询 entry。","output":"未捕获的 ACLGraphEntry。","resume":"未命中走捕获；NONE/模式不符直接调用 runnable。","evidence":[{"repo":"ascend","path":"vllm_ascend/compilation/acl_graph.py","line":156,"label":"实际实现","end":188}],"targets":[{"label":"查看对应流程","action":{"mode":"capture","step":1}}]},{"id":"enter","parent":"wrapper","number":"1.1","kind":"调用","title":"torch_npu.npu.graph.__enter__()","summary":"进入捕获流并开启图录制。","input":"UpdatableGraph、graph pool、capture stream。","changes":"同步准备、切换 stream，调用 capture_begin。","output":"捕获上下文已生效。","resume":"返回 with 块；由 wrapper 继续调用模型，不是上下文函数调用模型。","evidence":[{"repo":"ascend","path":"vllm_ascend/compilation/acl_graph.py","line":208,"label":"调用位置","end":213},{"repo":"torch_npu","path":"torch_npu/npu/graphs.py","line":899,"label":"实际实现","end":914}],"targets":[{"label":"查看对应流程","action":{"mode":"capture","step":1}}]},{"id":"active","parent":"enter","number":"1.1.1","kind":"调用","title":"UpdatableGraph.capture_begin()","summary":"绑定当前可更新图。","input":"pool 与 capture_error_mode。","changes":"父类开始录制；_ACTIVE_GRAPH.set(self)。","output":"图对象可由 Attention 读取。","resume":"返回 graph.__enter__。","evidence":[{"repo":"ascend","path":"vllm_ascend/compilation/updatable_graph.py","line":87,"label":"实际实现","end":90}],"targets":[{"label":"查看对应流程","action":{"mode":"capture","step":1}}]},{"id":"model","parent":"wrapper","number":"1.2","kind":"调用","title":"Qwen2ForCausalLM.forward() → Qwen2Model.forward()","summary":"wrapper 的 runnable 执行模型主体。","input":"input_ids、positions、可选 intermediate_tensors。","changes":"Embedding 后遍历当前 PP stage 的 Decoder 层。","output":"本层 hidden_states 与 residual。","resume":"层循环继续，最终 Norm 后返回 hidden。","evidence":[{"repo":"ascend","path":"vllm_ascend/compilation/acl_graph.py","line":210,"label":"with 块内调用","end":218},{"repo":"vllm","path":"vllm/model_executor/models/qwen2.py","line":500,"label":"实际实现","end":510},{"repo":"vllm","path":"vllm/model_executor/models/qwen2.py","line":402,"label":"实际实现","end":451}],"targets":[{"label":"查看对应流程","action":{"mode":"capture","step":2}}]},{"id":"layer","parent":"model","number":"1.2.1","kind":"调用","title":"Qwen2DecoderLayer.forward()","summary":"按 Pre-Norm 顺序调用 Attention 和 MLP。","input":"本层 hidden_states、residual、positions。","changes":"input_layernorm → self_attn → post_attention_layernorm → mlp。","output":"(MLP 输出, 更新后的 residual)。","resume":"返回 Model 的层循环；层末没有再相加。","evidence":[{"repo":"vllm","path":"vllm/model_executor/models/qwen2.py","line":291,"label":"实际实现","end":311}],"targets":[{"label":"查看对应流程","action":{"mode":"capture","step":2,"operator":1}}]},{"id":"attention","parent":"layer","number":"1.2.1.1","kind":"调用","title":"Qwen2Attention.forward()","summary":"QKV 投影与 RoPE 后进入 Attention 后端。","input":"归一化 hidden、positions。","changes":"qkv_proj → split → rotary_emb → self.attn → o_proj。","output":"Attention 投影输出。","resume":"返回 Decoder 层 post_attention_layernorm。","evidence":[{"repo":"vllm","path":"vllm/model_executor/models/qwen2.py","line":208,"label":"实际实现","end":235}],"targets":[{"label":"查看对应流程","action":{"mode":"capture","step":2,"operator":3}}]},{"id":"backend","parent":"attention","number":"1.2.1.1.1","kind":"调用","title":"AscendAttentionBackendImpl.forward()","summary":"CustomOp/Attention 分派后的 Ascend 后端入口。","input":"Q/K/V、kv_cache、metadata、output buffer。","changes":"reshape_and_cache 写本轮 K/V，再调用 forward_impl。","output":"缓存更新及写入 output 的 Attention 结果。","resume":"返回 Attention 封装层后继续 o_proj。","evidence":[{"repo":"ascend","path":"vllm_ascend/attention/attention_v1.py","line":1304,"label":"实际实现","end":1372},{"repo":"vllm","path":"vllm/model_executor/layers/attention/attention.py","line":488,"label":"实际实现","end":579},{"repo":"vllm","path":"vllm/model_executor/layers/attention/attention.py","line":767,"label":"custom-op 实际分派","end":794}],"targets":[{"label":"查看对应流程","action":{"mode":"capture","step":2,"operator":5}}],"note":"合并展示 Attention layer/custom-op 分派包装；backend 并非 Qwen2Attention 直接持有的普通 Python callable。"},{"id":"register","parent":"backend","number":"1.2.1.1.1.1","kind":"调用","title":"forward_impl() → forward_fused_infer_attention() → full_graph_fia() → register_task()","summary":"捕获期登记可更新 FIA 任务组与 event。","input":"operation、kwargs、ParamProvider。","changes":"event.wait/reset → task_group_begin → operation → task_group_end；保存 handle。","output":"GraphUpdateTask 列表。","resume":"返回 full_graph_fia；普通算子仍继续录制。","evidence":[{"repo":"ascend","path":"vllm_ascend/compilation/updatable_graph.py","line":120,"label":"实际实现","end":145},{"repo":"ascend","path":"vllm_ascend/attention/attention_v1.py","line":1281,"label":"FIA 与 PagedAttention 互斥选择","end":1302},{"repo":"ascend","path":"vllm_ascend/attention/attention_v1.py","line":916,"label":"FULL FIA 调用位置","end":928},{"repo":"ascend","path":"vllm_ascend/attention/attention_v1.py","line":720,"label":"注册任务调用","end":749},{"repo":"ascend","path":"vllm_ascend/compilation/updatable_graph.py","line":177,"label":"当前图查询与转调","end":186}],"targets":[{"label":"查看对应流程","action":{"mode":"capture","step":2,"operator":7}}]},{"id":"mlp","parent":"layer","number":"1.2.1.2","kind":"调用","title":"Qwen2MLP.forward()","summary":"同一层 FFN 在捕获流上执行算子调用。","input":"post_attention_layernorm 输出。","changes":"gate_up_proj → act_fn → down_proj。","output":"单路 MLP 输出。","resume":"返回 Decoder；后续层或 final norm 消费。","evidence":[{"repo":"vllm","path":"vllm/model_executor/models/qwen2.py","line":111,"label":"实际实现","end":115}],"targets":[{"label":"查看对应流程","action":{"mode":"capture","step":2,"operator":10}}]},{"id":"exit","parent":"wrapper","number":"1.3","kind":"调用","title":"UpdatableGraph.capture_end()","summary":"退出捕获上下文，恢复当前图引用。","input":"已录入的设备任务与依赖。","changes":"父类 capture_end；finally 重置 _ACTIVE_GRAPH。","output":"可回放图及资源弱引用。","resume":"回到 wrapper 保存 output 与 aclgraph。","evidence":[{"repo":"ascend","path":"vllm_ascend/compilation/updatable_graph.py","line":92,"label":"实际实现","end":99}],"targets":[{"label":"查看对应流程","action":{"mode":"capture","step":3}}]},{"id":"return","parent":"wrapper","number":"1.4","kind":"返回","title":"保存 entry.output / entry.aclgraph 并返回","summary":"捕获结束不等于已经执行所有捕获任务。","input":"模型输出引用、刚结束的 aclgraph。","changes":"entry.output 保存弱引用，entry.aclgraph 指向新图。","output":"本次 output 返回调用方。","resume":"下一次同图键调用进入 replay 分支。","evidence":[{"repo":"ascend","path":"vllm_ascend/compilation/acl_graph.py","line":263,"label":"实际实现","end":273}],"targets":[{"label":"查看对应流程","action":{"mode":"capture","step":3}}]}]},{"id":"replay","title":"命中图后回放","scope":"同一图键与固定地址；非 ENPU 的 FULL updatable-graph 主模型路径。ENPU 是 update→replay 分支，不混入此链。","entry":"wrapper","repositories":{"ascend":{"url":"https://github.com/vllm-project/vllm-ascend","commit":"94e3e25f836d79b5ee5c1aed257999ee61d10875","label":"vLLM-Ascend"},"torch_npu":{"url":"https://github.com/Ascend/pytorch","commit":"62b9115da8019f002da386f8866839121aff89af","label":"torch_npu"}},"nodes":[{"id":"wrapper","parent":null,"number":"1","kind":"调用","title":"ACLGraphWrapper.__call__()","summary":"同一 batch_descriptor 命中已捕获图。","input":"已更新固定地址 buffer 与本轮 metadata。","changes":"读取 entry；调试模式核对输入地址。","output":"entry.aclgraph 与保存的输出引用。","resume":"按 FULL/updatable backend 选择回放。","evidence":[{"repo":"ascend","path":"vllm_ascend/compilation/acl_graph.py","line":156,"label":"实际实现","end":176}],"targets":[{"label":"查看对应流程","action":{"mode":"replay","step":4}}]},{"id":"barrier","parent":"wrapper","number":"1.1","kind":"等待","title":"current_stream().synchronize() [非 ENPU FULL]","summary":"防止新一轮 update 越过上一轮 replay。","input":"前一轮主 stream 任务。","changes":"等待上轮设备执行结束。","output":"可安全开始本轮 graph/update。","resume":"继续 _updatable_graph_replay。","evidence":[{"repo":"ascend","path":"vllm_ascend/compilation/acl_graph.py","line":284,"label":"实际实现","end":298}],"targets":[{"label":"查看对应流程","action":{"mode":"replay","step":4}}]},{"id":"replay","parent":"wrapper","number":"1.2","kind":"调用","title":"ACLGraphWrapper._updatable_graph_replay()","summary":"普通非 ENPU 主模型路径：先 replay 提交，再 update。","input":"graph、forward_context.attn_metadata。","changes":"ContextSource → resolve_tasks；graph.replay() 后 graph.update()。","output":"本轮任务参数绑定与回放提交。","resume":"返回 wrapper 的 entry.output。","evidence":[{"repo":"ascend","path":"vllm_ascend/compilation/acl_graph.py","line":304,"label":"实际实现","end":319}],"targets":[{"label":"查看对应流程","action":{"mode":"replay","step":5}}]},{"id":"bind","parent":"replay","number":"1.2.1","kind":"调用","title":"UpdatableGraph.resolve_tasks() → GraphUpdateTask.bind()","summary":"将本轮参数绑定到捕获期任务。","input":"ParamProvider 与 ContextSource metadata。","changes":"按 provider/index 对齐 params，覆盖 kwargs。","output":"resolved_tasks 元组。","resume":"返回 _updatable_graph_replay。","evidence":[{"repo":"ascend","path":"vllm_ascend/compilation/updatable_graph.py","line":147,"label":"实际实现","end":154},{"repo":"ascend","path":"vllm_ascend/compilation/updatable_graph.py","line":68,"label":"实际实现","end":70}],"targets":[{"label":"查看对应流程","action":{"mode":"replay","step":4}}]},{"id":"python","parent":"replay","number":"1.2.2","kind":"调用","title":"torch_npu.npu.NPUGraph.replay()","summary":"Python 图接口进入 C++ 图执行。","input":"已成功 capture 的 graph。","changes":"调用父类 replay。","output":"运行时图提交动作。","resume":"返回 _updatable_graph_replay，随后更新 Attention。","evidence":[{"repo":"torch_npu","path":"torch_npu/npu/graphs.py","line":638,"label":"实际实现","end":645}],"targets":[{"label":"查看对应流程","action":{"mode":"replay","step":5}}]},{"id":"runtime","parent":"python","number":"1.2.2.1","kind":"提交","title":"c10_npu::NPUGraph::replay()","summary":"整图提交到当前设备 stream。","input":"model_ri_、current stream。","changes":"调用 AclmdlRIExecuteAsync(model_ri_, stream)。","output":"异步图执行已提交。","resume":"普通模式返回不等于设备全部完成；blocking 配置另同步。","evidence":[{"repo":"torch_npu","path":"torch_npu/csrc/core/npu/NPUGraph.cpp","line":265,"label":"实际实现","end":284}],"targets":[{"label":"查看对应流程","action":{"mode":"replay","step":5}}]},{"id":"update","parent":"replay","number":"1.2.3","kind":"调用","title":"UpdatableGraph.update()","summary":"切换 update_stream 刷新动态任务参数。","input":"resolved_tasks、update_stream。","changes":"遍历 task；PA 条件分支重算 workspace，FIA 主线直接 apply。","output":"任务更新已提交。","resume":"返回 _updatable_graph_replay。","evidence":[{"repo":"ascend","path":"vllm_ascend/compilation/updatable_graph.py","line":156,"label":"实际实现","end":174}],"targets":[{"label":"查看对应流程","action":{"mode":"replay","step":6}}]},{"id":"apply","parent":"update","number":"1.2.3.1","kind":"调用","title":"GraphUpdateTask.apply()","summary":"更新任务组，并释放图内等待点。","input":"task.handle、operation、runtime kwargs。","changes":"update_begin → operation → update_end → event.record。","output":"本轮 FIA 参数及 event。","resume":"图中 event.wait 满足后，后续设备任务继续。","evidence":[{"repo":"ascend","path":"vllm_ascend/compilation/updatable_graph.py","line":72,"label":"实际实现","end":76}],"targets":[{"label":"查看对应流程","action":{"mode":"replay","step":6}}]},{"id":"output","parent":"wrapper","number":"1.3","kind":"返回","title":"返回 entry.output [输出引用]","summary":"复用输出地址交还 Runner。","input":"保存的 output tensor 引用。","changes":"wrapper 不再调用完整 self.runnable。","output":"本轮输出 buffer 引用。","resume":"下游 logits/sampling 依照 stream 依赖读取结果；不是 Host 函数返回即设备完成。","evidence":[{"repo":"ascend","path":"vllm_ascend/compilation/acl_graph.py","line":298,"label":"实际实现","end":302}],"targets":[{"label":"查看对应流程","action":{"mode":"replay","step":7}}]}]}],"topic":"vllm-ascend-graph"}</script>
+<script>
+/* Common entry: verified call tree -> existing visualization, preserving native DOM. */
+(() => {
+  function mount() {
+    const dataElement = document.getElementById('lesson-call-chain-data');
+    if (!dataElement || document.getElementById('lesson-call-chain')) return;
+    const data = JSON.parse(dataElement.textContent);
+    const variants = new Map(data.variants.map(variant => [variant.id,variant]));
+    const fallback = variants.get(data.defaultVariant) || data.variants[0];
+    const topic = data.topic;
+    const original = [...document.body.children].filter(node =>
+      !['SCRIPT','STYLE','LINK','META','NOSCRIPT'].includes(node.tagName) && !node.classList.contains('learning-scope-shell'));
+    original.forEach(node => node.classList.add('lesson-original'));
+    const frame = document.getElementById('codex-visualization');
+    const storageKey = 'lesson-call-chain:' + topic + ':' + location.pathname.split('/').at(-1);
+    let variant = fallback, selected = variant.entry || variant.nodes[0].id, screen = 'chain', targetIndex = null;
+    let collapsed = new Set(), busy = false, revision = 0, frameReady = false, requestId = 0;
+    const replies = new Map();
+    let nativeQueue = Promise.resolve();
+    const nodeById = id => variant.nodes.find(node => node.id === id);
+    const make = (tag,text,className) => {
+      const node = document.createElement(tag);
+      if (text !== undefined) node.textContent = text;
+      if (className) node.className = className;
+      return node;
+    };
+    const root = make('section',undefined,'code-walkthrough');
+    root.id = 'lesson-call-chain';
+    root.innerHTML = `<header class="cw-header"><a href="../index.html">← vLLM 学习笔记</a><h1></h1><p>先沿源码调用链定位接口，再进入对应的可视化步骤。</p></header>
+      <nav class="cw-nav" aria-label="阅读方式"><button type="button" data-cw-view="chain">01 整体调用链</button><button type="button" data-cw-view="visual">02 可视化执行</button></nav>
+      <p class="cw-error" role="alert" hidden></p>
+      <section class="cw-chain"><div class="cw-variant"><label>实现与场景 <select aria-label="选择调用链实现"></select></label><p class="cw-scope-text"></p><details class="cw-scope"><summary>源码仓库与固定 commit</summary><div class="cw-repositories"></div></details></div>
+      <p class="cw-guide">点 ＋ 展开子调用，点名称查看输入、状态变化与返回续点。「动作」「分支」「循环」表示控制块；异步提交与完成回报分开标记。</p>
+      <div class="cw-layout"><section class="cw-tree-panel" aria-label="源码调用树"><div class="cw-tools"><strong></strong><div><button type="button" data-cw-expand>全部展开</button> <button type="button" data-cw-fold>只看主链</button></div></div><div class="cw-tree-scroll"><ol class="cw-tree"></ol></div></section>
+      <article class="cw-detail" tabindex="-1" aria-labelledby="cw-node-title"><div class="cw-kicker"></div><h2 id="cw-node-title"></h2><p class="cw-summary"></p><dl class="cw-data"></dl><p class="cw-note" hidden></p>
+      <section class="cw-evidence"><h3>源码依据 · 行号属于所示 commit</h3><div></div></section><section class="cw-targets"><h3>进入可视化执行</h3><p>按下列入口定位现有图中的对应步骤。</p><div></div></section></article></div></section>
+      <div class="cw-context" tabindex="-1" hidden></div>`;
+    document.body.insertBefore(root,original[0] || dataElement);
+    const $ = selector => root.querySelector(selector);
+    $('.cw-header h1').textContent = data.title;
+    for (const item of data.variants) {
+      const option = make('option',item.title); option.value = item.id; $('.cw-variant select').append(option);
+    }
+    function validState(value) {
+      const nextVariant = variants.get(value?.variant);
+      const node = nextVariant?.nodes.find(item => item.id === value.node);
+      if (!node || !['chain','visual'].includes(value.screen)) return null;
+      const target = value.target === null ? null : Number(value.target);
+      if (target !== null && (!Number.isInteger(target) || target < 0 || target >= node.targets.length)) return null;
+      return {variant:nextVariant.id,node:node.id,screen:value.screen,target};
+    }
+    const state = () => ({variant:variant.id,node:selected,screen,target:targetIndex});
+    function parseRoute() {
+      const query = new URLSearchParams(location.search);
+      if (!query.has('cw-view')) return null;
+      return validState({variant:query.get('cw-variant'),node:query.get('cw-node'),screen:query.get('cw-view'),target:query.has('cw-target') ? query.get('cw-target') : null});
+    }
+    function applyState(next) {
+      variant = variants.get(next.variant); selected = next.node; screen = next.screen; targetIndex = next.target;
+    }
+    try {
+      const saved = validState(JSON.parse(localStorage.getItem(storageKey)));
+      if (saved) applyState({...saved,screen:'chain'});
+    } catch {}
+    const requested = parseRoute();
+    if (requested) applyState(requested);
+    function routeKey() {
+      const query = new URLSearchParams(location.search);
+      return ['cw-view','cw-variant','cw-node','cw-target'].map(key => query.get(key)).join('|');
+    }
+    let lastRoute = routeKey();
+    function urlFor(next = state(),url = new URL(location.href)) {
+      url.searchParams.set('cw-view',next.screen); url.searchParams.set('cw-variant',next.variant); url.searchParams.set('cw-node',next.node);
+      if (next.target === null) url.searchParams.delete('cw-target'); else url.searchParams.set('cw-target',String(next.target));
+      return url;
+    }
+    function remember(method = 'replace') {
+      try { localStorage.setItem(storageKey,JSON.stringify(state())); } catch {}
+      const url = urlFor();
+      if (url.href !== location.href) {
+        try { history[method + 'State']({...history.state,lessonCallChain:state()},'',url); } catch {}
+      }
+      lastRoute = routeKey();
+    }
+    function resetTree() {
+      collapsed = new Set(variant.nodes.filter(node => node.parent !== null).map(node => node.id));
+      revealSelected();
+    }
+    function revealSelected() {
+      let node = nodeById(selected);
+      while (node?.parent) { collapsed.delete(node.parent); node = nodeById(node.parent); }
+    }
+    function buildTree() {
+      const top = $('.cw-tree'); top.replaceChildren();
+      const append = (list,parent) => {
+        const children = variant.nodes.filter(node => node.parent === parent);
+        children.forEach((node,index) => {
+          const item = make('li'), row = make('div',undefined,'cw-row');
+          const hasChildren = variant.nodes.some(child => child.parent === node.id);
+          const branch = make(hasChildren ? 'button' : 'span',hasChildren ? (collapsed.has(node.id) ? '+' : '−') : (index === children.length - 1 ? '└─' : '├─'),hasChildren ? 'cw-toggle' : 'cw-branch');
+          if (hasChildren) {
+            branch.type = 'button'; branch.dataset.cwToggle = node.id;
+            branch.setAttribute('aria-expanded',!collapsed.has(node.id)); branch.setAttribute('aria-label',(collapsed.has(node.id) ? '展开 ' : '收起 ') + node.title);
+          } else branch.setAttribute('aria-hidden','true');
+          const button = make('button',undefined,'cw-node'); button.type = 'button'; button.dataset.cwNode = node.id;
+          const label = make('span'); label.append(make('code',node.title),make('small','[' + node.kind + '] ' + node.summary));
+          button.append(make('span',node.number,'cw-number'),label); row.append(branch,button); item.append(row);
+          if (hasChildren) { const nested = make('ol',undefined,'cw-tree'); nested.hidden = collapsed.has(node.id); append(nested,node.id); item.append(nested); }
+          list.append(item);
+        });
+      };
+      append(top,null); $('.cw-tools strong').textContent = '调用与返回 · ' + variant.nodes.length + ' 个节点';
+    }
+    function detail() {
+      const node = nodeById(selected);
+      root.querySelectorAll('[data-cw-node]').forEach(button => {
+        if (button.dataset.cwNode === selected) button.setAttribute('aria-current','true'); else button.removeAttribute('aria-current');
+      });
+      $('.cw-kicker').textContent = '节点 ' + node.number + ' / ' + node.kind;
+      $('#cw-node-title').textContent = node.title; $('.cw-summary').textContent = node.summary;
+      $('.cw-data').replaceChildren();
+      for (const [label,key] of [['输入从哪来','input'],['内部动作与持久状态','changes'],['输出交给谁','output'],['返回后在哪里继续','resume']]) $('.cw-data').append(make('dt',label),make('dd',node[key]));
+      $('.cw-note').hidden = !node.note; $('.cw-note').textContent = node.note || '';
+      $('.cw-evidence>div').replaceChildren();
+      $('.cw-evidence h3').textContent = variant.provenance === 'teaching' ? '算法教学对照 · 不绑定源码' : '源码依据 · 行号属于所示 commit';
+      if (variant.provenance === 'teaching') $('.cw-evidence>div').append(make('p','此分支说明教学算法，不表示 vLLM 内存在同名函数。','cw-guide'));
+      for (const evidence of node.evidence) {
+        const repo = variant.repositories[evidence.repo];
+        const link = make('a',evidence.label + ' · ' + evidence.path + ':' + evidence.line + (evidence.end ? '–' + evidence.end : ''));
+        link.href = repo.url + '/blob/' + repo.commit + '/' + evidence.path + '#L' + evidence.line + (evidence.end ? '-L' + evidence.end : '');
+        link.target = '_blank'; link.rel = 'noopener noreferrer'; link.title = repo.commit;
+        link.append(make('small',(repo.label || evidence.repo) + ' @ ' + repo.commit.slice(0,10)));
+        $('.cw-evidence>div').append(link);
+      }
+      $('.cw-targets>div').replaceChildren();
+      node.targets.forEach((target,index) => {
+        const button = make('button',target.label + ' →','cw-jump'); button.type = 'button'; button.dataset.cwTarget = index; button.disabled = busy;
+        $('.cw-targets>div').append(button);
+      });
+    }
+    function render() {
+      const visual = screen === 'visual';
+      root.dataset.cwBusy = String(busy);
+      root.dataset.cwScreen = screen;
+      original.forEach(node => node.classList.toggle('lesson-hidden',!visual));
+      $('.cw-header').hidden = visual; $('.cw-chain').hidden = visual; $('.cw-context').hidden = !visual;
+      root.querySelectorAll('[data-cw-view]').forEach(button => button.setAttribute('aria-pressed',button.dataset.cwView === screen));
+      $('[data-cw-view=chain]').textContent = visual ? '← 返回调用链' : '01 整体调用链';
+      $('.cw-variant select').value = variant.id; $('.cw-scope-text').textContent = variant.scope;
+      const repos = $('.cw-repositories'); repos.replaceChildren();
+      $('.cw-scope summary').textContent = variant.provenance === 'teaching' ? '算法教学对照 · 无源码仓库' : '源码仓库与固定 commit';
+      for (const [key,repo] of Object.entries(variant.repositories)) {
+        const link = make('a',(repo.label || key) + ' · ' + repo.url.replace('https://github.com/','') + ' @ ' + repo.commit);
+        link.href = repo.url + '/tree/' + repo.commit; link.target = '_blank'; link.rel = 'noopener noreferrer'; repos.append(link);
+      }
+      $('.cw-context').textContent = targetIndex === null
+        ? '当前展示原交互流程。从调用链的具体节点跳转，可定位对应模式和步骤。'
+        : '来自节点 ' + nodeById(selected).number + ' · ' + nodeById(selected).title + '。可继续使用图中的模式与步进控件。';
+      detail();
+      if (visual) window.dispatchEvent(new Event('resize'));
+    }
+    function scrollSelected() {
+      const button = root.querySelector('[data-cw-node="' + selected + '"]'), box = $('.cw-tree-scroll');
+      const a = button.getBoundingClientRect(), b = box.getBoundingClientRect();
+      if (a.top < b.top) box.scrollTop += a.top - b.top - 8;
+      else if (a.bottom > b.bottom) box.scrollTop += a.bottom - b.bottom + 8;
+    }
+    function clearError() { $('.cw-error').hidden = true; $('.cw-error').textContent = ''; }
+    function errorMessage(error) { $('.cw-error').textContent = '无法定位该步骤：' + error.message; $('.cw-error').hidden = false; }
+    window.addEventListener('message',event => {
+      if (!frame || event.source !== frame.contentWindow || !event.data) return;
+      if (event.data.type === 'lesson-call-ready') frameReady = true;
+      if (event.data.type === 'lesson-call-result') {
+        const pending = replies.get(event.data.id);
+        if (pending) { replies.delete(event.data.id); clearTimeout(pending.timer); event.data.ok ? pending.resolve(event.data.result) : pending.reject(new Error(event.data.error)); }
+      }
+      if (event.data.type === 'lesson-call-edited' && !busy && screen === 'visual') markEdited();
+    });
+    function markEdited() {
+      targetIndex = null;
+      $('.cw-context').textContent = '图中的模式或步骤已手动调整，当前状态不再绑定调用链节点。返回调用链可重新定位源码对应步骤。';
+      remember();
+    }
+    async function invoke(action) {
+      if (!frame) {
+        if (typeof window.openLessonTarget !== 'function') throw new Error('当前页面缺少步骤入口');
+        const work = nativeQueue.then(() => window.openLessonTarget(action));
+        nativeQueue = work.catch(() => {});
+        return work;
+      }
+      const deadline = Date.now() + 5000;
+      while (!frameReady && Date.now() < deadline) {
+        frame.contentWindow?.postMessage({type:'lesson-call-ping'},'*');
+        await new Promise(resolve => setTimeout(resolve,80));
+      }
+      if (!frameReady) throw new Error('内嵌可视化尚未就绪，请稍后重试');
+      const id = topic + ':' + ++requestId;
+      return new Promise((resolve,reject) => {
+        const timer = setTimeout(() => { replies.delete(id); reject(new Error('步骤定位超时')); },8000);
+        replies.set(id,{resolve,reject,timer});
+        frame.contentWindow.postMessage({type:'lesson-call-open',id,action},'*');
+      });
+    }
+    async function openTarget(index,method = 'push',scroll = true) {
+      const target = nodeById(selected).targets[index];
+      if (!target) return;
+      const currentPage = location.pathname.split('/').at(-1);
+      if (target.action.page && target.action.page !== currentPage) {
+        if (!['index.html','comparison.html'].includes(target.action.page)) throw new Error('不支持的页面目标');
+        const url = new URL(target.action.page,location.href); url.hash = '';
+        location.assign(urlFor({...state(),screen:'visual',target:index},url)); return;
+      }
+      const job = ++revision; busy = true; screen = 'visual'; targetIndex = index; clearError(); render();
+      $('.cw-context').textContent = '正在定位：' + target.label;
+      try {
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const result = await invoke(target.action);
+        if (job !== revision) return;
+        $('.cw-context').textContent = '来自节点 ' + nodeById(selected).number + ' · ' + nodeById(selected).title + ' → ' + (result?.label || target.label);
+        if (method) remember(method);
+        if (scroll) { $('.cw-context').scrollIntoView({block:'start'}); $('.cw-context').focus({preventScroll:true}); }
+      } catch (error) {
+        if (job === revision) { screen = 'chain'; render(); errorMessage(error); }
+      } finally { if (job === revision) { busy = false; root.dataset.cwBusy = 'false'; detail(); } }
+    }
+    function pauseVisual() {
+      if (frame) frame.contentWindow?.postMessage({type:'lesson-call-pause'},'*');
+      else window.dispatchEvent(new Event('lesson-pause-visual'));
+    }
+    function openChain() {
+      revision++; busy = false; screen = 'chain'; clearError();
+      pauseVisual();
+      revealSelected(); buildTree(); render(); remember('push'); scrollSelected();
+      root.scrollIntoView({block:'start'});
+    }
+    root.addEventListener('click',event => {
+      const target = event.target.closest('[data-cw-target]');
+      if (target) { openTarget(Number(target.dataset.cwTarget)); return; }
+      const layer = event.target.closest('[data-cw-view]');
+      if (layer) {
+        if (layer.dataset.cwView === 'chain') openChain();
+        else if (targetIndex !== null) openTarget(targetIndex);
+        else { screen = 'visual'; clearError(); render(); remember('push'); }
+        return;
+      }
+      const toggle = event.target.closest('[data-cw-toggle]');
+      if (toggle) {
+        const id = toggle.dataset.cwToggle;
+        if (collapsed.has(id)) collapsed.delete(id); else collapsed.add(id);
+        buildTree(); detail(); root.querySelector('[data-cw-toggle="' + id + '"]').focus({preventScroll:true}); return;
+      }
+      const button = event.target.closest('[data-cw-node]');
+      if (button) {
+        selected = button.dataset.cwNode; targetIndex = null; clearError(); detail(); remember('push');
+        if (matchMedia('(max-width:760px)').matches) { $('.cw-detail').scrollIntoView({block:'start'}); $('.cw-detail').focus({preventScroll:true}); }
+      }
+    });
+    $('[data-cw-expand]').addEventListener('click',() => { collapsed.clear(); buildTree(); detail(); });
+    $('[data-cw-fold]').addEventListener('click',() => { collapsed = new Set(variant.nodes.filter(node => node.parent !== null).map(node => node.id)); buildTree(); detail(); });
+    $('.cw-variant select').addEventListener('change',event => {
+      variant = variants.get(event.target.value); selected = variant.entry || variant.nodes[0].id; targetIndex = null;
+      resetTree(); buildTree(); clearError(); render(); remember('push');
+    });
+    for (const name of ['click','change']) document.addEventListener(name,event => {
+      if (event.isTrusted && !busy && screen === 'visual' && event.target.closest('.lesson-original') && event.target.closest('button,select,input')) markEdited();
+    },true);
+    window.addEventListener('popstate',() => {
+      if (routeKey() === lastRoute) return;
+      lastRoute = routeKey(); revision++; busy = false;
+      const next = parseRoute() || {variant:fallback.id,node:fallback.entry || fallback.nodes[0].id,screen:'chain',target:null};
+      applyState(next); resetTree(); buildTree(); render(); clearError();
+      if (screen === 'visual' && targetIndex !== null) openTarget(targetIndex,null,false);
+      else if (screen === 'chain') { pauseVisual(); scrollSelected(); }
+    });
+    resetTree(); buildTree(); render();
+    if (screen === 'visual' && targetIndex !== null) openTarget(targetIndex,null,false);
+    else if (screen === 'chain') scrollSelected();
+    document.documentElement.dataset.callChainReady = 'true';
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded',mount,{once:true}); else mount();
+})();
+</script>
+<!-- call-ui:end -->
 </body>
 </html>

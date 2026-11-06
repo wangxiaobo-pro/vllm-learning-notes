@@ -1,0 +1,727 @@
+{
+  "title": "ACL Graph 捕获与回放：真实调用链",
+  "defaultVariant": "capture",
+  "variants": [
+    {
+      "id": "capture",
+      "title": "首次捕获",
+      "scope": "静态源码：Qwen2 dense、TP=1、BF16、FULL、标准 AscendAttentionBackendImpl、非 ENPU；预热已完成，固定命中 FIA 且 sinks=None，不走 PagedAttention / FIA-v2 分支。设备算子不展开内部 tiling。",
+      "entry": "wrapper",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
+        },
+        "ascend": {
+          "url": "https://github.com/vllm-project/vllm-ascend",
+          "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875",
+          "label": "vLLM-Ascend"
+        },
+        "torch_npu": {
+          "url": "https://github.com/Ascend/pytorch",
+          "commit": "62b9115da8019f002da386f8866839121aff89af",
+          "label": "torch_npu"
+        }
+      },
+      "nodes": [
+        {
+          "id": "wrapper",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "ACLGraphWrapper.__call__()",
+          "summary": "从已预热的 dummy forward 进入 FULL wrapper。",
+          "input": "固定地址输入、forward_context.batch_descriptor。",
+          "changes": "核对 runtime_mode，并按 batch_descriptor 查询 entry。",
+          "output": "未捕获的 ACLGraphEntry。",
+          "resume": "未命中走捕获；NONE/模式不符直接调用 runnable。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/acl_graph.py",
+              "line": 156,
+              "label": "实际实现",
+              "end": 188
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "capture",
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "enter",
+          "parent": "wrapper",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "torch_npu.npu.graph.__enter__()",
+          "summary": "进入捕获流并开启图录制。",
+          "input": "UpdatableGraph、graph pool、capture stream。",
+          "changes": "同步准备、切换 stream，调用 capture_begin。",
+          "output": "捕获上下文已生效。",
+          "resume": "返回 with 块；由 wrapper 继续调用模型，不是上下文函数调用模型。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/acl_graph.py",
+              "line": 208,
+              "label": "调用位置",
+              "end": 213
+            },
+            {
+              "repo": "torch_npu",
+              "path": "torch_npu/npu/graphs.py",
+              "line": 899,
+              "label": "实际实现",
+              "end": 914
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "capture",
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "active",
+          "parent": "enter",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "UpdatableGraph.capture_begin()",
+          "summary": "绑定当前可更新图。",
+          "input": "pool 与 capture_error_mode。",
+          "changes": "父类开始录制；_ACTIVE_GRAPH.set(self)。",
+          "output": "图对象可由 Attention 读取。",
+          "resume": "返回 graph.__enter__。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 87,
+              "label": "实际实现",
+              "end": 90
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "capture",
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "model",
+          "parent": "wrapper",
+          "number": "1.2",
+          "kind": "调用",
+          "title": "Qwen2ForCausalLM.forward() → Qwen2Model.forward()",
+          "summary": "wrapper 的 runnable 执行模型主体。",
+          "input": "input_ids、positions、可选 intermediate_tensors。",
+          "changes": "Embedding 后遍历当前 PP stage 的 Decoder 层。",
+          "output": "本层 hidden_states 与 residual。",
+          "resume": "层循环继续，最终 Norm 后返回 hidden。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/acl_graph.py",
+              "line": 210,
+              "label": "with 块内调用",
+              "end": 218
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/qwen2.py",
+              "line": 500,
+              "label": "实际实现",
+              "end": 510
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/qwen2.py",
+              "line": 402,
+              "label": "实际实现",
+              "end": 451
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "capture",
+                "step": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "layer",
+          "parent": "model",
+          "number": "1.2.1",
+          "kind": "调用",
+          "title": "Qwen2DecoderLayer.forward()",
+          "summary": "按 Pre-Norm 顺序调用 Attention 和 MLP。",
+          "input": "本层 hidden_states、residual、positions。",
+          "changes": "input_layernorm → self_attn → post_attention_layernorm → mlp。",
+          "output": "(MLP 输出, 更新后的 residual)。",
+          "resume": "返回 Model 的层循环；层末没有再相加。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/qwen2.py",
+              "line": 291,
+              "label": "实际实现",
+              "end": 311
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "capture",
+                "step": 2,
+                "operator": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "attention",
+          "parent": "layer",
+          "number": "1.2.1.1",
+          "kind": "调用",
+          "title": "Qwen2Attention.forward()",
+          "summary": "QKV 投影与 RoPE 后进入 Attention 后端。",
+          "input": "归一化 hidden、positions。",
+          "changes": "qkv_proj → split → rotary_emb → self.attn → o_proj。",
+          "output": "Attention 投影输出。",
+          "resume": "返回 Decoder 层 post_attention_layernorm。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/qwen2.py",
+              "line": 208,
+              "label": "实际实现",
+              "end": 235
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "capture",
+                "step": 2,
+                "operator": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "backend",
+          "parent": "attention",
+          "number": "1.2.1.1.1",
+          "kind": "调用",
+          "title": "AscendAttentionBackendImpl.forward()",
+          "summary": "CustomOp/Attention 分派后的 Ascend 后端入口。",
+          "input": "Q/K/V、kv_cache、metadata、output buffer。",
+          "changes": "reshape_and_cache 写本轮 K/V，再调用 forward_impl。",
+          "output": "缓存更新及写入 output 的 Attention 结果。",
+          "resume": "返回 Attention 封装层后继续 o_proj。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 1304,
+              "label": "实际实现",
+              "end": 1372
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 488,
+              "label": "实际实现",
+              "end": 579
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 767,
+              "label": "custom-op 实际分派",
+              "end": 794
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "capture",
+                "step": 2,
+                "operator": 5
+              }
+            }
+          ],
+          "note": "合并展示 Attention layer/custom-op 分派包装；backend 并非 Qwen2Attention 直接持有的普通 Python callable。"
+        },
+        {
+          "id": "register",
+          "parent": "backend",
+          "number": "1.2.1.1.1.1",
+          "kind": "调用",
+          "title": "forward_impl() → forward_fused_infer_attention() → full_graph_fia() → register_task()",
+          "summary": "捕获期登记可更新 FIA 任务组与 event。",
+          "input": "operation、kwargs、ParamProvider。",
+          "changes": "event.wait/reset → task_group_begin → operation → task_group_end；保存 handle。",
+          "output": "GraphUpdateTask 列表。",
+          "resume": "返回 full_graph_fia；普通算子仍继续录制。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 120,
+              "label": "实际实现",
+              "end": 145
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 1281,
+              "label": "FIA 与 PagedAttention 互斥选择",
+              "end": 1302
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 916,
+              "label": "FULL FIA 调用位置",
+              "end": 928
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 720,
+              "label": "注册任务调用",
+              "end": 749
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 177,
+              "label": "当前图查询与转调",
+              "end": 186
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "capture",
+                "step": 2,
+                "operator": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "mlp",
+          "parent": "layer",
+          "number": "1.2.1.2",
+          "kind": "调用",
+          "title": "Qwen2MLP.forward()",
+          "summary": "同一层 FFN 在捕获流上执行算子调用。",
+          "input": "post_attention_layernorm 输出。",
+          "changes": "gate_up_proj → act_fn → down_proj。",
+          "output": "单路 MLP 输出。",
+          "resume": "返回 Decoder；后续层或 final norm 消费。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/qwen2.py",
+              "line": 111,
+              "label": "实际实现",
+              "end": 115
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "capture",
+                "step": 2,
+                "operator": 10
+              }
+            }
+          ]
+        },
+        {
+          "id": "exit",
+          "parent": "wrapper",
+          "number": "1.3",
+          "kind": "调用",
+          "title": "UpdatableGraph.capture_end()",
+          "summary": "退出捕获上下文，恢复当前图引用。",
+          "input": "已录入的设备任务与依赖。",
+          "changes": "父类 capture_end；finally 重置 _ACTIVE_GRAPH。",
+          "output": "可回放图及资源弱引用。",
+          "resume": "回到 wrapper 保存 output 与 aclgraph。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 92,
+              "label": "实际实现",
+              "end": 99
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "capture",
+                "step": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "return",
+          "parent": "wrapper",
+          "number": "1.4",
+          "kind": "返回",
+          "title": "保存 entry.output / entry.aclgraph 并返回",
+          "summary": "捕获结束不等于已经执行所有捕获任务。",
+          "input": "模型输出引用、刚结束的 aclgraph。",
+          "changes": "entry.output 保存弱引用，entry.aclgraph 指向新图。",
+          "output": "本次 output 返回调用方。",
+          "resume": "下一次同图键调用进入 replay 分支。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/acl_graph.py",
+              "line": 263,
+              "label": "实际实现",
+              "end": 273
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "capture",
+                "step": 3
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "replay",
+      "title": "命中图后回放",
+      "scope": "同一图键与固定地址；非 ENPU 的 FULL updatable-graph 主模型路径。ENPU 是 update→replay 分支，不混入此链。",
+      "entry": "wrapper",
+      "repositories": {
+        "ascend": {
+          "url": "https://github.com/vllm-project/vllm-ascend",
+          "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875",
+          "label": "vLLM-Ascend"
+        },
+        "torch_npu": {
+          "url": "https://github.com/Ascend/pytorch",
+          "commit": "62b9115da8019f002da386f8866839121aff89af",
+          "label": "torch_npu"
+        }
+      },
+      "nodes": [
+        {
+          "id": "wrapper",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "ACLGraphWrapper.__call__()",
+          "summary": "同一 batch_descriptor 命中已捕获图。",
+          "input": "已更新固定地址 buffer 与本轮 metadata。",
+          "changes": "读取 entry；调试模式核对输入地址。",
+          "output": "entry.aclgraph 与保存的输出引用。",
+          "resume": "按 FULL/updatable backend 选择回放。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/acl_graph.py",
+              "line": 156,
+              "label": "实际实现",
+              "end": 176
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "replay",
+                "step": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "barrier",
+          "parent": "wrapper",
+          "number": "1.1",
+          "kind": "等待",
+          "title": "current_stream().synchronize() [非 ENPU FULL]",
+          "summary": "防止新一轮 update 越过上一轮 replay。",
+          "input": "前一轮主 stream 任务。",
+          "changes": "等待上轮设备执行结束。",
+          "output": "可安全开始本轮 graph/update。",
+          "resume": "继续 _updatable_graph_replay。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/acl_graph.py",
+              "line": 284,
+              "label": "实际实现",
+              "end": 298
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "replay",
+                "step": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "replay",
+          "parent": "wrapper",
+          "number": "1.2",
+          "kind": "调用",
+          "title": "ACLGraphWrapper._updatable_graph_replay()",
+          "summary": "普通非 ENPU 主模型路径：先 replay 提交，再 update。",
+          "input": "graph、forward_context.attn_metadata。",
+          "changes": "ContextSource → resolve_tasks；graph.replay() 后 graph.update()。",
+          "output": "本轮任务参数绑定与回放提交。",
+          "resume": "返回 wrapper 的 entry.output。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/acl_graph.py",
+              "line": 304,
+              "label": "实际实现",
+              "end": 319
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "replay",
+                "step": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "bind",
+          "parent": "replay",
+          "number": "1.2.1",
+          "kind": "调用",
+          "title": "UpdatableGraph.resolve_tasks() → GraphUpdateTask.bind()",
+          "summary": "将本轮参数绑定到捕获期任务。",
+          "input": "ParamProvider 与 ContextSource metadata。",
+          "changes": "按 provider/index 对齐 params，覆盖 kwargs。",
+          "output": "resolved_tasks 元组。",
+          "resume": "返回 _updatable_graph_replay。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 147,
+              "label": "实际实现",
+              "end": 154
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 68,
+              "label": "实际实现",
+              "end": 70
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "replay",
+                "step": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "python",
+          "parent": "replay",
+          "number": "1.2.2",
+          "kind": "调用",
+          "title": "torch_npu.npu.NPUGraph.replay()",
+          "summary": "Python 图接口进入 C++ 图执行。",
+          "input": "已成功 capture 的 graph。",
+          "changes": "调用父类 replay。",
+          "output": "运行时图提交动作。",
+          "resume": "返回 _updatable_graph_replay，随后更新 Attention。",
+          "evidence": [
+            {
+              "repo": "torch_npu",
+              "path": "torch_npu/npu/graphs.py",
+              "line": 638,
+              "label": "实际实现",
+              "end": 645
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "replay",
+                "step": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "runtime",
+          "parent": "python",
+          "number": "1.2.2.1",
+          "kind": "提交",
+          "title": "c10_npu::NPUGraph::replay()",
+          "summary": "整图提交到当前设备 stream。",
+          "input": "model_ri_、current stream。",
+          "changes": "调用 AclmdlRIExecuteAsync(model_ri_, stream)。",
+          "output": "异步图执行已提交。",
+          "resume": "普通模式返回不等于设备全部完成；blocking 配置另同步。",
+          "evidence": [
+            {
+              "repo": "torch_npu",
+              "path": "torch_npu/csrc/core/npu/NPUGraph.cpp",
+              "line": 265,
+              "label": "实际实现",
+              "end": 284
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "replay",
+                "step": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "update",
+          "parent": "replay",
+          "number": "1.2.3",
+          "kind": "调用",
+          "title": "UpdatableGraph.update()",
+          "summary": "切换 update_stream 刷新动态任务参数。",
+          "input": "resolved_tasks、update_stream。",
+          "changes": "遍历 task；PA 条件分支重算 workspace，FIA 主线直接 apply。",
+          "output": "任务更新已提交。",
+          "resume": "返回 _updatable_graph_replay。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 156,
+              "label": "实际实现",
+              "end": 174
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "replay",
+                "step": 6
+              }
+            }
+          ]
+        },
+        {
+          "id": "apply",
+          "parent": "update",
+          "number": "1.2.3.1",
+          "kind": "调用",
+          "title": "GraphUpdateTask.apply()",
+          "summary": "更新任务组，并释放图内等待点。",
+          "input": "task.handle、operation、runtime kwargs。",
+          "changes": "update_begin → operation → update_end → event.record。",
+          "output": "本轮 FIA 参数及 event。",
+          "resume": "图中 event.wait 满足后，后续设备任务继续。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/updatable_graph.py",
+              "line": 72,
+              "label": "实际实现",
+              "end": 76
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "replay",
+                "step": 6
+              }
+            }
+          ]
+        },
+        {
+          "id": "output",
+          "parent": "wrapper",
+          "number": "1.3",
+          "kind": "返回",
+          "title": "返回 entry.output [输出引用]",
+          "summary": "复用输出地址交还 Runner。",
+          "input": "保存的 output tensor 引用。",
+          "changes": "wrapper 不再调用完整 self.runnable。",
+          "output": "本轮输出 buffer 引用。",
+          "resume": "下游 logits/sampling 依照 stream 依赖读取结果；不是 Host 函数返回即设备完成。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/compilation/acl_graph.py",
+              "line": 298,
+              "label": "实际实现",
+              "end": 302
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "replay",
+                "step": 7
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

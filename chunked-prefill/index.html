@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-visualize-standalone>
+<html lang="en" data-visualize-standalone data-lesson-topic="chunked-prefill" data-lesson-palette="mcp">
 <head>
 <meta charset="utf-8">
 <!-- learning-scope-style:start -->
@@ -24,7 +24,74 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Chunked prefill：分块与不分块调度流程</title>
 <style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;max-width:736px;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
-
+<!-- lesson-theme:start -->
+<style>
+/* Scheduler palette. Inlined into each document by scripts/build_learning_ui.py. */
+:root {
+  color-scheme:light !important;
+  --lesson-bg:#f5f5ef; --lesson-panel:#fffefa; --lesson-ink:#192923;
+  --lesson-muted:#52655b; --lesson-line:#d5ddd2; --lesson-grid:#e4e8e0;
+  --lesson-green:#12634b; --lesson-mint:#e7f3e8; --lesson-amber:#8a4a18;
+  --lesson-sand:#fcf0dc; --lesson-shade:#f0f3eb;
+}
+@media(prefers-color-scheme:dark) {
+  :root:not([data-theme=light]) {
+    color-scheme:dark !important;
+    --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+    --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+    --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+    --lesson-sand:#473625; --lesson-shade:#212f27;
+  }
+}
+:root[data-theme=dark] {
+  color-scheme:dark !important;
+  --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+  --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+  --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+  --lesson-sand:#473625; --lesson-shade:#212f27;
+}
+:root {
+  --bg:var(--lesson-bg) !important; --background:var(--lesson-bg) !important;
+  --panel:var(--lesson-panel) !important; --surface:var(--lesson-panel) !important;
+  --card:var(--lesson-panel) !important; --popover:var(--lesson-panel) !important;
+  --ink:var(--lesson-ink) !important; --fg:var(--lesson-ink) !important;
+  --text:var(--lesson-ink) !important; --foreground:var(--lesson-ink) !important;
+  --card-foreground:var(--lesson-ink) !important; --popover-foreground:var(--lesson-ink) !important;
+  --muted-foreground:var(--lesson-muted) !important; --sub:var(--lesson-muted) !important;
+  --line:var(--lesson-line) !important; --border:var(--lesson-line) !important;
+  --grid:var(--lesson-grid) !important; --shade:var(--lesson-shade) !important;
+  --muted:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+  --accent-foreground:var(--lesson-ink) !important;
+  --primary:var(--lesson-green) !important; --primary-foreground:var(--lesson-panel) !important;
+  --accent-soft:var(--lesson-mint) !important; --hover:var(--lesson-shade) !important;
+  --mint:var(--lesson-mint) !important; --sand:var(--lesson-sand) !important;
+  --color-background-primary:var(--lesson-bg) !important;
+  --color-background-secondary:var(--lesson-panel) !important;
+  --color-background-tertiary:var(--lesson-shade) !important;
+  --color-text-primary:var(--lesson-ink) !important;
+  --color-text-secondary:var(--lesson-muted) !important;
+  --color-border-secondary:var(--lesson-line) !important;
+  --viz-panel:var(--lesson-panel) !important;
+  --viz-border:var(--lesson-line) !important;
+  --viz-muted:var(--lesson-muted) !important;
+  background:var(--lesson-bg) !important;
+}
+:root[data-lesson-palette=text] {
+  --muted:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+}
+:root[data-lesson-topic=model-architecture] {
+  --soft:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+}
+:root[data-lesson-palette=matrix] {
+  --soft:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+  --wash:var(--lesson-mint) !important;
+}
+body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !important; }
+.learning-scope-shell { color:var(--lesson-muted) !important; }
+.learning-scope { background:var(--lesson-shade) !important; border-color:var(--lesson-line) !important; }
+.learning-scope-kind { color:var(--lesson-green) !important; }
+</style>
+<!-- lesson-theme:end -->
 </head>
 <body>
 <!-- learning-scope:start -->
@@ -39,7 +106,7 @@
 </aside>
 <!-- learning-scope:end -->
 <iframe id="codex-visualization" sandbox="allow-scripts" referrerpolicy="no-referrer" title="Chunked prefill：分块与不分块调度流程" data-srcdoc="&lt;!doctype html&gt;
-&lt;html lang=&quot;en&quot; data-visualize-standalone&gt;
+&lt;html lang=&quot;en&quot; data-visualize-standalone data-lesson-topic=&quot;chunked-prefill&quot; data-lesson-palette=&quot;mcp&quot;&gt;
 &lt;head&gt;
 &lt;meta charset=&quot;utf-8&quot;&gt;
 &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
@@ -2184,6 +2251,143 @@ html&gt;body{padding:0}&lt;/style&gt;
 })();
 
 &lt;/script&gt;
+&lt;!-- lesson-theme:start --&gt;
+&lt;style&gt;
+/* Scheduler palette. Inlined into each document by scripts/build_learning_ui.py. */
+:root {
+  color-scheme:light !important;
+  --lesson-bg:#f5f5ef; --lesson-panel:#fffefa; --lesson-ink:#192923;
+  --lesson-muted:#52655b; --lesson-line:#d5ddd2; --lesson-grid:#e4e8e0;
+  --lesson-green:#12634b; --lesson-mint:#e7f3e8; --lesson-amber:#8a4a18;
+  --lesson-sand:#fcf0dc; --lesson-shade:#f0f3eb;
+}
+@media(prefers-color-scheme:dark) {
+  :root:not([data-theme=light]) {
+    color-scheme:dark !important;
+    --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+    --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+    --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+    --lesson-sand:#473625; --lesson-shade:#212f27;
+  }
+}
+:root[data-theme=dark] {
+  color-scheme:dark !important;
+  --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+  --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+  --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+  --lesson-sand:#473625; --lesson-shade:#212f27;
+}
+:root {
+  --bg:var(--lesson-bg) !important; --background:var(--lesson-bg) !important;
+  --panel:var(--lesson-panel) !important; --surface:var(--lesson-panel) !important;
+  --card:var(--lesson-panel) !important; --popover:var(--lesson-panel) !important;
+  --ink:var(--lesson-ink) !important; --fg:var(--lesson-ink) !important;
+  --text:var(--lesson-ink) !important; --foreground:var(--lesson-ink) !important;
+  --card-foreground:var(--lesson-ink) !important; --popover-foreground:var(--lesson-ink) !important;
+  --muted-foreground:var(--lesson-muted) !important; --sub:var(--lesson-muted) !important;
+  --line:var(--lesson-line) !important; --border:var(--lesson-line) !important;
+  --grid:var(--lesson-grid) !important; --shade:var(--lesson-shade) !important;
+  --muted:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+  --accent-foreground:var(--lesson-ink) !important;
+  --primary:var(--lesson-green) !important; --primary-foreground:var(--lesson-panel) !important;
+  --accent-soft:var(--lesson-mint) !important; --hover:var(--lesson-shade) !important;
+  --mint:var(--lesson-mint) !important; --sand:var(--lesson-sand) !important;
+  --color-background-primary:var(--lesson-bg) !important;
+  --color-background-secondary:var(--lesson-panel) !important;
+  --color-background-tertiary:var(--lesson-shade) !important;
+  --color-text-primary:var(--lesson-ink) !important;
+  --color-text-secondary:var(--lesson-muted) !important;
+  --color-border-secondary:var(--lesson-line) !important;
+  --viz-panel:var(--lesson-panel) !important;
+  --viz-border:var(--lesson-line) !important;
+  --viz-muted:var(--lesson-muted) !important;
+  background:var(--lesson-bg) !important;
+}
+:root[data-lesson-palette=text] {
+  --muted:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+}
+:root[data-lesson-topic=model-architecture] {
+  --soft:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+}
+:root[data-lesson-palette=matrix] {
+  --soft:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+  --wash:var(--lesson-mint) !important;
+}
+body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !important; }
+.learning-scope-shell { color:var(--lesson-muted) !important; }
+.learning-scope { background:var(--lesson-shade) !important; border-color:var(--lesson-line) !important; }
+.learning-scope-kind { color:var(--lesson-green) !important; }
+&lt;/style&gt;
+&lt;!-- lesson-theme:end --&gt;
+&lt;!-- call-adapter:start --&gt;
+&lt;script&gt;
+// 插入含 #chunked-prefill-flow 的真实可视化 document，位于现有脚本之后。
+window.openLessonTarget = async function(action) {
+  const root = document.getElementById(&#x27;chunked-prefill-flow&#x27;);
+  const mode = action?.mode, step = Number(action?.step);
+  if (!root || ![&#x27;chunked&#x27;,&#x27;whole&#x27;].includes(mode) || !Number.isInteger(step) || step &lt; 1 || step &gt; 12) throw new Error(&#x27;Prefill 跳转参数无效&#x27;);
+  const waitFor = async (test) =&gt; {
+    const deadline = Date.now() + 4000;
+    let stable = 0;
+    while (Date.now() &lt; deadline) {
+      if (test()) { if (++stable &gt;= 2) return; } else stable = 0;
+      await new Promise(resolve =&gt; setTimeout(resolve, 20));
+    }
+    throw new Error(&#x27;可视化未到达请求的模式与步骤&#x27;);
+  };
+  const select = root.querySelector(&#x27;#cf-mode&#x27;);
+  select.value = mode;
+  select.dispatchEvent(new Event(&#x27;change&#x27;, {bubbles:true}));
+  root.querySelector(&#x27;#cf-global&#x27;).click();
+  const next = root.querySelector(&#x27;#cf-next&#x27;);
+  for (let i=0; i&lt;step; i++) {
+    if (next.disabled) throw new Error(&#x27;尚未到目标步骤，下一步已禁用&#x27;);
+    next.click();
+  }
+  const status = root.querySelector(&#x27;#cf-status&#x27;);
+  await waitFor(() =&gt; select.value === mode &amp;&amp; status.textContent.startsWith(step + &#x27; / 12&#x27;) &amp;&amp; root.querySelector(&#x27;#cf-global&#x27;).getAttribute(&#x27;aria-pressed&#x27;) === &#x27;false&#x27;);
+  return {label:(mode === &#x27;whole&#x27; ? &#x27;V0 整段 · &#x27; : &#x27;V1 分块 · &#x27;) + status.textContent.trim()};
+};
+// Runs in the visualization document, including sandboxed srcdoc frames.
+(() =&gt; {
+  const pending = new Map();
+  let queue = Promise.resolve();
+  const ready = document.readyState === &#x27;loading&#x27;
+    ? new Promise(resolve =&gt; document.addEventListener(&#x27;DOMContentLoaded&#x27;,resolve,{once:true}))
+    : Promise.resolve();
+  const pause = () =&gt; document.querySelectorAll(&#x27;button&#x27;).forEach(button =&gt; {
+    if (/^(暂停(?:流程|播放|动画)?|停止播放)$/.test(button.textContent.trim())) button.click();
+  });
+  window.addEventListener(&#x27;lesson-pause-visual&#x27;,pause);
+  if (parent === window) return;
+  const post = data =&gt; parent.postMessage(data,&#x27;*&#x27;);
+  window.addEventListener(&#x27;message&#x27;,async event =&gt; {
+    if (event.source !== parent || !event.data || typeof event.data !== &#x27;object&#x27;) return;
+    const {type,id,action} = event.data;
+    if (type === &#x27;lesson-call-ping&#x27;) {
+      await ready; post({type:&#x27;lesson-call-ready&#x27;}); return;
+    }
+    if (type === &#x27;lesson-call-pause&#x27;) { pause(); return; }
+    if (type !== &#x27;lesson-call-open&#x27; || typeof id !== &#x27;string&#x27;) return;
+    if (!pending.has(id)) {
+      const work = queue.then(() =&gt; ready).then(() =&gt; {
+        if (typeof window.openLessonTarget !== &#x27;function&#x27;) throw new Error(&#x27;可视化步骤入口尚未就绪&#x27;);
+        return window.openLessonTarget(action);
+      });
+      pending.set(id,work);
+      queue = work.catch(() =&gt; {});
+      if (pending.size &gt; 16) pending.delete(pending.keys().next().value);
+    }
+    try { post({type:&#x27;lesson-call-result&#x27;,id,ok:true,result:await pending.get(id)}); }
+    catch (error) { post({type:&#x27;lesson-call-result&#x27;,id,ok:false,error:error.message}); }
+  });
+  for (const name of [&#x27;click&#x27;,&#x27;change&#x27;]) document.addEventListener(name,event =&gt; {
+    if (event.isTrusted &amp;&amp; event.target.closest(&#x27;button,select,input&#x27;)) post({type:&#x27;lesson-call-edited&#x27;});
+  },true);
+  ready.then(() =&gt; post({type:&#x27;lesson-call-ready&#x27;}));
+})();
+&lt;/script&gt;
+&lt;!-- call-adapter:end --&gt;
 
 &lt;script&gt;
 (() =&gt; {
@@ -2970,5 +3174,355 @@ html&gt;body{padding:0}&lt;/style&gt;
   delete frame.dataset.srcdoc;
 })();
 </script>
+<!-- call-ui:start -->
+<style>
+/* Scope every rule: the visualizations keep their original layout and semantics. */
+.code-walkthrough { width:100%; max-width:960px; margin:18px auto 24px; color:var(--lesson-ink); font:14px/1.6 system-ui,"Microsoft YaHei",sans-serif; text-align:left; }
+.code-walkthrough * { box-sizing:border-box; }
+.code-walkthrough [hidden],.lesson-original.lesson-hidden { display:none !important; }
+html[data-call-chain-ready=true],html[data-call-chain-ready=true] body { overflow-anchor:none; }
+.code-walkthrough[data-cw-screen=visual] { padding-top:55px; }
+.code-walkthrough[data-cw-screen=visual] .cw-nav { position:fixed; z-index:100; top:8px; left:50%; transform:translateX(-50%); width:calc(100% - 32px); max-width:960px; margin:0; padding:7px 9px; border:1px solid var(--lesson-line); border-radius:9px; background:var(--lesson-bg); box-shadow:0 3px 12px #0000000b; }
+.code-walkthrough h1,.code-walkthrough h2,.code-walkthrough h3,.code-walkthrough p,.code-walkthrough dl,.code-walkthrough dd { margin:0; }
+.code-walkthrough button,.code-walkthrough select { font:inherit; color:inherit; cursor:pointer; }
+.code-walkthrough button:disabled { cursor:wait; opacity:.6; }
+.code-walkthrough a { color:var(--lesson-green); text-underline-offset:3px; }
+.code-walkthrough :is(button,select,a,summary):focus-visible { outline:3px solid var(--lesson-amber); outline-offset:3px; }
+.code-walkthrough code { font-family:ui-monospace,Consolas,"Microsoft YaHei",monospace; overflow-wrap:anywhere; }
+.cw-header { padding:8px 0 16px; }
+.cw-header>a { font-size:12px; text-decoration:none; }
+.cw-header h1 { font-size:clamp(24px,4vw,34px); line-height:1.35; margin:13px 0 8px; font-weight:700; letter-spacing:-.025em; }
+.cw-header p { color:var(--lesson-muted); font-size:13px; }
+.cw-nav { display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin:12px 0; }
+.code-walkthrough .cw-nav button,.cw-tools button,.cw-jump { border:1px solid var(--lesson-line); border-radius:7px; padding:7px 12px; background:var(--lesson-panel); font-size:13px; font-weight:650; }
+.code-walkthrough .cw-nav button[aria-pressed=true],.cw-jump { background:var(--lesson-mint); color:var(--lesson-green); border-color:var(--lesson-green); }
+.cw-variant { display:grid; grid-template-columns:minmax(0,1fr); gap:7px; padding:13px 15px; margin:12px 0; border:1px solid var(--lesson-line); border-radius:10px; background:var(--lesson-panel); }
+.cw-variant label { display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-size:13px; font-weight:650; }
+.cw-variant select { padding:5px 9px; max-width:100%; min-width:0; border:1px solid var(--lesson-line); border-radius:6px; background:var(--lesson-panel); font-size:13px; }
+.cw-variant p,.cw-scope { font-size:12px; color:var(--lesson-muted); overflow-wrap:anywhere; }
+.cw-scope summary { cursor:pointer; color:var(--lesson-green); font-weight:650; }
+.cw-scope a { display:block; margin-top:4px; overflow-wrap:anywhere; }
+.cw-guide { color:var(--lesson-muted); font-size:12px; margin:12px 0 !important; }
+.cw-layout { display:grid; grid-template-columns:minmax(0,1.12fr) minmax(0,1fr); gap:14px; align-items:start; }
+.cw-tree-panel,.cw-detail { min-width:0; background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:12px; }
+.cw-tree-panel { overflow:hidden; }
+.cw-tools { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:5px; padding:10px 12px; border-bottom:1px solid var(--lesson-line); }
+.cw-tools strong { font-size:13px; }
+.cw-tools button { padding:3px 7px; font-size:11px; }
+.cw-tree-scroll { max-height:680px; overflow:auto; padding:12px 9px; scrollbar-gutter:stable; }
+.code-walkthrough .cw-tree { padding:0; margin:0; list-style:none; min-width:0; }
+.code-walkthrough .cw-tree li { padding:0; margin:0; }
+.code-walkthrough .cw-tree .cw-tree { margin-left:12px; border-left:1px solid var(--lesson-line); }
+.cw-row { display:flex; align-items:flex-start; min-width:0; margin:2px 0; }
+.code-walkthrough .cw-toggle,.cw-branch { flex:0 0 22px; width:22px; padding:7px 0; border:0; background:transparent; text-align:center; color:var(--lesson-green); font:13px/1.5 ui-monospace,Consolas,monospace; }
+.code-walkthrough .cw-node { min-width:0; flex:1; display:grid; grid-template-columns:auto minmax(0,1fr); align-items:start; gap:5px; padding:7px; text-align:left; border:1px solid transparent; border-radius:6px; background:transparent; line-height:1.45; }
+.code-walkthrough .cw-node:hover { background:var(--lesson-shade); }
+.code-walkthrough .cw-node[aria-current=true] { background:var(--lesson-mint); border-color:var(--lesson-green); }
+.cw-number { padding-top:1px; color:var(--lesson-green); font:600 11px/1.6 ui-monospace,Consolas,monospace; }
+.cw-node code { display:block; font-size:13px; font-weight:650; }
+.cw-node small { display:block; margin-top:2px; color:var(--lesson-muted); font-size:12px; }
+.cw-detail { padding:17px; scroll-margin-top:14px; }
+.cw-kicker { color:var(--lesson-green); font:700 11px/1.5 ui-monospace,Consolas,monospace; }
+.cw-detail h2 { margin:5px 0 7px; font-size:19px; line-height:1.4; overflow-wrap:anywhere; }
+.cw-summary { font-size:14px; }
+.cw-data { margin-top:12px !important; font-size:13px; }
+.cw-data dt { margin-top:12px; color:var(--lesson-green); font-weight:700; }
+.cw-data dd { margin-top:3px; overflow-wrap:anywhere; }
+.code-walkthrough .cw-note { padding:9px 10px; margin-top:12px; border-left:3px solid var(--lesson-amber); background:var(--lesson-sand); color:var(--lesson-amber); font-size:12px; }
+.cw-evidence,.cw-targets { margin-top:14px; padding-top:10px; border-top:1px solid var(--lesson-line); }
+.cw-evidence h3,.cw-targets h3 { margin:0 0 5px; font-size:13px; }
+.cw-evidence a { display:block; margin-top:6px; font-size:11px; overflow-wrap:anywhere; }
+.cw-evidence a small { display:block; color:var(--lesson-muted); font:10px/1.5 ui-monospace,Consolas,monospace; }
+.cw-targets p { color:var(--lesson-muted); font-size:12px; margin-bottom:7px; }
+.cw-jump { display:block; margin:7px 0 0; max-width:100%; text-align:left; white-space:normal; }
+.cw-context { padding:9px 12px; border:1px solid var(--lesson-line); background:var(--lesson-shade); border-radius:8px; font-size:12px; color:var(--lesson-muted); overflow-wrap:anywhere; }
+.cw-error { margin:10px 0 !important; border:1px solid var(--lesson-amber); padding:10px; background:var(--lesson-sand); color:var(--lesson-amber); border-radius:7px; }
+@media(max-width:760px) { .cw-layout { grid-template-columns:minmax(0,1fr); } .cw-tree-scroll { max-height:420px; } .cw-detail { padding:14px; } }
+@media(max-width:400px) { .code-walkthrough .cw-tree .cw-tree { margin-left:7px; } .code-walkthrough .cw-toggle,.cw-branch { flex-basis:18px; width:18px; } .code-walkthrough .cw-node { padding:6px 4px; gap:4px; } }
+</style>
+<script type="application/json" id="lesson-call-chain-data">{"title":"Prefill：分块与历史整段路径","defaultVariant":"chunked-v1","variants":[{"id":"chunked-v1","title":"分块 Prefill · V1 v0.11.0","scope":"预算8；A prompt=18；B/C 运行中；RUNNING 顺序 B→C→A；无缓存压力、无投机解码。前三轮配额1+1+6，第四轮1+1+1。","entry":"loop","repositories":{"vllm":{"url":"https://github.com/vllm-project/vllm","commit":"b8b302cde434df8c9289a2b465406b47ebab1c2d","label":"vLLM v0.11.0"}},"nodes":[{"id":"loop","parent":null,"number":"1","kind":"循环","title":"EngineCore.step()","summary":"分块 Prefill 与 Decode 共享同一轮执行。","input":"A 的 prompt 长 18；B/C 已运行，最新输出 b0/c0 尚未作为输入。","changes":"每轮重新调度，预算为 8，运行扫描顺序为 B→C→A。","output":"前三轮 A 每次输入 6；B/C 每轮各输入 1。","resume":"回写后进入下一轮，沿同一请求缓存继续。","evidence":[{"repo":"vllm","path":"vllm/v1/engine/core.py","line":272,"end":291,"label":"同步轮次"}],"targets":[{"label":"跳到第 1 步 · 首轮预算","action":{"mode":"chunked","step":1}},{"label":"跳到第 7 步 · 最后一块","action":{"mode":"chunked","step":7}}]},{"id":"schedule","parent":"loop","number":"1.1","kind":"调用","title":"Scheduler.schedule()","summary":"按欠算位置分配有限 token 预算。","input":"第一轮 B/C 各欠 1，A 还欠 18。","changes":"先续算运行请求；A 作为等待请求首次准入，后两轮从运行队列继续。","output":"B=1、C=1、A=6，输入合计 8。","resume":"打包本轮混合执行计划给执行器。","evidence":[{"repo":"vllm","path":"vllm/v1/engine/core.py","line":283,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":179,"label":"方法定义"},{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":210,"end":226,"label":"运行需求与预算"},{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":419,"end":438,"label":"等待需求与裁剪"}],"targets":[{"label":"跳到第 1 步 · 1+1+6","action":{"mode":"chunked","step":1}},{"label":"跳到第 4 步 · A 继续下一块","action":{"mode":"chunked","step":4}}]},{"id":"budget","parent":"schedule","number":"1.1.1","kind":"动作","title":"为 A 截取本轮 chunk","summary":"预算裁剪发生在调度器内部。","input":"B/C 消耗 2 个位置后剩余 6。","changes":"将 A 剩余需求与余额取最小值；三轮分别选择 p1–p6、p7–p12、p13–p18。","output":"A 计算起点依次为 0、6、12。","resume":"把裁剪后的计算量传入缓存分配器。","evidence":[{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":213,"end":226,"label":"运行请求裁剪"},{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":423,"end":438,"label":"首次准入裁剪"}],"targets":[{"label":"跳到第 4 步 · 第二个 chunk","action":{"mode":"chunked","step":4}},{"label":"跳到第 7 步 · 第三个 chunk","action":{"mode":"chunked","step":7}}],"note":"这是控制和数值动作，没有单独的 chunk_prefill() 调用。"},{"id":"allocate","parent":"schedule","number":"1.1.2","kind":"调用","title":"KVCacheManager.allocate_slots()","summary":"为本轮 chunk 保留缓存位置。","input":"A 的当前计算游标和 6-token 配额，及 B/C 的一个新输入位置。","changes":"按照累计位置需求分配或复用块；后续 chunk 沿同一请求的块表追加。","output":"得到本轮逻辑缓存安排，尚未写入物理 K/V。","resume":"返回 schedule() 后构造计划并预记计算游标。","evidence":[{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":255,"end":258,"label":"运行请求调用"},{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":471,"end":479,"label":"首次准入调用"},{"repo":"vllm","path":"vllm/v1/core/kv_cache_manager.py","line":193,"label":"方法定义"}],"targets":[{"label":"跳到第 1 步 · chunk 缓存安排","action":{"mode":"chunked","step":1}}]},{"id":"advance","parent":"schedule","number":"1.1.3","kind":"动作","title":"打包计划并推进 num_computed_tokens","summary":"计划保留起点，持久请求预记终点。","input":"本轮各请求配额与块信息。","changes":"构造 SchedulerOutput，随后 _update_after_schedule() 增加已安排计算量。","output":"A 的调度游标三轮到达 6、12、18；这时仍需设备真正完成计算。","resume":"返回 EngineCore.step() 并调用执行器。","evidence":[{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":582,"end":599,"label":"计划构造"},{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":626,"end":645,"label":"预记与返回"}],"targets":[{"label":"跳到第 1 步 · 派发前状态","action":{"mode":"chunked","step":1}},{"label":"跳到第 7 步 · 最后一块计划","action":{"mode":"chunked","step":7}}]},{"id":"execute","parent":"loop","number":"1.2","kind":"边界","title":"Executor → Worker → GPUModelRunner.execute_model()","summary":"模型侧消费混合输入计划。","input":"本轮 A 的 chunk 和 B/C 的 Decode 输入。","changes":"Runner 准备输入元数据，再调用模型，读取历史 KV 并写入本轮输入的 KV。","output":"A 的实际 KV 逐轮累积到 6、12、18；B/C 同步前进。","resume":"进入采样与同步结果整理，返回本轮模型输出。","evidence":[{"repo":"vllm","path":"vllm/v1/engine/core.py","line":284,"end":286,"label":"执行入口"},{"repo":"vllm","path":"vllm/v1/engine/core.py","line":254,"end":261,"label":"错误日志包装实际调用 model_fn"},{"repo":"vllm","path":"vllm/v1/worker/gpu_worker.py","line":447,"end":448,"label":"Worker 转调"},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2231,"end":2257,"label":"Runner 输入准备"},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2298,"end":2304,"label":"模型前向"}],"targets":[{"label":"跳到第 2 步 · 写入首块","action":{"mode":"chunked","step":2}},{"label":"跳到第 8 步 · 写完 prompt","action":{"mode":"chunked","step":8}}],"note":"执行器与具体注意力后端未固定，通信及设备内核作为边界。 EngineCore 经 execute_model_with_error_logging() 包装转调执行器；包装只记录失败详情。"},{"id":"sample","parent":"execute","number":"1.2.1","kind":"动作","title":"采样并丢弃未完成 Prefill 的输出","summary":"中间 chunk 不产生有效生成 token。","input":"前向 hidden states 和各请求是否完成 prompt 的状态。","changes":"计算 logits、采样并在同步结果整理时过滤未完成 Prefill 请求的采样结果。","output":"前两轮 A 返回空列表；第三轮 A 产生 y1，B/C 每轮各产生一个输出。","resume":"模型输出沿调用栈返回 Scheduler.update_from_output()。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2331,"label":"logits 调用"},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2367,"label":"采样调用"},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":1074,"end":1082,"label":"未到已知长度时标记丢弃采样"},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2094,"end":2153,"label":"同步整理与无效采样处理"},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2413,"end":2438,"label":"结果整理调用及返回"}],"targets":[{"label":"跳到第 3 步 · A 尚无输出","action":{"mode":"chunked","step":3}},{"label":"跳到第 9 步 · A 首 token y1","action":{"mode":"chunked","step":9}}]},{"id":"update","parent":"loop","number":"1.3","kind":"调用","title":"Scheduler.update_from_output()","summary":"回写有效 token，保留未完成的 A。","input":"B/C 的新 token 与 A 的空列表或 y1。","changes":"只对有效新 token 追加请求输出并检查停止。","output":"前三轮 A 的已知 prompt 保持 18，最后得到 y1 后长度为 19。","resume":"下一轮 schedule() 根据已知长度与计算游标继续。","evidence":[{"repo":"vllm","path":"vllm/v1/engine/core.py","line":287,"end":288,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":861,"label":"方法定义"},{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":921,"end":923,"label":"有效输出调用"},{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":1024,"end":1042,"label":"追加与判停"}],"targets":[{"label":"跳到第 6 步 · 中间块回报","action":{"mode":"chunked","step":6}},{"label":"跳到第 9 步 · y1 回报","action":{"mode":"chunked","step":9}}]},{"id":"decode","parent":"loop","number":"1.4","kind":"循环","title":"下一轮 schedule()：A 进入 Decode","summary":"首个输出成为下一轮的输入。","input":"A 已知 19、计算游标 18；B/C 也各有一个欠算位置。","changes":"第四轮为 A 的 y1、B 的 b3、C 的 c3 各安排 1。","output":"有效输入合计 3，预算剩余 5；生成 y2、b4、c4。","resume":"继续同一调度—执行—回写循环。","evidence":[{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":210,"end":226,"label":"下一轮欠算需求"},{"repo":"vllm","path":"vllm/v1/engine/core.py","line":283,"end":291,"label":"轮次循环"}],"targets":[{"label":"跳到第 10 步 · 三条 Decode","action":{"mode":"chunked","step":10}},{"label":"跳到第 12 步 · y2 回报","action":{"mode":"chunked","step":12}}],"note":"新输出尚无自身 KV，只有下轮作为输入执行后才写入。"}]},{"id":"whole-v0","title":"整段 Prefill 优先 · V0 v0.6.6","scope":"关闭分块；单步同步输出；预算32、max_model_len=32。三个观察点共享同次Prefill；与V1示例不是同配置开关对照。","entry":"engine","repositories":{"vllm":{"url":"https://github.com/vllm-project/vllm","commit":"f49777ba62b4926d0f8c100ab06edb03c5c10098","label":"vLLM v0.6.6"}},"nodes":[{"id":"engine","parent":null,"number":"1","kind":"调用","title":"LLMEngine.step()","summary":"历史 V0 整段 Prefill 优先路径。","input":"A 有 18-token prompt；B/C 在运行中；预算与 max_model_len 均为 32。","changes":"同步调用 Scheduler，执行本轮计划，再处理结果。","output":"调度 1 只执行 A 的完整 Prefill；调度 2 才续算三条 Decode。","resume":"未结束请求保留在引擎中等待下一次 step()。","evidence":[{"repo":"vllm","path":"vllm/engine/llm_engine.py","line":1261,"label":"入口定义"},{"repo":"vllm","path":"vllm/engine/llm_engine.py","line":1336,"end":1343,"label":"调度调用"},{"repo":"vllm","path":"vllm/engine/llm_engine.py","line":1390,"end":1391,"label":"执行器调用"},{"repo":"vllm","path":"vllm/engine/llm_engine.py","line":1438,"end":1439,"label":"同步结果处理"}],"targets":[{"label":"跳到第 1 步 · 调度 1","action":{"mode":"whole","step":1}},{"label":"跳到第 10 步 · 调度 2","action":{"mode":"whole","step":10}}],"note":"三个 Prefill 观察点属于同一次调度和模型执行，不是三轮 chunked prefill。"},{"id":"schedule","parent":"engine","number":"1.1","kind":"调用","title":"Scheduler.schedule() → _schedule()","summary":"根据分块开关选择历史调度策略。","input":"未启用 chunked_prefill 的 V0 配置。","changes":"schedule() 调用 _schedule()；后者走 _schedule_default() 分支。","output":"选择整段 Prefill 优先算法。","resume":"算法返回后，schedule() 构造请求元数据交回引擎。","evidence":[{"repo":"vllm","path":"vllm/engine/llm_engine.py","line":1340,"label":"上游调用"},{"repo":"vllm","path":"vllm/core/scheduler.py","line":1284,"end":1292,"label":"公开入口"},{"repo":"vllm","path":"vllm/core/scheduler.py","line":1246,"end":1251,"label":"配置分派"}],"targets":[{"label":"跳到第 1 步 · V0 整段模式","action":{"mode":"whole","step":1}}]},{"id":"default","parent":"schedule","number":"1.1.1","kind":"调用","title":"Scheduler._schedule_default()","summary":"先尝试完整 Prefill，再决定是否 Decode。","input":"等待 A、运行 B/C，token 预算 32。","changes":"建立预算后，先调用 _schedule_prefills(enable_chunking=False)。","output":"只要本轮安排了 Prefill，就不调用本轮的运行 Decode 调度。","resume":"返回选中的完整 Prefill 计划。","evidence":[{"repo":"vllm","path":"vllm/core/scheduler.py","line":1251,"label":"调用位置"},{"repo":"vllm","path":"vllm/core/scheduler.py","line":1046,"end":1076,"label":"方法定义与 Prefill 调用"},{"repo":"vllm","path":"vllm/core/scheduler.py","line":1085,"end":1088,"label":"Decode 条件"}],"targets":[{"label":"跳到第 1 步 · 只提交 A","action":{"mode":"whole","step":1}}]},{"id":"prefills","parent":"default","number":"1.1.1.1","kind":"调用","title":"Scheduler._schedule_prefills()","summary":"A 的 18 个 prompt token 一次准入。","input":"完整 prompt 长 18，预算 32，缓存块足够。","changes":"不分块分支要求本轮需求等于 prompt 长度，检查预算后分配并转运行。","output":"A 的计算量为 18，B/C 本轮配额为零。","resume":"返回 Prefill 计划，调用方据此跳过 Decode。","evidence":[{"repo":"vllm","path":"vllm/core/scheduler.py","line":1074,"end":1076,"label":"调用位置"},{"repo":"vllm","path":"vllm/core/scheduler.py","line":890,"end":895,"label":"方法定义"},{"repo":"vllm","path":"vllm/core/scheduler.py","line":933,"end":940,"label":"整段需求"},{"repo":"vllm","path":"vllm/core/scheduler.py","line":995,"end":1006,"label":"预算与分配"}],"targets":[{"label":"跳到第 1 步 · A 的 18 个输入","action":{"mode":"whole","step":1}}]},{"id":"allocate","parent":"prefills","number":"1.1.1.1.1","kind":"调用","title":"Scheduler._allocate_and_set_running()","summary":"分配块并推进序列状态。","input":"已通过预算检查的 A 序列组。","changes":"调用 block_manager.allocate()，将等待序列状态设为 RUNNING。","output":"A 获得其缓存块映射；GPU 仍需执行完整输入。","resume":"返回 _schedule_prefills()，继续构造本轮调度结果。","evidence":[{"repo":"vllm","path":"vllm/core/scheduler.py","line":1006,"label":"调用位置"},{"repo":"vllm","path":"vllm/core/scheduler.py","line":1488,"end":1491,"label":"实际实现"}],"targets":[{"label":"跳到第 1 步 · 分配并提交","action":{"mode":"whole","step":1}}]},{"id":"skip-decode","parent":"default","number":"1.1.1.2","kind":"分支","title":"有 Prefill 时跳过 _schedule_running()","summary":"本轮剩余预算不用于 B/C Decode。","input":"本轮 prefills.seq_groups 非空。","changes":"_schedule_running() 只在 Prefill 列表为空时调用，因此此轮跳过。","output":"B/C 保持 b0/c0 等待，已有 KV 不新增。","resume":"同一次模型执行持续完成 A，直到结果返回。","evidence":[{"repo":"vllm","path":"vllm/core/scheduler.py","line":1085,"end":1088,"label":"真实条件与调用"}],"targets":[{"label":"跳到第 4 步 · 同次执行中的等待","action":{"mode":"whole","step":4}},{"label":"跳到第 7 步 · Prefill 完成前","action":{"mode":"whole","step":7}}]},{"id":"execute","parent":"engine","number":"1.2","kind":"边界","title":"model_executor.execute_model()","summary":"一次提交 A 的完整 18-token Prefill。","input":"ExecuteModelRequest 中仅 A 的完整 Prefill 元数据。","changes":"执行器与 Worker 将完整输入交给模型 Runner；三个观察点不重新提交输入。","output":"A 完成后得到 y1；B/C 没有执行，不产生新输出。","resume":"执行器返回后，LLMEngine 处理本轮模型结果。","evidence":[{"repo":"vllm","path":"vllm/engine/llm_engine.py","line":1374,"end":1391,"label":"构造与提交执行请求"},{"repo":"vllm","path":"vllm/worker/model_runner.py","line":1619,"label":"历史 Runner 入口"},{"repo":"vllm","path":"vllm/worker/model_runner.py","line":1737,"end":1750,"label":"logits 与采样"}],"targets":[{"label":"跳到第 2 步 · Prefill 执行中","action":{"mode":"whole","step":2}},{"label":"跳到第 8 步 · Prefill 完成","action":{"mode":"whole","step":8}}],"note":"具体执行器、模型和注意力后端为边界；内部观察点不代表可测的执行进度比例。"},{"id":"update","parent":"engine","number":"1.3","kind":"调用","title":"LLMEngine._process_model_outputs()","summary":"处理完整 Prefill 的采样结果。","input":"一次完整执行返回的 A:y1。","changes":"同步输出路径处理模型结果，更新请求输出及停止状态。","output":"A 取得首 token y1；B/C 仍保留原来的欠算 b0/c0。","resume":"返回本轮输出；下一次 step() 重新调度。","evidence":[{"repo":"vllm","path":"vllm/engine/llm_engine.py","line":1438,"end":1439,"label":"同步调用位置"},{"repo":"vllm","path":"vllm/engine/llm_engine.py","line":1001,"label":"方法定义"}],"targets":[{"label":"跳到第 9 步 · y1 返回","action":{"mode":"whole","step":9}}]},{"id":"next","parent":"engine","number":"1.4","kind":"循环","title":"下一次 _schedule_default() → _schedule_running()","summary":"没有新 Prefill 时才续算 Decode。","input":"A 的 y1、B 的 b0、C 的 c0 都尚未计算自身 KV。","changes":"下一轮 Prefill 列表为空，调用 _schedule_running(enable_chunking=False)。","output":"三条请求各输入 1，生成 y2/b1/c1。","resume":"继续同一引擎循环；持续到来的 Prefill 可能延长 Decode 等待。","evidence":[{"repo":"vllm","path":"vllm/core/scheduler.py","line":1085,"end":1088,"label":"下一轮 Decode 调用"},{"repo":"vllm","path":"vllm/core/scheduler.py","line":516,"label":"运行调度定义"},{"repo":"vllm","path":"vllm/engine/llm_engine.py","line":1336,"end":1340,"label":"引擎下一次调度"}],"targets":[{"label":"跳到第 10 步 · Decode 准入","action":{"mode":"whole","step":10}},{"label":"跳到第 12 步 · 三条输出","action":{"mode":"whole","step":12}}]}]}],"topic":"chunked-prefill"}</script>
+<script>
+/* Common entry: verified call tree -> existing visualization, preserving native DOM. */
+(() => {
+  function mount() {
+    const dataElement = document.getElementById('lesson-call-chain-data');
+    if (!dataElement || document.getElementById('lesson-call-chain')) return;
+    const data = JSON.parse(dataElement.textContent);
+    const variants = new Map(data.variants.map(variant => [variant.id,variant]));
+    const fallback = variants.get(data.defaultVariant) || data.variants[0];
+    const topic = data.topic;
+    const original = [...document.body.children].filter(node =>
+      !['SCRIPT','STYLE','LINK','META','NOSCRIPT'].includes(node.tagName) && !node.classList.contains('learning-scope-shell'));
+    original.forEach(node => node.classList.add('lesson-original'));
+    const frame = document.getElementById('codex-visualization');
+    const storageKey = 'lesson-call-chain:' + topic + ':' + location.pathname.split('/').at(-1);
+    let variant = fallback, selected = variant.entry || variant.nodes[0].id, screen = 'chain', targetIndex = null;
+    let collapsed = new Set(), busy = false, revision = 0, frameReady = false, requestId = 0;
+    const replies = new Map();
+    let nativeQueue = Promise.resolve();
+    const nodeById = id => variant.nodes.find(node => node.id === id);
+    const make = (tag,text,className) => {
+      const node = document.createElement(tag);
+      if (text !== undefined) node.textContent = text;
+      if (className) node.className = className;
+      return node;
+    };
+    const root = make('section',undefined,'code-walkthrough');
+    root.id = 'lesson-call-chain';
+    root.innerHTML = `<header class="cw-header"><a href="../index.html">← vLLM 学习笔记</a><h1></h1><p>先沿源码调用链定位接口，再进入对应的可视化步骤。</p></header>
+      <nav class="cw-nav" aria-label="阅读方式"><button type="button" data-cw-view="chain">01 整体调用链</button><button type="button" data-cw-view="visual">02 可视化执行</button></nav>
+      <p class="cw-error" role="alert" hidden></p>
+      <section class="cw-chain"><div class="cw-variant"><label>实现与场景 <select aria-label="选择调用链实现"></select></label><p class="cw-scope-text"></p><details class="cw-scope"><summary>源码仓库与固定 commit</summary><div class="cw-repositories"></div></details></div>
+      <p class="cw-guide">点 ＋ 展开子调用，点名称查看输入、状态变化与返回续点。「动作」「分支」「循环」表示控制块；异步提交与完成回报分开标记。</p>
+      <div class="cw-layout"><section class="cw-tree-panel" aria-label="源码调用树"><div class="cw-tools"><strong></strong><div><button type="button" data-cw-expand>全部展开</button> <button type="button" data-cw-fold>只看主链</button></div></div><div class="cw-tree-scroll"><ol class="cw-tree"></ol></div></section>
+      <article class="cw-detail" tabindex="-1" aria-labelledby="cw-node-title"><div class="cw-kicker"></div><h2 id="cw-node-title"></h2><p class="cw-summary"></p><dl class="cw-data"></dl><p class="cw-note" hidden></p>
+      <section class="cw-evidence"><h3>源码依据 · 行号属于所示 commit</h3><div></div></section><section class="cw-targets"><h3>进入可视化执行</h3><p>按下列入口定位现有图中的对应步骤。</p><div></div></section></article></div></section>
+      <div class="cw-context" tabindex="-1" hidden></div>`;
+    document.body.insertBefore(root,original[0] || dataElement);
+    const $ = selector => root.querySelector(selector);
+    $('.cw-header h1').textContent = data.title;
+    for (const item of data.variants) {
+      const option = make('option',item.title); option.value = item.id; $('.cw-variant select').append(option);
+    }
+    function validState(value) {
+      const nextVariant = variants.get(value?.variant);
+      const node = nextVariant?.nodes.find(item => item.id === value.node);
+      if (!node || !['chain','visual'].includes(value.screen)) return null;
+      const target = value.target === null ? null : Number(value.target);
+      if (target !== null && (!Number.isInteger(target) || target < 0 || target >= node.targets.length)) return null;
+      return {variant:nextVariant.id,node:node.id,screen:value.screen,target};
+    }
+    const state = () => ({variant:variant.id,node:selected,screen,target:targetIndex});
+    function parseRoute() {
+      const query = new URLSearchParams(location.search);
+      if (!query.has('cw-view')) return null;
+      return validState({variant:query.get('cw-variant'),node:query.get('cw-node'),screen:query.get('cw-view'),target:query.has('cw-target') ? query.get('cw-target') : null});
+    }
+    function applyState(next) {
+      variant = variants.get(next.variant); selected = next.node; screen = next.screen; targetIndex = next.target;
+    }
+    try {
+      const saved = validState(JSON.parse(localStorage.getItem(storageKey)));
+      if (saved) applyState({...saved,screen:'chain'});
+    } catch {}
+    const requested = parseRoute();
+    if (requested) applyState(requested);
+    function routeKey() {
+      const query = new URLSearchParams(location.search);
+      return ['cw-view','cw-variant','cw-node','cw-target'].map(key => query.get(key)).join('|');
+    }
+    let lastRoute = routeKey();
+    function urlFor(next = state(),url = new URL(location.href)) {
+      url.searchParams.set('cw-view',next.screen); url.searchParams.set('cw-variant',next.variant); url.searchParams.set('cw-node',next.node);
+      if (next.target === null) url.searchParams.delete('cw-target'); else url.searchParams.set('cw-target',String(next.target));
+      return url;
+    }
+    function remember(method = 'replace') {
+      try { localStorage.setItem(storageKey,JSON.stringify(state())); } catch {}
+      const url = urlFor();
+      if (url.href !== location.href) {
+        try { history[method + 'State']({...history.state,lessonCallChain:state()},'',url); } catch {}
+      }
+      lastRoute = routeKey();
+    }
+    function resetTree() {
+      collapsed = new Set(variant.nodes.filter(node => node.parent !== null).map(node => node.id));
+      revealSelected();
+    }
+    function revealSelected() {
+      let node = nodeById(selected);
+      while (node?.parent) { collapsed.delete(node.parent); node = nodeById(node.parent); }
+    }
+    function buildTree() {
+      const top = $('.cw-tree'); top.replaceChildren();
+      const append = (list,parent) => {
+        const children = variant.nodes.filter(node => node.parent === parent);
+        children.forEach((node,index) => {
+          const item = make('li'), row = make('div',undefined,'cw-row');
+          const hasChildren = variant.nodes.some(child => child.parent === node.id);
+          const branch = make(hasChildren ? 'button' : 'span',hasChildren ? (collapsed.has(node.id) ? '+' : '−') : (index === children.length - 1 ? '└─' : '├─'),hasChildren ? 'cw-toggle' : 'cw-branch');
+          if (hasChildren) {
+            branch.type = 'button'; branch.dataset.cwToggle = node.id;
+            branch.setAttribute('aria-expanded',!collapsed.has(node.id)); branch.setAttribute('aria-label',(collapsed.has(node.id) ? '展开 ' : '收起 ') + node.title);
+          } else branch.setAttribute('aria-hidden','true');
+          const button = make('button',undefined,'cw-node'); button.type = 'button'; button.dataset.cwNode = node.id;
+          const label = make('span'); label.append(make('code',node.title),make('small','[' + node.kind + '] ' + node.summary));
+          button.append(make('span',node.number,'cw-number'),label); row.append(branch,button); item.append(row);
+          if (hasChildren) { const nested = make('ol',undefined,'cw-tree'); nested.hidden = collapsed.has(node.id); append(nested,node.id); item.append(nested); }
+          list.append(item);
+        });
+      };
+      append(top,null); $('.cw-tools strong').textContent = '调用与返回 · ' + variant.nodes.length + ' 个节点';
+    }
+    function detail() {
+      const node = nodeById(selected);
+      root.querySelectorAll('[data-cw-node]').forEach(button => {
+        if (button.dataset.cwNode === selected) button.setAttribute('aria-current','true'); else button.removeAttribute('aria-current');
+      });
+      $('.cw-kicker').textContent = '节点 ' + node.number + ' / ' + node.kind;
+      $('#cw-node-title').textContent = node.title; $('.cw-summary').textContent = node.summary;
+      $('.cw-data').replaceChildren();
+      for (const [label,key] of [['输入从哪来','input'],['内部动作与持久状态','changes'],['输出交给谁','output'],['返回后在哪里继续','resume']]) $('.cw-data').append(make('dt',label),make('dd',node[key]));
+      $('.cw-note').hidden = !node.note; $('.cw-note').textContent = node.note || '';
+      $('.cw-evidence>div').replaceChildren();
+      $('.cw-evidence h3').textContent = variant.provenance === 'teaching' ? '算法教学对照 · 不绑定源码' : '源码依据 · 行号属于所示 commit';
+      if (variant.provenance === 'teaching') $('.cw-evidence>div').append(make('p','此分支说明教学算法，不表示 vLLM 内存在同名函数。','cw-guide'));
+      for (const evidence of node.evidence) {
+        const repo = variant.repositories[evidence.repo];
+        const link = make('a',evidence.label + ' · ' + evidence.path + ':' + evidence.line + (evidence.end ? '–' + evidence.end : ''));
+        link.href = repo.url + '/blob/' + repo.commit + '/' + evidence.path + '#L' + evidence.line + (evidence.end ? '-L' + evidence.end : '');
+        link.target = '_blank'; link.rel = 'noopener noreferrer'; link.title = repo.commit;
+        link.append(make('small',(repo.label || evidence.repo) + ' @ ' + repo.commit.slice(0,10)));
+        $('.cw-evidence>div').append(link);
+      }
+      $('.cw-targets>div').replaceChildren();
+      node.targets.forEach((target,index) => {
+        const button = make('button',target.label + ' →','cw-jump'); button.type = 'button'; button.dataset.cwTarget = index; button.disabled = busy;
+        $('.cw-targets>div').append(button);
+      });
+    }
+    function render() {
+      const visual = screen === 'visual';
+      root.dataset.cwBusy = String(busy);
+      root.dataset.cwScreen = screen;
+      original.forEach(node => node.classList.toggle('lesson-hidden',!visual));
+      $('.cw-header').hidden = visual; $('.cw-chain').hidden = visual; $('.cw-context').hidden = !visual;
+      root.querySelectorAll('[data-cw-view]').forEach(button => button.setAttribute('aria-pressed',button.dataset.cwView === screen));
+      $('[data-cw-view=chain]').textContent = visual ? '← 返回调用链' : '01 整体调用链';
+      $('.cw-variant select').value = variant.id; $('.cw-scope-text').textContent = variant.scope;
+      const repos = $('.cw-repositories'); repos.replaceChildren();
+      $('.cw-scope summary').textContent = variant.provenance === 'teaching' ? '算法教学对照 · 无源码仓库' : '源码仓库与固定 commit';
+      for (const [key,repo] of Object.entries(variant.repositories)) {
+        const link = make('a',(repo.label || key) + ' · ' + repo.url.replace('https://github.com/','') + ' @ ' + repo.commit);
+        link.href = repo.url + '/tree/' + repo.commit; link.target = '_blank'; link.rel = 'noopener noreferrer'; repos.append(link);
+      }
+      $('.cw-context').textContent = targetIndex === null
+        ? '当前展示原交互流程。从调用链的具体节点跳转，可定位对应模式和步骤。'
+        : '来自节点 ' + nodeById(selected).number + ' · ' + nodeById(selected).title + '。可继续使用图中的模式与步进控件。';
+      detail();
+      if (visual) window.dispatchEvent(new Event('resize'));
+    }
+    function scrollSelected() {
+      const button = root.querySelector('[data-cw-node="' + selected + '"]'), box = $('.cw-tree-scroll');
+      const a = button.getBoundingClientRect(), b = box.getBoundingClientRect();
+      if (a.top < b.top) box.scrollTop += a.top - b.top - 8;
+      else if (a.bottom > b.bottom) box.scrollTop += a.bottom - b.bottom + 8;
+    }
+    function clearError() { $('.cw-error').hidden = true; $('.cw-error').textContent = ''; }
+    function errorMessage(error) { $('.cw-error').textContent = '无法定位该步骤：' + error.message; $('.cw-error').hidden = false; }
+    window.addEventListener('message',event => {
+      if (!frame || event.source !== frame.contentWindow || !event.data) return;
+      if (event.data.type === 'lesson-call-ready') frameReady = true;
+      if (event.data.type === 'lesson-call-result') {
+        const pending = replies.get(event.data.id);
+        if (pending) { replies.delete(event.data.id); clearTimeout(pending.timer); event.data.ok ? pending.resolve(event.data.result) : pending.reject(new Error(event.data.error)); }
+      }
+      if (event.data.type === 'lesson-call-edited' && !busy && screen === 'visual') markEdited();
+    });
+    function markEdited() {
+      targetIndex = null;
+      $('.cw-context').textContent = '图中的模式或步骤已手动调整，当前状态不再绑定调用链节点。返回调用链可重新定位源码对应步骤。';
+      remember();
+    }
+    async function invoke(action) {
+      if (!frame) {
+        if (typeof window.openLessonTarget !== 'function') throw new Error('当前页面缺少步骤入口');
+        const work = nativeQueue.then(() => window.openLessonTarget(action));
+        nativeQueue = work.catch(() => {});
+        return work;
+      }
+      const deadline = Date.now() + 5000;
+      while (!frameReady && Date.now() < deadline) {
+        frame.contentWindow?.postMessage({type:'lesson-call-ping'},'*');
+        await new Promise(resolve => setTimeout(resolve,80));
+      }
+      if (!frameReady) throw new Error('内嵌可视化尚未就绪，请稍后重试');
+      const id = topic + ':' + ++requestId;
+      return new Promise((resolve,reject) => {
+        const timer = setTimeout(() => { replies.delete(id); reject(new Error('步骤定位超时')); },8000);
+        replies.set(id,{resolve,reject,timer});
+        frame.contentWindow.postMessage({type:'lesson-call-open',id,action},'*');
+      });
+    }
+    async function openTarget(index,method = 'push',scroll = true) {
+      const target = nodeById(selected).targets[index];
+      if (!target) return;
+      const currentPage = location.pathname.split('/').at(-1);
+      if (target.action.page && target.action.page !== currentPage) {
+        if (!['index.html','comparison.html'].includes(target.action.page)) throw new Error('不支持的页面目标');
+        const url = new URL(target.action.page,location.href); url.hash = '';
+        location.assign(urlFor({...state(),screen:'visual',target:index},url)); return;
+      }
+      const job = ++revision; busy = true; screen = 'visual'; targetIndex = index; clearError(); render();
+      $('.cw-context').textContent = '正在定位：' + target.label;
+      try {
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const result = await invoke(target.action);
+        if (job !== revision) return;
+        $('.cw-context').textContent = '来自节点 ' + nodeById(selected).number + ' · ' + nodeById(selected).title + ' → ' + (result?.label || target.label);
+        if (method) remember(method);
+        if (scroll) { $('.cw-context').scrollIntoView({block:'start'}); $('.cw-context').focus({preventScroll:true}); }
+      } catch (error) {
+        if (job === revision) { screen = 'chain'; render(); errorMessage(error); }
+      } finally { if (job === revision) { busy = false; root.dataset.cwBusy = 'false'; detail(); } }
+    }
+    function pauseVisual() {
+      if (frame) frame.contentWindow?.postMessage({type:'lesson-call-pause'},'*');
+      else window.dispatchEvent(new Event('lesson-pause-visual'));
+    }
+    function openChain() {
+      revision++; busy = false; screen = 'chain'; clearError();
+      pauseVisual();
+      revealSelected(); buildTree(); render(); remember('push'); scrollSelected();
+      root.scrollIntoView({block:'start'});
+    }
+    root.addEventListener('click',event => {
+      const target = event.target.closest('[data-cw-target]');
+      if (target) { openTarget(Number(target.dataset.cwTarget)); return; }
+      const layer = event.target.closest('[data-cw-view]');
+      if (layer) {
+        if (layer.dataset.cwView === 'chain') openChain();
+        else if (targetIndex !== null) openTarget(targetIndex);
+        else { screen = 'visual'; clearError(); render(); remember('push'); }
+        return;
+      }
+      const toggle = event.target.closest('[data-cw-toggle]');
+      if (toggle) {
+        const id = toggle.dataset.cwToggle;
+        if (collapsed.has(id)) collapsed.delete(id); else collapsed.add(id);
+        buildTree(); detail(); root.querySelector('[data-cw-toggle="' + id + '"]').focus({preventScroll:true}); return;
+      }
+      const button = event.target.closest('[data-cw-node]');
+      if (button) {
+        selected = button.dataset.cwNode; targetIndex = null; clearError(); detail(); remember('push');
+        if (matchMedia('(max-width:760px)').matches) { $('.cw-detail').scrollIntoView({block:'start'}); $('.cw-detail').focus({preventScroll:true}); }
+      }
+    });
+    $('[data-cw-expand]').addEventListener('click',() => { collapsed.clear(); buildTree(); detail(); });
+    $('[data-cw-fold]').addEventListener('click',() => { collapsed = new Set(variant.nodes.filter(node => node.parent !== null).map(node => node.id)); buildTree(); detail(); });
+    $('.cw-variant select').addEventListener('change',event => {
+      variant = variants.get(event.target.value); selected = variant.entry || variant.nodes[0].id; targetIndex = null;
+      resetTree(); buildTree(); clearError(); render(); remember('push');
+    });
+    for (const name of ['click','change']) document.addEventListener(name,event => {
+      if (event.isTrusted && !busy && screen === 'visual' && event.target.closest('.lesson-original') && event.target.closest('button,select,input')) markEdited();
+    },true);
+    window.addEventListener('popstate',() => {
+      if (routeKey() === lastRoute) return;
+      lastRoute = routeKey(); revision++; busy = false;
+      const next = parseRoute() || {variant:fallback.id,node:fallback.entry || fallback.nodes[0].id,screen:'chain',target:null};
+      applyState(next); resetTree(); buildTree(); render(); clearError();
+      if (screen === 'visual' && targetIndex !== null) openTarget(targetIndex,null,false);
+      else if (screen === 'chain') { pauseVisual(); scrollSelected(); }
+    });
+    resetTree(); buildTree(); render();
+    if (screen === 'visual' && targetIndex !== null) openTarget(targetIndex,null,false);
+    else if (screen === 'chain') scrollSelected();
+    document.documentElement.dataset.callChainReady = 'true';
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded',mount,{once:true}); else mount();
+})();
+</script>
+<!-- call-ui:end -->
 </body>
 </html>

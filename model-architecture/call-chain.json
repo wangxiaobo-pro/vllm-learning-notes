@@ -1,0 +1,2907 @@
+{
+  "title": "七模型 forward：调用与数据流",
+  "defaultVariant": "llama",
+  "variants": [
+    {
+      "id": "llama",
+      "title": "Llama 2 7B · vLLM",
+      "scope": "固定原版 Llama 2 7B 的 Decoder/MHA/Dense 路径；逻辑张量省略 TP 切片；Attention kernel 为边界，不宣称 NPU 运行。",
+      "entry": "entry",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
+        }
+      },
+      "nodes": [
+        {
+          "id": "entry",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "LlamaForCausalLM.forward()",
+          "summary": "模型包装器接收 Runner 已准备好的输入；本链始于模型入口。",
+          "input": "input_ids、positions、可选 intermediate_tensors / inputs_embeds。",
+          "changes": "调用 self.model；不是在这里采样。",
+          "output": "模型 hidden 或 PP intermediate。",
+          "resume": "返回 Runner，随后按采样位置调用 compute_logits。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 534,
+              "label": "实际实现",
+              "end": 544
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "llama",
+                "model": "llama",
+                "component": "overview",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "body",
+          "parent": "entry",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "LlamaModel.forward()",
+          "summary": "本 stage 的 embedding、层循环和最终归一化入口。",
+          "input": "token IDs 或上一 PP stage 的 hidden/residual。",
+          "changes": "首 rank 查 embedding，其他 rank 取 intermediate_tensors。",
+          "output": "同一批 token 的 hidden。",
+          "resume": "继续本 stage 的层循环。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 406,
+              "label": "实际实现",
+              "end": 457
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "llama",
+                "model": "llama",
+                "component": "decoderstack",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "embed",
+          "parent": "body",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "LlamaModel.embed_input_ids()",
+          "summary": "Embedding 参数已由权重加载器准备。",
+          "input": "input_ids[T]；或已有 inputs_embeds。",
+          "changes": "按 token ID 查 embedding 行；不改变 token 顺序。",
+          "output": "hidden[T,H]。",
+          "resume": "交给首个本地 Decoder 层。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 406,
+              "label": "实际实现",
+              "end": 457
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 403,
+              "label": "实际实现",
+              "end": 404
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "llama",
+                "model": "llama",
+                "component": "embedding",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "loop",
+          "parent": "body",
+          "number": "1.1.2",
+          "kind": "循环",
+          "title": "逐层调用 LlamaDecoderLayer.forward()",
+          "summary": "按 self.start_layer:self.end_layer 执行本 stage 层。",
+          "input": "上一层输出与 residual、positions。",
+          "changes": "每层使用独立参数更新 hidden；缓存通过 Attention 层/forward context 持有。",
+          "output": "本地末层 hidden/residual。",
+          "resume": "非末 PP rank 返回 IntermediateTensors；末 rank 继续 final norm。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 406,
+              "label": "实际实现",
+              "end": 457
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "llama",
+                "model": "llama",
+                "component": "decoderstack",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "block",
+          "parent": "loop",
+          "number": "1.1.2.1",
+          "kind": "调用",
+          "title": "LlamaDecoderLayer.forward()",
+          "summary": "连接 Attention 与 FFN 的真实层入口。",
+          "input": "hidden、residual、positions。",
+          "changes": "input_layernorm → self_attn → post_attention_layernorm → FFN。",
+          "output": "hidden 与 residual 分开返回。",
+          "resume": "返回层循环；下一层入口消费二者。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 313,
+              "label": "实际实现",
+              "end": 330
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "llama",
+                "model": "llama",
+                "component": "block",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "attention",
+          "parent": "block",
+          "number": "1.1.2.1.1",
+          "kind": "调用",
+          "title": "LlamaAttention.forward()",
+          "summary": "Llama 2 7B 的 MHA：各 Q/K/V 头数相同，区别于 70B 的 GQA。",
+          "input": "归一化 hidden、positions；历史 KV 从 Attention backend 获取。",
+          "changes": "qkv_proj → split → rotary_emb → attn(q,k,v) → o_proj。",
+          "output": "Attention 分支输出。",
+          "resume": "回到 Decoder 的 post_attention_layernorm。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 224,
+              "label": "实际实现",
+              "end": 234
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "llama",
+                "model": "llama",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "postnorm",
+          "parent": "block",
+          "number": "1.1.2.1.2",
+          "kind": "调用",
+          "title": "post_attention_layernorm(...) [RMSNorm 调用]",
+          "summary": "Attention 残差合并后形成 FFN 输入。",
+          "input": "Attention 输出、保留 residual。",
+          "changes": "相加并沿 hidden 通道归一化；同时保留更新 residual。",
+          "output": "normalized hidden 与 residual。",
+          "resume": "下一语句调用 FFN。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 313,
+              "label": "实际实现",
+              "end": 330
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "llama",
+                "model": "llama",
+                "component": "block",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "ffn",
+          "parent": "block",
+          "number": "1.1.2.1.3",
+          "kind": "调用",
+          "title": "LlamaMLP.forward()",
+          "summary": "执行当前层选中的 FFN。",
+          "input": "归一化 hidden。",
+          "changes": "gate_up_proj → SiLU-and-mul → down_proj；未把 attention 头数映射成 FFN 并行数。",
+          "output": "FFN 输出 hidden。",
+          "resume": "返回 Decoder，再返回 Model 的循环。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 118,
+              "label": "实际实现",
+              "end": 122
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "llama",
+                "model": "llama",
+                "component": "dense",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "norm",
+          "parent": "body",
+          "number": "1.1.3",
+          "kind": "调用",
+          "title": "self.norm(hidden_states, residual)",
+          "summary": "末 PP stage 归一化最终 hidden。",
+          "input": "最后一层 FFN hidden 与 residual。",
+          "changes": "最终合并并 RMSNorm；非末 stage 不走此分支。",
+          "output": "用于 LM head 的 hidden。",
+          "resume": "返回 CausalLM.forward，再交给 Runner。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 406,
+              "label": "实际实现",
+              "end": 457
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "llama",
+                "model": "llama",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "head",
+          "parent": null,
+          "number": "2",
+          "kind": "调用",
+          "title": "LlamaForCausalLM.compute_logits()",
+          "summary": "这是 Runner 在 forward 返回后的独立调用。",
+          "input": "选定输出位置的 hidden_states。",
+          "changes": "调用 logits_processor(self.lm_head, hidden_states)。",
+          "output": "logits[采样位置,V]。",
+          "resume": "由 Runner 的 sampler/rejection_sampler 消费；本模型入口不等于 token 已采样。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama.py",
+              "line": 546,
+              "label": "实际实现",
+              "end": 551
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "llama",
+                "model": "llama",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "deepseek_v2",
+      "title": "DeepSeek V2 · MLA / MoE",
+      "scope": "原版 DeepSeek V2 的 use_mha=False、普通非 SP 路径；前置 Dense 与后续 MoE 按层配置分支，MLA cache 与普通 MHA KV 不混同。",
+      "entry": "entry",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
+        }
+      },
+      "nodes": [
+        {
+          "id": "entry",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "DeepseekV2ForCausalLM.forward()",
+          "summary": "模型包装器接收 Runner 已准备好的输入；本链始于模型入口。",
+          "input": "input_ids、positions、可选 intermediate_tensors / inputs_embeds。",
+          "changes": "调用 self.model；不是在这里采样。",
+          "output": "模型 hidden 或 PP intermediate。",
+          "resume": "返回 Runner，随后按采样位置调用 compute_logits。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1965,
+              "label": "实际实现",
+              "end": 1975
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v2",
+                "model": "deepseek_v2",
+                "component": "overview",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "body",
+          "parent": "entry",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "DeepseekV2Model.forward()",
+          "summary": "本 stage 的 embedding、层循环和最终归一化入口。",
+          "input": "token IDs 或上一 PP stage 的 hidden/residual。",
+          "changes": "首 rank 查 embedding，其他 rank 取 intermediate_tensors。",
+          "output": "同一批 token 的 hidden。",
+          "resume": "继续本 stage 的层循环。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1508,
+              "label": "实际实现",
+              "end": 1592
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v2",
+                "model": "deepseek_v2",
+                "component": "decoderstack",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "embed",
+          "parent": "body",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "DeepseekV2Model.embed_input_ids()",
+          "summary": "Embedding 参数已由权重加载器准备。",
+          "input": "input_ids[T]；或已有 inputs_embeds。",
+          "changes": "按 token ID 查 embedding 行；不改变 token 顺序。",
+          "output": "hidden[T,H]。",
+          "resume": "交给首个本地 Decoder 层。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1508,
+              "label": "实际实现",
+              "end": 1592
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1505,
+              "label": "实际实现",
+              "end": 1506
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v2",
+                "model": "deepseek_v2",
+                "component": "embedding",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "loop",
+          "parent": "body",
+          "number": "1.1.2",
+          "kind": "循环",
+          "title": "逐层调用 DeepseekV2DecoderLayer.forward()",
+          "summary": "按 self.start_layer:self.end_layer 执行本 stage 层。",
+          "input": "上一层输出与 residual、positions。",
+          "changes": "每层使用独立参数更新 hidden；缓存通过 Attention 层/forward context 持有。",
+          "output": "本地末层 hidden/residual。",
+          "resume": "非末 PP rank 返回 IntermediateTensors；末 rank 继续 final norm。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1508,
+              "label": "实际实现",
+              "end": 1592
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v2",
+                "model": "deepseek_v2",
+                "component": "decoderstack",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "block",
+          "parent": "loop",
+          "number": "1.1.2.1",
+          "kind": "调用",
+          "title": "DeepseekV2DecoderLayer.forward()",
+          "summary": "连接 Attention 与 FFN 的真实层入口。",
+          "input": "hidden、residual、positions。",
+          "changes": "input_layernorm → self_attn → post_attention_layernorm → FFN。",
+          "output": "hidden 与 residual 分开返回。",
+          "resume": "返回层循环；下一层入口消费二者。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1352,
+              "label": "实际实现",
+              "end": 1423
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v2",
+                "model": "deepseek_v2",
+                "component": "block",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "attention",
+          "parent": "block",
+          "number": "1.1.2.1.1",
+          "kind": "调用",
+          "title": "DeepseekV2MLAAttention.forward() → self.mla_attn(...)",
+          "summary": "本层真实 Attention 实现。",
+          "input": "归一化 hidden、positions；历史 KV 从 Attention backend 获取。",
+          "changes": "把 positions、hidden_states、llama_4_scaling 交给 MultiHeadLatentAttentionWrapper；MLA 与 use_mha 分支不合并。",
+          "output": "Attention 分支输出。",
+          "resume": "回到 Decoder 的 post_attention_layernorm。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1240,
+              "label": "实际实现",
+              "end": 1246
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1373,
+              "label": "层调用分支",
+              "end": 1380
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v2",
+                "model": "deepseek_v2",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "postnorm",
+          "parent": "block",
+          "number": "1.1.2.1.2",
+          "kind": "调用",
+          "title": "post_attention_layernorm(...) [RMSNorm 调用]",
+          "summary": "Attention 残差合并后形成 FFN 输入。",
+          "input": "Attention 输出、保留 residual。",
+          "changes": "相加并沿 hidden 通道归一化；同时保留更新 residual。",
+          "output": "normalized hidden 与 residual。",
+          "resume": "下一语句调用 FFN。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1352,
+              "label": "实际实现",
+              "end": 1423
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v2",
+                "model": "deepseek_v2",
+                "component": "block",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "ffn",
+          "parent": "block",
+          "number": "1.1.2.1.3",
+          "kind": "调用",
+          "title": "DeepseekV2MoE.forward()",
+          "summary": "非前置 Dense 层的 MoE 分支。",
+          "input": "归一化 hidden。",
+          "changes": "router_logits = self.gate(...)；self.experts 接收 hidden/router_logits，shared+routed 在 FusedMoE 内组合。",
+          "output": "FFN 输出 hidden。",
+          "resume": "返回 Decoder，再返回 Model 的循环。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 411,
+              "label": "实际实现",
+              "end": 434
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 284,
+              "label": "实际实现",
+              "end": 288
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v2",
+                "model": "deepseek_v2",
+                "component": "moe",
+                "step": 0
+              }
+            }
+          ],
+          "note": "前置 Dense 层改调 DeepseekV2MLP.forward，不会执行 router/expert。"
+        },
+        {
+          "id": "norm",
+          "parent": "body",
+          "number": "1.1.3",
+          "kind": "调用",
+          "title": "self.norm(hidden_states, residual)",
+          "summary": "末 PP stage 归一化最终 hidden。",
+          "input": "最后一层 FFN hidden 与 residual。",
+          "changes": "最终合并并 RMSNorm；非末 stage 不走此分支。",
+          "output": "用于 LM head 的 hidden。",
+          "resume": "返回 CausalLM.forward，再交给 Runner。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1508,
+              "label": "实际实现",
+              "end": 1592
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v2",
+                "model": "deepseek_v2",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "head",
+          "parent": null,
+          "number": "2",
+          "kind": "调用",
+          "title": "DeepseekV2ForCausalLM.compute_logits()",
+          "summary": "这是 Runner 在 forward 返回后的独立调用。",
+          "input": "选定输出位置的 hidden_states。",
+          "changes": "调用 logits_processor(self.lm_head, hidden_states)。",
+          "output": "logits[采样位置,V]。",
+          "resume": "由 Runner 的 sampler/rejection_sampler 消费；本模型入口不等于 token 已采样。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1977,
+              "label": "实际实现",
+              "end": 1982
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v2",
+                "model": "deepseek_v2",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "glm53",
+      "title": "GLM-5.3 · NVIDIA DSA",
+      "scope": "GLM-5.3 非 Flash 配置；vLLM DeepseekV32 NVIDIA 平台实现。采用 DSA，而不是把通用 MLA 算子当成完整调用链。",
+      "entry": "entry",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
+        }
+      },
+      "nodes": [
+        {
+          "id": "entry",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "DeepseekV2ForCausalLM.forward() [GLM DSA wrapper 继承]",
+          "summary": "GlmMoeDsa 注册入口装配 DeepseekV32Model，继承 wrapper.forward。",
+          "input": "IDs、positions、intermediate_tensors。",
+          "changes": "self.model(...) 动态进入 DSA Model。",
+          "output": "hidden 或 PP intermediate。",
+          "resume": "返回 Runner。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1965,
+              "label": "实际实现",
+              "end": 1975
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/models/deepseek_v32/__init__.py",
+              "line": 18,
+              "label": "平台导出别名",
+              "end": 25
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/models/deepseek_v32/nvidia/model.py",
+              "line": 427,
+              "label": "继承与 model_cls 绑定",
+              "end": 437
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "glm53",
+                "model": "glm53",
+                "component": "overview",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "model",
+          "parent": "entry",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "DeepseekV32Model.forward()",
+          "summary": "首 rank embedding，遍历 DSA decoder。",
+          "input": "token IDs / 上游 stage hidden。",
+          "changes": "embedding 后调用本 stage 各层。",
+          "output": "逐层 hidden、residual。",
+          "resume": "末 stage final norm；否则返回 intermediate。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/deepseek_v32/nvidia/model.py",
+              "line": 241,
+              "label": "实际实现",
+              "end": 324
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "glm53",
+                "model": "glm53",
+                "component": "decoderstack",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "loop",
+          "parent": "model",
+          "number": "1.1.1",
+          "kind": "循环",
+          "title": "逐层 DeepseekV32DecoderLayer.forward()",
+          "summary": "78 层配置只在各自 PP 分段内执行。",
+          "input": "上一层 hidden、residual、positions。",
+          "changes": "调用当前 layer；indexer 复用由各 Attention 对象配置决定。",
+          "output": "更新 hidden/residual。",
+          "resume": "继续下一层。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/deepseek_v32/nvidia/model.py",
+              "line": 282,
+              "label": "实际实现",
+              "end": 305
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "glm53",
+                "model": "glm53",
+                "component": "decoderstack",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "block",
+          "parent": "loop",
+          "number": "1.1.1.1",
+          "kind": "调用",
+          "title": "DeepseekV32DecoderLayer.forward()",
+          "summary": "双 Norm/残差与 Attention、FFN 的实际顺序。",
+          "input": "hidden/residual。",
+          "changes": "input_layernorm → self_attn → post_attention_layernorm → mlp。",
+          "output": "FFN hidden、residual。",
+          "resume": "返回 Model 循环。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/deepseek_v32/nvidia/model.py",
+              "line": 122,
+              "label": "实际实现",
+              "end": 166
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "glm53",
+                "model": "glm53",
+                "component": "block",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "attn",
+          "parent": "block",
+          "number": "1.1.1.1.1",
+          "kind": "调用",
+          "title": "DeepseekV32Attention.forward()",
+          "summary": "低秩 Q/KV 与稀疏索引路径。",
+          "input": "hidden、positions、索引共享 buffer。",
+          "changes": "投影/归一化/RoPE，更新 KV，再准备或复用 indexer 结果。",
+          "output": "稀疏 MLA 输入。",
+          "resume": "进入 _sparse_indexer_and_attn 后做 o_proj。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/deepseek_v32/attention.py",
+              "line": 298,
+              "label": "实际实现",
+              "end": 463
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "glm53",
+                "model": "glm53",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "sparse",
+          "parent": "attn",
+          "number": "1.1.1.1.1.1",
+          "kind": "调用",
+          "title": "DeepseekV32Attention._sparse_indexer_and_attn()",
+          "summary": "TopK 生产/复用与稀疏 attention 的结合点。",
+          "input": "Q、compressed KV、indexer 信息与 backend output buffer。",
+          "changes": "按本层 indexer 配置计算/复用 topk，然后调用后端。",
+          "output": "Attention 输出。",
+          "resume": "返回 attention.forward 的 o_proj。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/deepseek_v32/attention.py",
+              "line": 466,
+              "label": "实际实现",
+              "end": 653
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "glm53",
+                "model": "glm53",
+                "component": "indexer",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "mlp",
+          "parent": "block",
+          "number": "1.1.1.1.2",
+          "kind": "分支",
+          "title": "DeepseekV2MoE.forward() / DeepseekV2MLP.forward()",
+          "summary": "按本层 Dense/MoE 配置执行互斥 FFN。",
+          "input": "post_attention_layernorm 输出。",
+          "changes": "Dense 走 gate/up/SiLU/down；MoE 走 router+experts。",
+          "output": "FFN hidden。",
+          "resume": "返回 Decoder 与上层循环。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 411,
+              "label": "实际实现",
+              "end": 434
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 284,
+              "label": "实际实现",
+              "end": 288
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/models/deepseek_v32/nvidia/model.py",
+              "line": 154,
+              "label": "调用位置",
+              "end": 166
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "glm53",
+                "model": "glm53",
+                "component": "moe",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "norm",
+          "parent": "model",
+          "number": "1.1.2",
+          "kind": "返回",
+          "title": "self.norm(hidden_states, residual)",
+          "summary": "末 stage 的最终归一化。",
+          "input": "末层 hidden/residual。",
+          "changes": "归一化后恢复 SP 等布局（条件路径）。",
+          "output": "用于 head 的 hidden。",
+          "resume": "返回 wrapper。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/deepseek_v32/nvidia/model.py",
+              "line": 301,
+              "label": "实际实现",
+              "end": 324
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "glm53",
+                "model": "glm53",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "head",
+          "parent": null,
+          "number": "2",
+          "kind": "调用",
+          "title": "DeepseekV2ForCausalLM.compute_logits()",
+          "summary": "继承的 logits 调用，和 forward 分开。",
+          "input": "选定位置 hidden。",
+          "changes": "logits_processor(lm_head, hidden)。",
+          "output": "词表 logits。",
+          "resume": "外部 sampler 消费。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_v2.py",
+              "line": 1977,
+              "label": "实际实现",
+              "end": 1982
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "glm53",
+                "model": "glm53",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "deepseek_v41",
+      "title": "DeepSeek V4.1 Flash · Ascend",
+      "scope": "静态 Ascend 主模型 forward，普通非 SP 逻辑路径；V4.1 delayed-pre 与 V4 同子层 HC 分开。草稿分支由 Runner 另调，不是主模型 forward 的自动子调用。",
+      "entry": "entry",
+      "repositories": {
+        "ascend": {
+          "url": "https://github.com/vllm-project/vllm-ascend",
+          "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875",
+          "label": "vLLM-Ascend"
+        }
+      },
+      "nodes": [
+        {
+          "id": "entry",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "AscendDeepseekV41LLMForCausalLM.forward()",
+          "summary": "模型包装器入口。",
+          "input": "IDs、positions、inputs_embeds 和运行时参数。",
+          "changes": "将输入交给 self.model。",
+          "output": "hidden 与可选 aux hidden。",
+          "resume": "返回 Runner；head 是另一调用。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v41/model.py",
+              "line": 1705,
+              "label": "实际实现",
+              "end": 1743
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "overview",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "model",
+          "parent": "entry",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "DeepseekV41Model.forward()",
+          "summary": "Embedding 扩展为多路 residual，并驱动层循环。",
+          "input": "token IDs / 输入 embedding。",
+          "changes": "embedding → HC 复制；初始化本轮所需状态。",
+          "output": "多路 H[T,n,Hdim]。",
+          "resume": "进入配置中的各层。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v41/model.py",
+              "line": 1514,
+              "label": "实际实现",
+              "end": 1617
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "embedding",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "prepare",
+          "parent": "model",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "DeepseekV41Model.prepare_engram()",
+          "summary": "V4.1 查条件记忆并重置本轮共享 Attention 状态。",
+          "input": "当前 input_ids/positions。",
+          "changes": "查历史/哈希/embedding 并准备层 lookup。",
+          "output": "层执行的前置状态。",
+          "resume": "层循环按需消费，初始化不是每个子层重复执行。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v41/model.py",
+              "line": 1107,
+              "label": "实际实现",
+              "end": 1249
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "engram",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "loop",
+          "parent": "model",
+          "number": "1.1.2",
+          "kind": "循环",
+          "title": "逐层调用 DeepseekV41DecoderLayer.forward()",
+          "summary": "V4.1 还在特定层入口采集 DSpark aux 并注入 Engram。",
+          "input": "多路 H、positions、input_ids、pre_mix。",
+          "changes": "调用 layer；输出续给下一层。",
+          "output": "更新多路 H与下一 pre_mix。",
+          "resume": "最后一层后进入 HC collapse。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v41/model.py",
+              "line": 1514,
+              "label": "实际实现",
+              "end": 1617
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "decoder",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "layer",
+          "parent": "loop",
+          "number": "1.1.2.1",
+          "kind": "调用",
+          "title": "DeepseekV41DecoderLayer.forward()",
+          "summary": "每个子层各有独立 HC 参数。",
+          "input": "H、positions、上游 pre_mix。",
+          "changes": "Attention 子层 HC → FFN 子层 HC。",
+          "output": "H、ffn_pre。",
+          "resume": "返回模型层循环。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v41/model.py",
+              "line": 887,
+              "label": "实际实现",
+              "end": 928
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "block",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "hcattn",
+          "parent": "layer",
+          "number": "1.1.2.1.1",
+          "kind": "调用",
+          "title": "DeepseekV41DecoderLayer.hc_pre() [Attention]",
+          "summary": "V4.1 消费传入 pre_mix，并生成下一子层的 pre。",
+          "input": "当前多路 H、Attention HC 参数与 pre_mix。",
+          "changes": "HC 读入 → input_layernorm。",
+          "output": "单路 Attention 输入、post/comb、attn_pre。",
+          "resume": "调用 self_attn。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v41/model.py",
+              "line": 866,
+              "label": "实际实现",
+              "end": 877
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "mhc",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "attn",
+          "parent": "layer",
+          "number": "1.1.2.1.2",
+          "kind": "调用",
+          "title": "DeepseekV41Attention.forward()",
+          "summary": "经注册 custom op/后端调用稀疏 Attention。",
+          "input": "positions、单路 hidden；缓存与共享状态由对象/forward context 取得。",
+          "changes": "V4.1 dsa_v41_forward custom op。",
+          "output": "Attention 输出。",
+          "resume": "返回层，hc_post 写回多流。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v41/model.py",
+              "line": 768,
+              "label": "实际实现",
+              "end": 771
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "attnpost",
+          "parent": "layer",
+          "number": "1.1.2.1.3",
+          "kind": "调用",
+          "title": "DeepseekV41DecoderLayer.hc_post() [Attention]",
+          "summary": "把 Attention 结果写回保留的多流 residual。",
+          "input": "Attention x、原 H、post/comb。",
+          "changes": "npu_hc_post 混合原 residual 与写入量。",
+          "output": "Attention 后 H。",
+          "resume": "作为 FFN hc_pre 的输入。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v41/model.py",
+              "line": 879,
+              "label": "实际实现",
+              "end": 885
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "mhc",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "ffnpre",
+          "parent": "layer",
+          "number": "1.1.2.1.4",
+          "kind": "调用",
+          "title": "DeepseekV41DecoderLayer.hc_pre() [FFN]",
+          "summary": "读取 Attention 更新后的多流。",
+          "input": "H、FFN 独立 HC 参数、attn_pre。",
+          "changes": "hc_pre 后 rms_norm_cast；保留 FP32 路由输入。",
+          "output": "FFN 输入、post/comb、ffn_pre。",
+          "resume": "调用 self.mlp。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v41/model.py",
+              "line": 887,
+              "label": "实际实现",
+              "end": 928
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "mhc",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "moe",
+          "parent": "layer",
+          "number": "1.1.2.1.5",
+          "kind": "调用",
+          "title": "DeepseekV41MoE.forward()",
+          "summary": "专家路由与 fused/shared expert 计算。",
+          "input": "FFN hidden、input_ids、可选 FP32 hidden。",
+          "changes": "路由后 self.experts；按实际配置组合与归约。",
+          "output": "FFN 输出。",
+          "resume": "返回层的 FFN hc_post。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v41/model.py",
+              "line": 264,
+              "label": "实际实现",
+              "end": 330
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "moe",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "returnlayer",
+          "parent": "layer",
+          "number": "1.1.2.1.6",
+          "kind": "返回",
+          "title": "DeepseekV41DecoderLayer.hc_post() [FFN]",
+          "summary": "完成本层第二次多流残差更新。",
+          "input": "FFN 输出、原 FFN residual、post/comb。",
+          "changes": "写回多流；V4.1 同时保留 ffn_pre 供下一层。",
+          "output": "下一层 H、pre_mix。",
+          "resume": "返回 Model 的循环。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v41/model.py",
+              "line": 887,
+              "label": "实际实现",
+              "end": 928
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "mhc",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "collapse",
+          "parent": "model",
+          "number": "1.1.3",
+          "kind": "调用",
+          "title": "last_layer.hc_collapse() → self.norm()",
+          "summary": "所有层完成后才把 HC 多流收缩为单路。",
+          "input": "最后 H和 pre_mix。",
+          "changes": "V4.1 用最后 pre 收缩；V4 Pro 用 hc_head 学习加权。",
+          "output": "hidden[T,Hdim]；可选 aux 另返。",
+          "resume": "返回 wrapper。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v41/model.py",
+              "line": 1611,
+              "label": "实际实现",
+              "end": 1617
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "head",
+          "parent": null,
+          "number": "2",
+          "kind": "调用",
+          "title": "AscendDeepseekV41LLMForCausalLM.compute_logits()",
+          "summary": "Runner 对最终 hidden 单独调用输出头。",
+          "input": "选定输出位置的 hidden。",
+          "changes": "logits_processor(self.lm_head, hidden_states)。",
+          "output": "词表 logits。",
+          "resume": "外部采样/验证消费，不把 DSpark 草稿当已确认 token。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v41/model.py",
+              "line": 1787,
+              "label": "实际实现",
+              "end": 1792
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v41",
+                "model": "deepseek_v41",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "deepseek_v4_pro",
+      "title": "DeepSeek V4 Pro · Ascend",
+      "scope": "静态 Ascend 主模型 forward，普通非 SP 逻辑路径；V4.1 delayed-pre 与 V4 同子层 HC 分开。草稿分支由 Runner 另调，不是主模型 forward 的自动子调用。",
+      "entry": "entry",
+      "repositories": {
+        "ascend": {
+          "url": "https://github.com/vllm-project/vllm-ascend",
+          "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875",
+          "label": "vLLM-Ascend"
+        }
+      },
+      "nodes": [
+        {
+          "id": "entry",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "AscendDeepseekV4ForCausalLM.forward()",
+          "summary": "模型包装器入口。",
+          "input": "IDs、positions、inputs_embeds 和运行时参数。",
+          "changes": "将输入交给 self.model。",
+          "output": "hidden 与可选 aux hidden。",
+          "resume": "返回 Runner；head 是另一调用。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v4/model.py",
+              "line": 1094,
+              "label": "实际实现",
+              "end": 1102
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "overview",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "model",
+          "parent": "entry",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "DeepseekV4Model.forward()",
+          "summary": "Embedding 扩展为多路 residual，并驱动层循环。",
+          "input": "token IDs / 输入 embedding。",
+          "changes": "embedding → HC 复制；初始化本轮所需状态。",
+          "output": "多路 H[T,n,Hdim]。",
+          "resume": "进入配置中的各层。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v4/model.py",
+              "line": 908,
+              "label": "实际实现",
+              "end": 998
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "embedding",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "prepare",
+          "parent": "model",
+          "number": "1.1.1",
+          "kind": "动作",
+          "title": "创建 HC residual 与可选 token routing 信息",
+          "summary": "V4 Pro 初始化 HC 多流；前置 MoE 可使用 token ID 路由。",
+          "input": "当前 input_ids/positions。",
+          "changes": "扩展单路 embedding 为多流，保留 input_ids 供 MoE。",
+          "output": "层执行的前置状态。",
+          "resume": "层循环按需消费，初始化不是每个子层重复执行。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v4/model.py",
+              "line": 908,
+              "label": "实际实现",
+              "end": 998
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "embedding",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "loop",
+          "parent": "model",
+          "number": "1.1.2",
+          "kind": "循环",
+          "title": "逐层调用 DeepseekV4DecoderLayer.forward()",
+          "summary": "各层压缩比与路由配置由初始化决定。",
+          "input": "多路 H、positions、input_ids。",
+          "changes": "调用 layer；输出续给下一层。",
+          "output": "更新多路 H。",
+          "resume": "最后一层后进入 HC collapse。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v4/model.py",
+              "line": 908,
+              "label": "实际实现",
+              "end": 998
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "stack",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "layer",
+          "parent": "loop",
+          "number": "1.1.2.1",
+          "kind": "调用",
+          "title": "DeepseekV4DecoderLayer.forward()",
+          "summary": "每个子层各有独立 HC 参数。",
+          "input": "H、positions。",
+          "changes": "Attention 子层 HC → FFN 子层 HC。",
+          "output": "H。",
+          "resume": "返回模型层循环。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v4/model.py",
+              "line": 755,
+              "label": "实际实现",
+              "end": 789
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "block",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "hcattn",
+          "parent": "layer",
+          "number": "1.1.2.1.1",
+          "kind": "调用",
+          "title": "DeepseekV4DecoderLayer.hc_pre() [Attention]",
+          "summary": "V4 在当前子层生成并消费读入系数。",
+          "input": "当前多路 H、Attention HC 参数。",
+          "changes": "HC 读入 → input_layernorm。",
+          "output": "单路 Attention 输入、post/comb。",
+          "resume": "调用 self_attn。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v4/model.py",
+              "line": 743,
+              "label": "实际实现",
+              "end": 747
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "mhc",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "attn",
+          "parent": "layer",
+          "number": "1.1.2.1.2",
+          "kind": "调用",
+          "title": "DeepseekV4Attention.forward()",
+          "summary": "经注册 custom op/后端调用稀疏 Attention。",
+          "input": "positions、单路 hidden；缓存与共享状态由对象/forward context 取得。",
+          "changes": "调用 self.dsa_attn，窗口与压缩 cache 分开。",
+          "output": "Attention 输出。",
+          "resume": "返回层，hc_post 写回多流。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v4/model.py",
+              "line": 660,
+              "label": "实际实现",
+              "end": 666
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "attnpost",
+          "parent": "layer",
+          "number": "1.1.2.1.3",
+          "kind": "调用",
+          "title": "DeepseekV4DecoderLayer.hc_post() [Attention]",
+          "summary": "把 Attention 结果写回保留的多流 residual。",
+          "input": "Attention x、原 H、post/comb。",
+          "changes": "npu_hc_post 混合原 residual 与写入量。",
+          "output": "Attention 后 H。",
+          "resume": "作为 FFN hc_pre 的输入。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v4/model.py",
+              "line": 749,
+              "label": "实际实现",
+              "end": 753
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "mhc",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "ffnpre",
+          "parent": "layer",
+          "number": "1.1.2.1.4",
+          "kind": "调用",
+          "title": "DeepseekV4DecoderLayer.hc_pre() [FFN]",
+          "summary": "读取 Attention 更新后的多流。",
+          "input": "H、FFN 独立 HC 参数。",
+          "changes": "hc_pre 后 rms_norm_cast；保留 FP32 路由输入。",
+          "output": "FFN 输入、post/comb。",
+          "resume": "调用 self.mlp。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v4/model.py",
+              "line": 755,
+              "label": "实际实现",
+              "end": 789
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "mhc",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "moe",
+          "parent": "layer",
+          "number": "1.1.2.1.5",
+          "kind": "调用",
+          "title": "DeepseekV4MoE.forward()",
+          "summary": "专家路由与 fused/shared expert 计算。",
+          "input": "FFN hidden、input_ids、可选 FP32 hidden。",
+          "changes": "路由后 self.experts；按实际配置组合与归约。",
+          "output": "FFN 输出。",
+          "resume": "返回层的 FFN hc_post。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v4/model.py",
+              "line": 383,
+              "label": "实际实现",
+              "end": 443
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "moe",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "returnlayer",
+          "parent": "layer",
+          "number": "1.1.2.1.6",
+          "kind": "返回",
+          "title": "DeepseekV4DecoderLayer.hc_post() [FFN]",
+          "summary": "完成本层第二次多流残差更新。",
+          "input": "FFN 输出、原 FFN residual、post/comb。",
+          "changes": "写回多流；V4.1 同时保留 ffn_pre 供下一层。",
+          "output": "下一层 H。",
+          "resume": "返回 Model 的循环。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v4/model.py",
+              "line": 755,
+              "label": "实际实现",
+              "end": 789
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "mhc",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "collapse",
+          "parent": "model",
+          "number": "1.1.3",
+          "kind": "调用",
+          "title": "DeepseekV4Model.hc_head() → self.norm()",
+          "summary": "所有层完成后才把 HC 多流收缩为单路。",
+          "input": "最后 H。",
+          "changes": "V4.1 用最后 pre 收缩；V4 Pro 用 hc_head 学习加权。",
+          "output": "hidden[T,Hdim]；可选 aux 另返。",
+          "resume": "返回 wrapper。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v4/model.py",
+              "line": 993,
+              "label": "实际实现",
+              "end": 998
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "head",
+          "parent": null,
+          "number": "2",
+          "kind": "调用",
+          "title": "AscendDeepseekV4ForCausalLM.compute_logits()",
+          "summary": "Runner 对最终 hidden 单独调用输出头。",
+          "input": "选定输出位置的 hidden。",
+          "changes": "logits_processor(self.lm_head, hidden_states)。",
+          "output": "词表 logits。",
+          "resume": "外部采样/验证消费，不把 DSpark 草稿当已确认 token。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/deepseek_v4/model.py",
+              "line": 1104,
+              "label": "实际实现",
+              "end": 1109
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "deepseek_v4_pro",
+                "model": "deepseek_v4_pro",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kimi_k3",
+      "title": "Kimi K3 · NVIDIA 混合主干",
+      "scope": "文本主干、use_attn_res=True、普通非 SP 路径；KDA 与 NoPE MLA 按配置互斥。此链标明 NVIDIA vLLM owner，不宣称 Ascend 必经相同 kernel。",
+      "entry": "entry",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
+        }
+      },
+      "nodes": [
+        {
+          "id": "entry",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "KimiLinearForCausalLM.forward()",
+          "summary": "语言模型入口；视觉编码在独立多模态路径中准备 embedding。",
+          "input": "input_ids/inputs_embeds、positions。",
+          "changes": "self.model(...)。",
+          "output": "hidden / intermediate。",
+          "resume": "返回 Runner。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/kimi_k3/nvidia/model.py",
+              "line": 1626,
+              "label": "实际实现",
+              "end": 1636
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "kimi_k3",
+                "model": "kimi_k3",
+                "component": "overview",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "model",
+          "parent": "entry",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "KimiLinearModel.forward()",
+          "summary": "准备深度残差状态，遍历混合注意力层。",
+          "input": "embedding 或上一 PP stage 中间张量。",
+          "changes": "分配 block_residual；prefix_sum 保存当前块累积。",
+          "output": "hidden、prefix_sum、residual。",
+          "resume": "进入 layer 循环。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/kimi_k3/nvidia/model.py",
+              "line": 1286,
+              "label": "实际实现",
+              "end": 1418
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "kimi_k3",
+                "model": "kimi_k3",
+                "component": "stack",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "layer",
+          "parent": "model",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "KimiDecoderLayer.forward()",
+          "summary": "每层先 AttnRes 读入，再注意力，再 FFN 读入。",
+          "input": "hidden、prefix_sum、residual、positions。",
+          "changes": "_pre_attn_norm → _run_self_attn → _post_attn_norm → mlp。",
+          "output": "三个深度状态。",
+          "resume": "返回 Model，下一层继续消费。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/kimi_k3/nvidia/model.py",
+              "line": 1071,
+              "label": "实际实现",
+              "end": 1105
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "kimi_k3",
+                "model": "kimi_k3",
+                "component": "kda_block",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "pre",
+          "parent": "layer",
+          "number": "1.1.1.1",
+          "kind": "调用",
+          "title": "KimiDecoderLayer._pre_attn_norm()",
+          "summary": "按 use_attn_res 选择深度混合或普通残差。",
+          "input": "本块 prefix_sum 与历史 block residual。",
+          "changes": "attn_res 使用本层 query 参数加权，再做 input norm。",
+          "output": "单路 attention hidden。",
+          "resume": "回到 layer.forward。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/kimi_k3/nvidia/model.py",
+              "line": 1007,
+              "label": "实际实现",
+              "end": 1036
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "kimi_k3",
+                "model": "kimi_k3",
+                "component": "attnres",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "dispatch",
+          "parent": "layer",
+          "number": "1.1.1.2",
+          "kind": "分支",
+          "title": "KimiDecoderLayer._run_self_attn()",
+          "summary": "初始化配置决定 KDA / MLA，运行时调用对应 self_attn。",
+          "input": "positions、normalized hidden。",
+          "changes": "以命名参数调用 self.self_attn。",
+          "output": "attention hidden。",
+          "resume": "回到 layer.forward。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/kimi_k3/nvidia/model.py",
+              "line": 997,
+              "label": "实际实现",
+              "end": 1005
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "kimi_k3",
+                "model": "kimi_k3",
+                "component": "kda_block",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "kda",
+          "parent": "dispatch",
+          "number": "1.1.1.2.1",
+          "kind": "调用",
+          "title": "KimiK3DeltaAttention.forward() [KDA 层]",
+          "summary": "KDA 子路径使用卷积与递推状态。",
+          "input": "hidden；forward context 提供 KDA metadata/state。",
+          "changes": "投影 QKV/gates → _forward 核心 → o_proj。",
+          "output": "KDA 输出；卷积/递推 cache 原地更新。",
+          "resume": "返回 _run_self_attn；不进入 MLA 分支。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/kimi_k3/nvidia/kda.py",
+              "line": 839,
+              "label": "实际实现",
+              "end": 901
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "kimi_k3",
+                "model": "kimi_k3",
+                "component": "kda",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "mla",
+          "parent": "dispatch",
+          "number": "1.1.1.2.2",
+          "kind": "调用",
+          "title": "MultiHeadLatentAttention.forward() [MLA 层]",
+          "summary": "与 KDA 互斥的 NoPE MLA 子路径。",
+          "input": "hidden、positions；latent KV cache。",
+          "changes": "按 q_lora_rank 选 Q 投影路径，gate sigmoid 后 o_proj。",
+          "output": "MLA 输出。",
+          "resume": "返回 _run_self_attn；不修改 KDA recurrent state。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/kimi_k3/nvidia/mla.py",
+              "line": 612,
+              "label": "实际实现",
+              "end": 628
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "kimi_k3",
+                "model": "kimi_k3",
+                "component": "mla",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "post",
+          "parent": "layer",
+          "number": "1.1.1.3",
+          "kind": "调用",
+          "title": "KimiDecoderLayer._post_attn_norm()",
+          "summary": "在 FFN 之前再做一次深度残差读入。",
+          "input": "Attention hidden、prefix_sum、residual。",
+          "changes": "块首更新 prefix_sum，其他层作为 prefix_delta；attn_res → post norm。",
+          "output": "FFN hidden。",
+          "resume": "layer.forward 随后调用 mlp。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/kimi_k3/nvidia/model.py",
+              "line": 1038,
+              "label": "实际实现",
+              "end": 1069
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "kimi_k3",
+                "model": "kimi_k3",
+                "component": "attnres",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "moe",
+          "parent": "layer",
+          "number": "1.1.1.4",
+          "kind": "调用",
+          "title": "KimiMoE.forward() [MoE 层]",
+          "summary": "latent expert 路径，前置 Dense 按层配置另行执行。",
+          "input": "归一化 hidden。",
+          "changes": "路由并调用 expert；输出 latent transform 还原宽度。",
+          "output": "FFN hidden。",
+          "resume": "返回 layer 的三个状态，再进入下一层。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/kimi_k3/nvidia/model.py",
+              "line": 817,
+              "label": "实际实现",
+              "end": 854
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "kimi_k3",
+                "model": "kimi_k3",
+                "component": "moe",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "collapse",
+          "parent": "model",
+          "number": "1.1.2",
+          "kind": "动作",
+          "title": "attn_res(...) [模型末端深度读出]",
+          "summary": "层循环结束后合并全部深度来源。",
+          "input": "最后 prefix_sum、hidden、block residual。",
+          "changes": "output_attn_res 参数加权；然后模型 final norm。",
+          "output": "输出 hidden。",
+          "resume": "返回 wrapper；PP 非末 rank 返回 intermediate。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/kimi_k3/nvidia/model.py",
+              "line": 1381,
+              "label": "实际实现",
+              "end": 1410
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "kimi_k3",
+                "model": "kimi_k3",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "logits",
+          "parent": null,
+          "number": "2",
+          "kind": "调用",
+          "title": "KimiLinearForCausalLM.compute_logits()",
+          "summary": "forward 之外独立计算 logits。",
+          "input": "采样位置 hidden。",
+          "changes": "logits_processor(lm_head, hidden)。",
+          "output": "词表 logits。",
+          "resume": "Runner sampler 消费。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/models/kimi_k3/nvidia/model.py",
+              "line": 1689,
+              "label": "实际实现",
+              "end": 1696
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "kimi_k3",
+                "model": "kimi_k3",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "minimax",
+      "title": "MiniMax M3.1 Flash · Ascend MSA",
+      "scope": "文本主干；全层 MSA。视觉 embedding 在 wrapper 外预先形成；独立 DSpark 的 SGLang 路径另列，不据此宣称 Ascend 相同支持。",
+      "entry": "entry",
+      "repositories": {
+        "ascend": {
+          "url": "https://github.com/vllm-project/vllm-ascend",
+          "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875",
+          "label": "vLLM-Ascend"
+        }
+      },
+      "nodes": [
+        {
+          "id": "entry",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "MiniMaxM3SparseForCausalLM.forward()",
+          "summary": "模型包装器接收 Runner 已准备好的输入；本链始于模型入口。",
+          "input": "input_ids、positions、可选 intermediate_tensors / inputs_embeds。",
+          "changes": "调用 self.model；不是在这里采样。",
+          "output": "模型 hidden 或 PP intermediate。",
+          "resume": "返回 Runner，随后按采样位置调用 compute_logits。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/minimax_m3.py",
+              "line": 1492,
+              "label": "实际实现",
+              "end": 1501
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "overview",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "body",
+          "parent": "entry",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "MiniMaxM3Model.forward()",
+          "summary": "本 stage 的 embedding、层循环和最终归一化入口。",
+          "input": "token IDs 或上一 PP stage 的 hidden/residual。",
+          "changes": "首 rank 查 embedding，其他 rank 取 intermediate_tensors。",
+          "output": "同一批 token 的 hidden。",
+          "resume": "继续本 stage 的层循环。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/minimax_m3.py",
+              "line": 1159,
+              "label": "实际实现",
+              "end": 1241
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "stack",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "embed",
+          "parent": "body",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "MiniMaxM3Model.embed_input_ids()",
+          "summary": "Embedding 参数已由权重加载器准备。",
+          "input": "input_ids[T]；或已有 inputs_embeds。",
+          "changes": "按 token ID 查 embedding 行；不改变 token 顺序。",
+          "output": "hidden[T,H]。",
+          "resume": "交给首个本地 Decoder 层。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/minimax_m3.py",
+              "line": 1159,
+              "label": "实际实现",
+              "end": 1241
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/minimax_m3.py",
+              "line": 1156,
+              "label": "实际实现",
+              "end": 1157
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "embeddings",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "loop",
+          "parent": "body",
+          "number": "1.1.2",
+          "kind": "循环",
+          "title": "逐层调用 MiniMaxM3DecoderLayer.forward()",
+          "summary": "按 self.start_layer:self.end_layer 执行本 stage 层。",
+          "input": "上一层输出与 residual、positions。",
+          "changes": "每层使用独立参数更新 hidden；缓存通过 Attention 层/forward context 持有。",
+          "output": "本地末层 hidden/residual。",
+          "resume": "非末 PP rank 返回 IntermediateTensors；末 rank 继续 final norm。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/minimax_m3.py",
+              "line": 1159,
+              "label": "实际实现",
+              "end": 1241
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "stack",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "block",
+          "parent": "loop",
+          "number": "1.1.2.1",
+          "kind": "调用",
+          "title": "MiniMaxM3DecoderLayer.forward()",
+          "summary": "连接 Attention 与 FFN 的真实层入口。",
+          "input": "hidden、residual、positions。",
+          "changes": "input_layernorm → self_attn → post_attention_layernorm → FFN。",
+          "output": "hidden 与 residual 分开返回。",
+          "resume": "返回层循环；下一层入口消费二者。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/minimax_m3.py",
+              "line": 1048,
+              "label": "实际实现",
+              "end": 1098
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "block",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "attention",
+          "parent": "block",
+          "number": "1.1.2.1.1",
+          "kind": "调用",
+          "title": "MiniMaxM3SparseAttention.forward()",
+          "summary": "M3.1 全层 MSA，区别于可选的 MiniMaxM3Attention dense 类。",
+          "input": "归一化 hidden、positions；历史 KV 从 Attention backend 获取。",
+          "changes": "_sparse_prepare（或 fused prepare）→ minimax_m3_sparse_forward custom op → o_proj。",
+          "output": "Attention 分支输出。",
+          "resume": "回到 Decoder 的 post_attention_layernorm。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/minimax_m3.py",
+              "line": 543,
+              "label": "实际实现",
+              "end": 567
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "attention",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "postnorm",
+          "parent": "block",
+          "number": "1.1.2.1.2",
+          "kind": "调用",
+          "title": "post_attention_layernorm(...) [RMSNorm 调用]",
+          "summary": "Attention 残差合并后形成 FFN 输入。",
+          "input": "Attention 输出、保留 residual。",
+          "changes": "相加并沿 hidden 通道归一化；同时保留更新 residual。",
+          "output": "normalized hidden 与 residual。",
+          "resume": "下一语句调用 FFN。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/minimax_m3.py",
+              "line": 1048,
+              "label": "实际实现",
+              "end": 1098
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "block",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "ffn",
+          "parent": "block",
+          "number": "1.1.2.1.3",
+          "kind": "调用",
+          "title": "MiniMaxM3MoE.forward()",
+          "summary": "实际层类型决定 block_sparse_moe 与 dense mlp 分支。",
+          "input": "归一化 hidden。",
+          "changes": "MoE 门控+experts；Dense 则 MiniMaxM3MLP 的 gate_up/activation/down。",
+          "output": "FFN 输出 hidden。",
+          "resume": "返回 Decoder，再返回 Model 的循环。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/minimax_m3.py",
+              "line": 828,
+              "label": "实际实现",
+              "end": 845
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/minimax_m3.py",
+              "line": 716,
+              "label": "实际实现",
+              "end": 730
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "moe",
+                "step": 0
+              }
+            }
+          ],
+          "note": "DSpark 是独立草稿实现与权重，不能作为此主模型 forward 的内置子层。"
+        },
+        {
+          "id": "norm",
+          "parent": "body",
+          "number": "1.1.3",
+          "kind": "调用",
+          "title": "self.norm(hidden_states, residual)",
+          "summary": "末 PP stage 归一化最终 hidden。",
+          "input": "最后一层 FFN hidden 与 residual。",
+          "changes": "最终合并并 RMSNorm；非末 stage 不走此分支。",
+          "output": "用于 LM head 的 hidden。",
+          "resume": "返回 CausalLM.forward，再交给 Runner。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/minimax_m3.py",
+              "line": 1159,
+              "label": "实际实现",
+              "end": 1241
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "head",
+          "parent": null,
+          "number": "2",
+          "kind": "调用",
+          "title": "MiniMaxM3SparseForCausalLM.compute_logits()",
+          "summary": "这是 Runner 在 forward 返回后的独立调用。",
+          "input": "选定输出位置的 hidden_states。",
+          "changes": "调用 logits_processor(self.lm_head, hidden_states)。",
+          "output": "logits[采样位置,V]。",
+          "resume": "由 Runner 的 sampler/rejection_sampler 消费；本模型入口不等于 token 已采样。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/models/minimax_m3/minimax_m3.py",
+              "line": 1553,
+              "label": "实际实现",
+              "end": 1558
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "head",
+                "step": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "minimax_dspark",
+      "title": "MiniMax DSpark · SGLang 独立草稿",
+      "scope": "独立 SGLang 代码与权重路径；本链限模型侧的 KV 注入、查询块与输出头接口。多个根由外部 DSpark worker 按阶段调用，不虚构 forward 自动调用所有 heads，也不表示 Ascend 主干支持此草稿实现。",
+      "entry": "kv",
+      "repositories": {
+        "sglang": {
+          "url": "https://github.com/sgl-project/sglang",
+          "commit": "17e94c4677d7beb58a89b104fd61b3768994e45e",
+          "label": "SGLang"
+        }
+      },
+      "nodes": [
+        {
+          "id": "kv",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "DSparkDraftMixin.write_target_hidden_kv()",
+          "summary": "先把已提交 target 辅助层特征写入草稿 context KV；由外部 DSpark 服务执行器调用。",
+          "input": "target_hidden、positions、cache_loc、有效 commit_lens。",
+          "changes": "project_target_hidden 后按每层投影 K/V 并写草稿 cache。",
+          "output": "草稿上下文 KV。",
+          "resume": "返回服务端调用者，再启动查询块 forward。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/dspark.py",
+              "line": 844,
+              "label": "实际实现",
+              "end": 939
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "draft",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "project",
+          "parent": "kv",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "MiniMaxDraftBackbone.project_target_hidden()",
+          "summary": "融合 target 指定层的拼接 hidden。",
+          "input": "target_hidden 最后一维必须匹配 fc.input_size。",
+          "changes": "fc → TP gather → hidden_norm。",
+          "output": "草稿 context hidden。",
+          "resume": "返回 write_target_hidden_kv。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/dspark_minimax.py",
+              "line": 167,
+              "label": "实际实现",
+              "end": 172
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "draft",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "draft",
+          "parent": null,
+          "number": "2",
+          "kind": "调用",
+          "title": "MiniMaxDraftBackbone.forward() [DSparkMiniMaxDraftModel 继承]",
+          "summary": "独立草稿网络一次处理查询块，非 target 主模型子调用。",
+          "input": "anchor/MASK input_ids、positions、forward_batch。",
+          "changes": "forward_embed → residual_batch.start → 遍历草稿 layers → final_norm。",
+          "output": "LogitsProcessorOutput(hidden_states=..., next_token_logits=None)。",
+          "resume": "返回外部起草执行器；随后独立计算 heads。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/dspark_minimax.py",
+              "line": 143,
+              "label": "实际实现",
+              "end": 175
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/dspark_minimax.py",
+              "line": 32,
+              "label": "查询块 Attention 类型",
+              "end": 41
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "draft",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "embedding",
+          "parent": "draft",
+          "number": "2.1",
+          "kind": "调用",
+          "title": "DSparkDraftMixin.forward_embed()",
+          "summary": "共享 target embedding 模块已提前 attach。",
+          "input": "查询块 IDs。",
+          "changes": "self.embed_tokens(input_ids)。",
+          "output": "查询 hidden。",
+          "resume": "回到 MiniMaxDraftBackbone.forward。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/dspark.py",
+              "line": 581,
+              "label": "实际实现",
+              "end": 585
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "draft",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "layer",
+          "parent": "draft",
+          "number": "2.2",
+          "kind": "调用",
+          "title": "DSparkMiniMaxLayer.forward()",
+          "summary": "逐个独立草稿层，目标模型层不在此处重算。",
+          "input": "positions、hidden、forward_batch。",
+          "changes": "调用 decoder_layer；DSparkMiniMaxDecoder 继承 MiniMaxM3DecoderLayer 并替换 attention_cls。",
+          "output": "下一草稿层 hidden。",
+          "resume": "循环后 residual_batch.final_norm。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/dspark_minimax.py",
+              "line": 93,
+              "label": "实际实现",
+              "end": 98
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/dspark_minimax.py",
+              "line": 78,
+              "label": "继承绑定",
+              "end": 79
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/minimax_m3.py",
+              "line": 1808,
+              "label": "实际实现",
+              "end": 1836
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "draft",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "logits",
+          "parent": null,
+          "number": "3",
+          "kind": "调用",
+          "title": "DSparkDraftMixin.compute_base_logits()",
+          "summary": "草稿 forward 返回 hidden 后由执行器调用。",
+          "input": "draft hidden；共享 target lm_head 已 attach。",
+          "changes": "project_through_lm_head，按词表并行配置 gather/crop。",
+          "output": "base_logits、confidence_features。",
+          "resume": "供 Markov 候选路径和 confidence head 消费；不是已接受 token。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/dspark.py",
+              "line": 587,
+              "label": "实际实现",
+              "end": 617
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "draft",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "confidence",
+          "parent": null,
+          "number": "4",
+          "kind": "调用",
+          "title": "DSparkDraftMixin.compute_confidence()",
+          "summary": "对当前 anchor 与候选评估置信度。",
+          "input": "anchor_tokens、draft_tokens、confidence_features。",
+          "changes": "confidence_head.predict(..., markov_head=...)。",
+          "output": "置信度预测。",
+          "resume": "返回服务执行器；target 验证仍是独立阶段。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/models/dspark.py",
+              "line": 619,
+              "label": "实际实现",
+              "end": 631
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "draft",
+                "step": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "boundary",
+          "parent": null,
+          "number": "5",
+          "kind": "边界",
+          "title": "候选提交 target verifier [服务边界]",
+          "summary": "模型/heads 给出候选与置信度，不直接提交到用户历史。",
+          "input": "草稿 IDs 与已确认 anchor。",
+          "changes": "TargetVerifyExecutor 对验证 batch 执行 target forward；后续 verify epilogue 决定接受。",
+          "output": "target logits / 验证数据。",
+          "resume": "外部 DSpark 循环按接受长度提交，下一轮再写有效 target hidden KV。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/speculative/dspark_components/dspark_verify.py",
+              "line": 351,
+              "label": "实际实现",
+              "end": 378
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看 target 验证边界",
+              "action": {
+                "mode": "minimax",
+                "model": "minimax",
+                "component": "verification",
+                "step": 0
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

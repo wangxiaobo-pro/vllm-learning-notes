@@ -1,0 +1,947 @@
+{
+  "title": "vLLM-Ascend 启动：从 CLI 到可用 API",
+  "defaultVariant": "mp-mrv1-eager",
+  "variants": [
+    {
+      "id": "mp-mrv1-eager",
+      "title": "单机 TP=2 · MRV1 · Eager",
+      "scope": "固定源码静态走读：单 API 进程、一个 DP EngineCore、mp Executor、两张标准 Ascend NPU，TP=2 / PP=1 / DP=1；MRV1、普通 attention 缓存、enforce_eager=true。关闭 Xlite、PD、弹性 EP 与特殊模型分支。编号 1/2/3 标出前端/Core/Worker 的实际调用栈；跨进程提交与返回单列边界。两卡初始化可并行，KVSpec/预算/配置是主机侧元数据，实际 KV 张量始终位于各 rank 设备。页面设备值是教学例子，没有执行 NPU 启动。",
+      "entry": "cli",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
+        },
+        "ascend": {
+          "url": "https://github.com/vllm-project/vllm-ascend",
+          "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875",
+          "label": "vLLM-Ascend"
+        }
+      },
+      "nodes": [
+        {
+          "id": "cli",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "ServeSubcommand.cmd() → run_server()",
+          "summary": "单 API 进程启动异步服务；本页选择 mp 执行器和两张 NPU。",
+          "input": "CLI 模型路径、TP=2、DP=1、PP=1 与单 API 服务参数。",
+          "changes": "进入 uvloop；run_server 创建监听 socket，再调用 run_server_worker。",
+          "output": "尚未对外提供模型推理的前端启动协程。",
+          "resume": "run_server_worker 先构建引擎客户端，完成后才调用 build_and_serve。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/cli/serve.py",
+              "line": 153,
+              "end": 156,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/launchers/api_server/entry.py",
+              "line": 163,
+              "end": 194,
+              "label": "调用位置 / 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 1 步：CLI 与平台入口",
+              "action": {
+                "mode": "startup",
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "client",
+          "parent": "cli",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "build_async_engine_client_from_engine_args()",
+          "summary": "从参数建立 VllmConfig，并选择平台 Worker 与执行器。",
+          "input": "AsyncEngineArgs；已加载 Ascend 平台插件。",
+          "changes": "create_engine_config 校验配置；Ascend 平台依硬件 profile 设置默认 worker_cls。",
+          "output": "供 AsyncLLM 和各子进程使用的 VllmConfig。",
+          "resume": "该异步上下文管理器继续调用 AsyncLLM.from_vllm_config；在客户端就绪之后才 yield。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/launchers/api_server/entry.py",
+              "line": 70,
+              "end": 110,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/platform.py",
+              "line": 1371,
+              "end": 1389,
+              "label": "Ascend 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 2 步：VllmConfig 与 NPUWorker",
+              "action": {
+                "mode": "startup",
+                "step": 2
+              }
+            }
+          ],
+          "note": "本链显式选择标准 NPUWorker，关闭 Xlite、MRV2、PD、弹性 EP 与额外编译分支。硬件 profile 选择不等于所有 Ascend 设备都走同一 Worker。"
+        },
+        {
+          "id": "async",
+          "parent": "client",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "AsyncLLM.from_vllm_config() → AsyncLLM.__init__()",
+          "summary": "前端构造请求处理对象和 EngineCore 客户端。",
+          "input": "VllmConfig、统计配置与 Executor.get_class 选出的 MultiprocExecutor。",
+          "changes": "初始化前端处理组件；make_async_mp_client 在 DP=1 时选择 AsyncMPClient。",
+          "output": "前端 AsyncLLM 持有跨进程 EngineCoreClient。",
+          "resume": "客户端构造期间等待 Core 启动；完成后 AsyncLLM 返回外层引擎上下文。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/async_llm.py",
+              "line": 185,
+              "end": 193,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/async_llm.py",
+              "line": 242,
+              "end": 268,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core_client.py",
+              "line": 137,
+              "end": 170,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/abstract.py",
+              "line": 84,
+              "end": 89,
+              "label": "调用位置 / 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 3 步：AsyncLLM 与 CoreClient",
+              "action": {
+                "mode": "startup",
+                "step": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "spawn",
+          "parent": "async",
+          "number": "1.1.1.1",
+          "kind": "提交",
+          "title": "MPClient.__init__() → launch_core_engines()",
+          "summary": "启动独立 EngineCore 进程，并等待它完成启动握手。",
+          "input": "客户端地址、VllmConfig、MultiprocExecutor 类。",
+          "changes": "CoreEngineProcManager 为本地 Core 创建 Process，并以 run_engine_core 为子进程入口；proc.start 提交启动。",
+          "output": "正在初始化的 EngineCore 进程与客户端通信通道。",
+          "resume": "launch_core_engines 在 yield 后调用 wait_for_engine_startup；收到 Core READY 后 MPClient 才继续。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core_client.py",
+              "line": 682,
+              "end": 699,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/utils.py",
+              "line": 275,
+              "end": 288,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/utils.py",
+              "line": 316,
+              "end": 329,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/utils.py",
+              "line": 1330,
+              "end": 1358,
+              "label": "调用位置 / 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 4 步：启动 EngineCore 子进程",
+              "action": {
+                "mode": "startup",
+                "step": 4
+              }
+            }
+          ],
+          "note": "跨进程提交边界：后续 Core 节点不是父进程 Python 栈内的普通递归调用。"
+        },
+        {
+          "id": "core",
+          "parent": null,
+          "number": "2",
+          "kind": "调用",
+          "title": "EngineCoreProc.__init__() → EngineCore.__init__()",
+          "summary": "Core 进程按执行器、KV 缓存、调度器的顺序初始化。",
+          "input": "握手取得的地址与同一份配置；本链一个 DP Core。",
+          "changes": "先构造 model_executor；然后初始化 KV，最后构造 Scheduler。",
+          "output": "完整 EngineCore 及其控制面对象。",
+          "resume": "当前先进入 MultiprocExecutor 构造，待 Worker 加载完成才开始 KV 规划。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 1149,
+              "end": 1155,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 1177,
+              "end": 1185,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 140,
+              "end": 177,
+              "label": "调用位置 / 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 5 步：EngineCore 选择执行器",
+              "action": {
+                "mode": "startup",
+                "step": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "executor",
+          "parent": "core",
+          "number": "2.1",
+          "kind": "提交",
+          "title": "MultiprocExecutor._init_executor() → WorkerProc.make_worker_process()",
+          "summary": "Core 为本机的两个 TP rank 创建独立 Worker 进程。",
+          "input": "TP=2、PP=1；local rank 0 和 1 的配置及 RPC 队列。",
+          "changes": "循环建立 Worker 进程；每个进程以 WorkerProc.worker_main 为入口。",
+          "output": "两个并行初始化的 Worker 以及其响应通道。",
+          "resume": "执行器等待 Worker READY 和队列连接；之后返回 EngineCore 的执行器构造调用。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/abstract.py",
+              "line": 112,
+              "end": 126,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/multiproc_executor.py",
+              "line": 189,
+              "end": 204,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/multiproc_executor.py",
+              "line": 738,
+              "end": 761,
+              "label": "调用位置 / 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 6 步：创建两个 Worker",
+              "action": {
+                "mode": "startup",
+                "step": 6
+              }
+            }
+          ],
+          "note": "节点编号表示阅读顺序；不表示 rank 0 必须完成后 rank 1 才能初始化。"
+        },
+        {
+          "id": "worker",
+          "parent": null,
+          "number": "3",
+          "kind": "边界",
+          "title": "WorkerProc.worker_main() → WorkerProc.__init__()",
+          "summary": "每个 Worker 进程建立 NPUWorker，并依次初始化设备、加载模型。",
+          "input": "本 rank 配置、local_rank、分布式地址与 RPC 队列。",
+          "changes": "WorkerWrapperBase 创建平台 worker；WorkerProc 调用 init_device 再调用 load_model。NPUWorker 构造时安装平台所需 patch 与算子。",
+          "output": "每个 rank 的 NPUWorker、Runner 与已加载模型；worker_main 发送 Worker READY 并进入 RPC 循环。",
+          "resume": "Worker READY 只表示 Worker 初始化阶段完成；Core 随后仍需请求 KVSpec、规划 KV、分配缓存与预热。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/multiproc_executor.py",
+              "line": 646,
+              "end": 686,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/multiproc_executor.py",
+              "line": 919,
+              "end": 943,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/worker_base.py",
+              "line": 334,
+              "end": 348,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 136,
+              "end": 153,
+              "label": "Ascend 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 7 步：Worker patch 与算子",
+              "action": {
+                "mode": "startup",
+                "step": 7
+              }
+            },
+            {
+              "label": "跳到第 12 步：Worker READY 与 RPC 循环",
+              "action": {
+                "mode": "startup",
+                "step": 12
+              }
+            }
+          ]
+        },
+        {
+          "id": "device",
+          "parent": "worker",
+          "number": "3.1",
+          "kind": "调用",
+          "title": "NPUWorker.init_device()",
+          "summary": "各 rank 绑定设备，建立 HCCL / TP 通信组并构造 MRV1 Runner。",
+          "input": "rank 0→NPU 0、rank 1→NPU 1；world_size=2。",
+          "changes": "_init_device 设置 NPU；初始化 HCCL world 与模型并行组；MRV2 关闭时创建 NPUModelRunner。",
+          "output": "本 rank 的 device、通信组和 Runner。",
+          "resume": "返回 WorkerProc.__init__，接着调用 load_model。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 431,
+              "end": 438,
+              "label": "Ascend 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 487,
+              "end": 511,
+              "label": "Ascend 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 1302,
+              "end": 1322,
+              "label": "Ascend 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 8 步：HCCL 与 TP 组",
+              "action": {
+                "mode": "startup",
+                "step": 8
+              }
+            },
+            {
+              "label": "跳到第 9 步：MRV1 Runner",
+              "action": {
+                "mode": "startup",
+                "step": 9
+              }
+            }
+          ],
+          "note": "TP 两卡共享一次逻辑请求调度，但设备张量和 KV 内存均由各 rank 本地持有。"
+        },
+        {
+          "id": "load",
+          "parent": "worker",
+          "number": "3.2",
+          "kind": "调用",
+          "title": "NPUWorker.load_model() → NPUModelRunner.load_model()",
+          "summary": "每卡构造其模型结构并加载本 rank 需要的参数。",
+          "input": "模型配置、checkpoint 与 TP rank。",
+          "changes": "Runner 调用 get_model；模型加载器创建模型、加载权重并做权重后处理；Runner 完成自身加载收尾。",
+          "output": "可执行的 rank-local 模型与权重。",
+          "resume": "返回 WorkerProc 构造；worker_main 再发 Worker READY，执行器得以继续。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 842,
+              "end": 853,
+              "label": "Ascend 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 4490,
+              "end": 4496,
+              "label": "Ascend 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/model_loader/base_loader.py",
+              "line": 62,
+              "end": 106,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 4647,
+              "end": 4651,
+              "label": "Ascend 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 10 步：模型类与分片参数",
+              "action": {
+                "mode": "startup",
+                "step": 10
+              }
+            },
+            {
+              "label": "跳到第 11 步：Checkpoint 加载",
+              "action": {
+                "mode": "startup",
+                "step": 11
+              }
+            }
+          ],
+          "note": "这里没有指定具体模型的 weight_loader；图中两卡参数分片是 TP 教学结构，不承诺每个参数都均分。"
+        },
+        {
+          "id": "kv",
+          "parent": "core",
+          "number": "2.2",
+          "kind": "调用",
+          "title": "EngineCore._initialize_kv_caches()",
+          "summary": "Worker 就绪后由 Core 协调 KVSpec、布局、预算、配置、分配和预热。",
+          "input": "已完成模型加载的 model_executor。",
+          "changes": "按调用顺序发起几轮 RPC，再在主机上合成调度器的 KV 配置。",
+          "output": "scheduler_kv_cache_config；各 Worker 已建立实际缓存并完成所选预热。",
+          "resume": "返回 EngineCore.__init__ 后创建 Scheduler。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 255,
+              "end": 263,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 287,
+              "end": 335,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 365,
+              "end": 371,
+              "label": "调用位置 / 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 13 步：开始 KV 初始化",
+              "action": {
+                "mode": "startup",
+                "step": 13
+              }
+            }
+          ]
+        },
+        {
+          "id": "spec",
+          "parent": "kv",
+          "number": "2.2.1",
+          "kind": "边界",
+          "title": "Executor.get_kv_cache_specs() / resolve_kv_cache_layout()",
+          "summary": "RPC 收集每卡各层需求，并在 profiling 前确定统一可用布局。",
+          "input": "模型 attention 层及其缓存规格；各后端支持的布局。",
+          "changes": "Worker.get_kv_cache_spec 委托 Runner；Core 汇总 KVCacheSpec 并选择布局，再广播 layout.name。",
+          "output": "返回主机的规格列表与已设置的布局；此处不是拷回 KV 张量。",
+          "resume": "Core 使用这些规格和布局继续请求可用缓存字节预算。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/abstract.py",
+              "line": 162,
+              "end": 175,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 1115,
+              "end": 1116,
+              "label": "Ascend 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 6250,
+              "end": 6278,
+              "label": "Ascend 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 291,
+              "end": 296,
+              "label": "调用位置 / 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 14 步：KVCacheSpec 返回",
+              "action": {
+                "mode": "startup",
+                "step": 14
+              }
+            },
+            {
+              "label": "跳到第 15 步：布局选择",
+              "action": {
+                "mode": "startup",
+                "step": 15
+              }
+            }
+          ]
+        },
+        {
+          "id": "profile",
+          "parent": "kv",
+          "number": "2.2.2",
+          "kind": "边界",
+          "title": "Executor.determine_available_memory() → NPUWorker.determine_available_memory()",
+          "summary": "通过 Worker 内存分析得到每个 rank 的 KV 可用预算。",
+          "input": "设备内存快照、模型权重与 dummy profile 配置。",
+          "changes": "Worker 执行 profile_run 并统计非 KV 内存；从请求预算中扣除模型运行开销。",
+          "output": "每卡可用于 KV 的字节数回到 Core。",
+          "resume": "Core 将每卡规格与预算一起传入 get_kv_cache_configs。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 307,
+              "end": 311,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/abstract.py",
+              "line": 162,
+              "end": 163,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 562,
+              "end": 565,
+              "label": "Ascend 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 596,
+              "end": 629,
+              "label": "Ascend 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 16 步：执行内存 Profile",
+              "action": {
+                "mode": "startup",
+                "step": 16
+              }
+            },
+            {
+              "label": "跳到第 17 步：预算回传",
+              "action": {
+                "mode": "startup",
+                "step": 17
+              }
+            }
+          ],
+          "note": "本链选择自动 profiling；显式 KV 字节预算、硬件特例和约束修正不在图中逐项展开。"
+        },
+        {
+          "id": "plan",
+          "parent": "kv",
+          "number": "2.2.3",
+          "kind": "调用",
+          "title": "get_kv_cache_configs() → generate_scheduler_kv_cache_config()",
+          "summary": "Core 根据规格和字节预算规划每卡物理分配，并形成调度器逻辑配置。",
+          "input": "rank-local KVCacheSpec 与 available_gpu_memory 列表。",
+          "changes": "逐卡规划；对齐各卡可用的 num_blocks；生成供调度器使用的合并规格。",
+          "output": "每 Worker 的 KVCacheConfig 列表与 scheduler_kv_cache_config。",
+          "resume": "Core 把配置发送给各 Worker，Worker 此时才执行实际缓存分配。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 321,
+              "end": 335,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_utils.py",
+              "line": 2790,
+              "end": 2808,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_utils.py",
+              "line": 2924,
+              "end": 2934,
+              "label": "调用位置 / 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 18 步：Core 规划容量",
+              "action": {
+                "mode": "startup",
+                "step": 18
+              }
+            }
+          ],
+          "note": "逻辑 block 数和 ID 一致不表示两张卡共享同一块 HBM。每卡按自己的规格持有 KV 张量。"
+        },
+        {
+          "id": "allocate",
+          "parent": "kv",
+          "number": "2.2.4",
+          "kind": "边界",
+          "title": "Executor.initialize_from_config() → NPUModelRunner.initialize_kv_cache()",
+          "summary": "通过 RPC 把每卡配置落为本卡设备缓存并绑定到 attention 上下文。",
+          "input": "Core 的 KVCacheConfig 列表；Worker 按 global rank 取对应配置。",
+          "changes": "NPUWorker 调用 Runner.initialize_kv_cache；Runner 分配原始缓冲、reshape 为后端布局，再 bind_kv_cache。",
+          "output": "每卡独立的 KV 张量、Runner 缓存列表和 attention forward_context 引用；RPC 返回完成。",
+          "resume": "Core 等待本轮 RPC 完成，然后发起 compile_or_warm_up_model。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 369,
+              "end": 371,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/abstract.py",
+              "line": 135,
+              "end": 137,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/worker_base.py",
+              "line": 340,
+              "end": 344,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 1183,
+              "end": 1206,
+              "label": "Ascend 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 4721,
+              "end": 4725,
+              "label": "Ascend 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 4850,
+              "end": 4896,
+              "label": "Ascend 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/patch/worker/patch_bind_kv_cache.py",
+              "line": 49,
+              "end": 55,
+              "label": "Ascend 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 19 步：配置发给 Worker",
+              "action": {
+                "mode": "startup",
+                "step": 19
+              }
+            },
+            {
+              "label": "跳到第 20 步：设备缓存分配与绑定",
+              "action": {
+                "mode": "startup",
+                "step": 20
+              }
+            },
+            {
+              "label": "跳到第 21 步：KV 初始化返回",
+              "action": {
+                "mode": "startup",
+                "step": 21
+              }
+            }
+          ],
+          "note": "跨 RPC 的方法在同一节点展开便于追踪；父节点表示 Core 发起调用，不把 NPU 设备内存当作 Core 主机对象。"
+        },
+        {
+          "id": "warm",
+          "parent": "kv",
+          "number": "2.2.5",
+          "kind": "边界",
+          "title": "Executor.compile_or_warm_up_model() → NPUWorker.compile_or_warm_up_model()",
+          "summary": "缓存绑定后执行模型和内核预热；本页固定 eager。",
+          "input": "已经加载权重且缓存已绑定的 Runner；enforce_eager=true。",
+          "changes": "Worker 执行 dummy run 与内核预热。由于 enforce_eager，本链跳过 capture_model。",
+          "output": "完成预热的 Worker 返回 RPC；KV 初始化调用可结束。",
+          "resume": "返回 EngineCore._initialize_kv_caches，再返回 EngineCore.__init__ 的 Scheduler 创建位置。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/abstract.py",
+              "line": 139,
+              "end": 143,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/worker.py",
+              "line": 867,
+              "end": 897,
+              "label": "Ascend 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 22 步：Eager 预热",
+              "action": {
+                "mode": "startup",
+                "step": 22
+              }
+            },
+            {
+              "label": "跳到第 23 步：预热结果返回",
+              "action": {
+                "mode": "startup",
+                "step": 23
+              }
+            }
+          ],
+          "note": "若关闭 enforce_eager，实际实现还可进入图捕获；该分支应在图模式主题单独阅读。"
+        },
+        {
+          "id": "scheduler",
+          "parent": "core",
+          "number": "2.3",
+          "kind": "调用",
+          "title": "EngineCore.__init__() → Scheduler 构造",
+          "summary": "Core 在 KV 分配和预热结束后建立主机侧调度器。",
+          "input": "scheduler_kv_cache_config、block size、请求预算与调度配置。",
+          "changes": "解析 scheduler_cls 并构造 Scheduler；标准同步路径可由 Ascend BalanceScheduler 继承实现接管，仍调用上游 Scheduler 初始化。",
+          "output": "等待队列、running 状态与逻辑 KVCacheManager；尚无真实推理请求。",
+          "resume": "Core 初始化返回其进程启动上下文，准备发送 Core READY。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 152,
+              "end": 177,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/patch/platform/patch_balance_schedule.py",
+              "line": 103,
+              "end": 124,
+              "label": "Ascend 实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/patch/platform/patch_balance_schedule.py",
+              "line": 901,
+              "end": 906,
+              "label": "Ascend 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 328,
+              "end": 345,
+              "label": "调用位置 / 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 24 步：Scheduler 与逻辑 KV",
+              "action": {
+                "mode": "startup",
+                "step": 24
+              }
+            }
+          ]
+        },
+        {
+          "id": "ready",
+          "parent": null,
+          "number": "4",
+          "kind": "返回",
+          "title": "EngineCoreProc._perform_handshake()：退出上下文发送 READY",
+          "summary": "Core 启动全部完成后向前端发 READY，解除客户端启动等待。",
+          "input": "已构造的 EngineCore、输入输出通信线程与握手 socket。",
+          "changes": "Core 的启动握手上下文在 yield 之后发送 READY；前端 wait_for_engine_startup 收到就绪消息并返回。",
+          "output": "前端可用的 AsyncMPClient / AsyncLLM。",
+          "resume": "build_async_engine_client_from_engine_args 完成 reset_mm_cache 并 yield engine，run_server_worker 继续构建服务。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 1228,
+              "end": 1232,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 1276,
+              "end": 1279,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 1317,
+              "end": 1335,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/utils.py",
+              "line": 1350,
+              "end": 1358,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/launchers/api_server/entry.py",
+              "line": 108,
+              "end": 113,
+              "label": "调用位置 / 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 25 步：Core READY 回前端",
+              "action": {
+                "mode": "startup",
+                "step": 25
+              }
+            }
+          ],
+          "note": "Core READY 与 Worker READY 是两个不同进程、不同阶段的消息。"
+        },
+        {
+          "id": "serve",
+          "parent": null,
+          "number": "5",
+          "kind": "调用",
+          "title": "run_server_worker() → build_and_serve()",
+          "summary": "前端获得可用引擎后设置应用状态并启动 HTTP 服务。",
+          "input": "AsyncLLM、监听 socket 和服务参数。",
+          "changes": "查询 supported_tasks，build_app，init_app_state，再调用 serve_http。",
+          "output": "已初始化的推理 API 服务；后续请求才进入调度与模型执行循环。",
+          "resume": "服务协程进入运行期；退出时执行 shutdown_task 并由引擎上下文释放资源。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/launchers/api_server/entry.py",
+              "line": 116,
+              "end": 147,
+              "label": "调用位置 / 实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/launchers/api_server/entry.py",
+              "line": 188,
+              "end": 197,
+              "label": "调用位置 / 实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 26 步：API 开始服务",
+              "action": {
+                "mode": "startup",
+                "step": 26
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,3168 @@
+{
+  "title": "投机解码：提议、跨轮验证与返回",
+  "defaultVariant": "eagle",
+  "variants": [
+    {
+      "id": "eagle",
+      "title": "EAGLE · Llama 草稿",
+      "scope": "MRV1、greedy 验证、K=3 教学流程；候选具体词为教学值。初始化与每轮调用分开，target 验证属于下一调度轮。",
+      "entry": "select",
+      "repositories": {
+        "ascend": {
+          "url": "https://github.com/vllm-project/vllm-ascend",
+          "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875",
+          "label": "vLLM-Ascend"
+        },
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
+        }
+      },
+      "nodes": [
+        {
+          "id": "select",
+          "parent": null,
+          "number": "P1",
+          "kind": "分支",
+          "title": "get_spec_decode_method() [初始化一次]",
+          "summary": "配置决定 proposer 类型，不是每轮都加载草稿。",
+          "input": "SpeculativeConfig.method 与模型配置。",
+          "changes": "EAGLE/EAGLE3/普通 MTP 选 AscendEagleProposer；其他方法选各自 proposer。",
+          "output": "已加载的 drafter 对象。",
+          "resume": "后续 Runner.propose_draft_token_ids 调用该对象。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/__init__.py",
+              "line": 41,
+              "label": "实际实现",
+              "end": 70
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "runner",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "NPUModelRunner.propose_draft_token_ids()",
+          "summary": "上轮 target 采样/验证后开始准备下一轮候选。",
+          "input": "有效 sampled IDs、positions、target hidden、metadata。",
+          "changes": "按 self.drafter 实际类型选提议路径；清空旧 draft_probs。",
+          "output": "本轮候选 IDs。",
+          "resume": "返回 sample_tokens 保存，随后调度下一轮 target 验证。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 1983,
+              "label": "实际实现",
+              "end": 2013
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "propose",
+          "parent": "runner",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "AscendSpecDecodeBaseProposer._propose()",
+          "summary": "LLM proposer 的公共执行入口。",
+          "input": "target IDs/positions/hidden、已确认 next IDs、K。",
+          "changes": "K=0 可返回空；其余准备输入、metadata 和 forward context。",
+          "output": "供草稿 runnable 消费的 buffer。",
+          "resume": "在 with 块内调用 _runnable，退出后返回 draft_token_ids。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2183,
+              "label": "调用位置",
+              "end": 2203
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1010,
+              "label": "实际实现",
+              "end": 1080
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "inputs",
+          "parent": "propose",
+          "number": "1.1.2",
+          "kind": "调用",
+          "title": "AscendSpecDecodeBaseProposer.set_inputs_first_pass()",
+          "summary": "对齐首轮 token、positions 与 hidden。",
+          "input": "已确认 anchor ID、target 前缀与 metadata。",
+          "changes": "token 左移并在请求末位补 next ID，hidden 保持对应源位置。",
+          "output": "草稿 input_ids/positions、采样索引、metadata。",
+          "resume": "返回 _propose，建立草稿 forward context。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1779,
+              "label": "实际实现",
+              "end": 1941
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "draftloop",
+          "parent": "propose",
+          "number": "1.1.3",
+          "kind": "调用",
+          "title": "AscendSpecDecodeBaseProposer._run_merged_draft()",
+          "summary": "_runnable 的实际内容；FULL 模式外有 ACLGraphWrapper。",
+          "input": "预填好的 input buffer、采样索引、metadata。",
+          "changes": "首次 self.model(**model_kwargs)，分离用于采样与递推的 hidden。",
+          "output": "第一步草稿 hidden。",
+          "resume": "随后 compute_logits/采样；串行方法继续迭代。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 300,
+              "label": "初始化绑定",
+              "end": 300
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1384,
+              "label": "调用与返回",
+              "end": 1395
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1451,
+              "label": "实际实现",
+              "end": 1492
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle",
+                "step": 3,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "model",
+          "parent": "draftloop",
+          "number": "1.1.3.2",
+          "kind": "调用",
+          "title": "EagleLlamaForCausalLM.forward()",
+          "summary": "Llama 草稿融合词嵌入与 target/递推 hidden。",
+          "input": "当前草稿 IDs/positions及递推 hidden。",
+          "changes": "进入已加载的草稿模型主体。",
+          "output": "草稿输出 hidden。",
+          "resume": "返回 _run_merged_draft 的 _split_draft_outputs。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1491,
+              "label": "调用位置",
+              "end": 1492
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama_eagle.py",
+              "line": 174,
+              "label": "实际实现",
+              "end": 185
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle",
+                "step": 2,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "draftsample",
+          "parent": "draftloop",
+          "number": "1.1.3.3",
+          "kind": "调用",
+          "title": "compute_draft_token_ids() / _sample_draft_from_logits()",
+          "summary": "将草稿 hidden 投影并选择候选 ID。",
+          "input": "草稿采样 hidden 与 sampling_metadata。",
+          "changes": "compute_logits 后按 greedy 或 configured probabilistic draft 采样。",
+          "output": "draft_token_ids 与可选 draft_probs。",
+          "resume": "DFlash parallel_drafting 直接返回 K 个；串行方法进入后续循环。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1423,
+              "label": "实际实现",
+              "end": 1449
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1616,
+              "label": "实际实现",
+              "end": 1643
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle",
+                "step": 4,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "return",
+          "parent": "draftloop",
+          "number": "1.1.3.4",
+          "kind": "循环",
+          "title": "for draft_index in range(K−1)",
+          "summary": "每次把前一个候选及草稿递推 hidden 喂回，位置前移。",
+          "input": "第一步候选与草稿状态。",
+          "changes": "self.model → compute_logits → sample；写入 draft_token_ids_tensor。",
+          "output": "候选矩阵 [B,K]。",
+          "resume": "经 _propose 返回 Runner；候选尚未确认。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1653,
+              "label": "实际实现",
+              "end": 1777
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle",
+                "step": 4,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "target",
+          "parent": null,
+          "number": "2",
+          "kind": "边界",
+          "title": "NPUModelRunner.execute_model() [下一轮 target]",
+          "summary": "调度器把草稿加入 target 本轮输入，跨轮交给 Runner。",
+          "input": "SchedulerOutput 的已确认 anchor 与候选序列；target KV。",
+          "changes": "准备 target metadata，调用 _model_forward；选择 logits rows。",
+          "output": "target hidden/logits 与 execute_model_state。",
+          "resume": "Worker 随后调用 sample_tokens；proposer 不直接调用 target forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2669,
+              "label": "实际实现",
+              "end": 2740
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "sample",
+          "parent": null,
+          "number": "3",
+          "kind": "调用",
+          "title": "NPUModelRunner.sample_tokens() → _sample()",
+          "summary": "消费 target forward 保存的输出状态。",
+          "input": "target logits、SpecDecodeMetadata、可选 draft_probs。",
+          "changes": "_sample 在存在 spec metadata 时调用 rejection_sampler。",
+          "output": "SamplerOutput。",
+          "resume": "回到 sample_tokens 的 bookkeeping 与下轮提议。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2849,
+              "label": "实际实现",
+              "end": 2907
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3058,
+              "label": "实际实现",
+              "end": 3079
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle",
+                "step": 6,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "verify",
+          "parent": "sample",
+          "number": "3.1",
+          "kind": "调用",
+          "title": "AscendRejectionSampler.forward()",
+          "summary": "对齐候选、target logits 与 bonus 位置。",
+          "input": "draft IDs、num_draft_tokens、target/bonus logits indices。",
+          "changes": "选 bonus token、处理 target logits，调用 rejection_sample。",
+          "output": "有效接受前缀 + correction / bonus，其他槽位是占位。",
+          "resume": "返回 _sample，再回 sample_tokens。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 146,
+              "label": "实际实现",
+              "end": 254
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle",
+                "step": 6,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            },
+            {
+              "label": "打开串行 / 并行验证对照",
+              "action": {
+                "page": "comparison.html",
+                "mode": "comparison",
+                "step": 4,
+                "scenario": "middle"
+              }
+            }
+          ]
+        },
+        {
+          "id": "commit",
+          "parent": "sample",
+          "number": "3.2",
+          "kind": "返回",
+          "title": "sample_tokens 的 bookkeeping / ModelRunnerOutput",
+          "summary": "只有有效输出追加到请求状态。",
+          "input": "SamplerOutput、有效长度、原请求 IDs。",
+          "changes": "更新本地历史与输出对象，保留下一轮 drafter 输入。",
+          "output": "ModelRunnerOutput 或异步拷贝包装。",
+          "resume": "返回 Engine；Scheduler 按接受长度更新计算进度。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2950,
+              "label": "实际实现",
+              "end": 3055
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            },
+            {
+              "label": "打开串行 / 并行验证对照",
+              "action": {
+                "page": "comparison.html",
+                "mode": "comparison",
+                "step": 5,
+                "scenario": "middle"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eagle3",
+      "title": "EAGLE-3 · Llama 多层特征",
+      "scope": "MRV1、greedy 验证、K=3 教学流程；候选具体词为教学值。初始化与每轮调用分开，target 验证属于下一调度轮。 启用辅助层的链式 Llama EAGLE-3。",
+      "entry": "select",
+      "repositories": {
+        "ascend": {
+          "url": "https://github.com/vllm-project/vllm-ascend",
+          "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875",
+          "label": "vLLM-Ascend"
+        },
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
+        }
+      },
+      "nodes": [
+        {
+          "id": "select",
+          "parent": null,
+          "number": "P1",
+          "kind": "分支",
+          "title": "get_spec_decode_method() [初始化一次]",
+          "summary": "配置决定 proposer 类型，不是每轮都加载草稿。",
+          "input": "SpeculativeConfig.method 与模型配置。",
+          "changes": "EAGLE/EAGLE3/普通 MTP 选 AscendEagleProposer；其他方法选各自 proposer。",
+          "output": "已加载的 drafter 对象。",
+          "resume": "后续 Runner.propose_draft_token_ids 调用该对象。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/__init__.py",
+              "line": 41,
+              "label": "实际实现",
+              "end": 70
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle3",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "runner",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "NPUModelRunner.propose_draft_token_ids()",
+          "summary": "上轮 target 采样/验证后开始准备下一轮候选。",
+          "input": "有效 sampled IDs、positions、target hidden、metadata。",
+          "changes": "按 self.drafter 实际类型选提议路径；清空旧 draft_probs。",
+          "output": "本轮候选 IDs。",
+          "resume": "返回 sample_tokens 保存，随后调度下一轮 target 验证。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 1983,
+              "label": "实际实现",
+              "end": 2013
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle3",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "propose",
+          "parent": "runner",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "AscendSpecDecodeBaseProposer._propose()",
+          "summary": "LLM proposer 的公共执行入口。",
+          "input": "target IDs/positions/hidden、已确认 next IDs、K。",
+          "changes": "K=0 可返回空；其余准备输入、metadata 和 forward context。",
+          "output": "供草稿 runnable 消费的 buffer。",
+          "resume": "在 with 块内调用 _runnable，退出后返回 draft_token_ids。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2183,
+              "label": "调用位置",
+              "end": 2203
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1010,
+              "label": "实际实现",
+              "end": 1080
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle3",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "combine",
+          "parent": "propose",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "Eagle3LlamaForCausalLM.combine_hidden_states()",
+          "summary": "合并 target 配置要求的辅助隐藏层。",
+          "input": "按 feature 维拼接的 target aux hidden。",
+          "changes": "使用 checkpoint 的融合投影，输出草稿 hidden 宽度。",
+          "output": "融合后的上下文特征。",
+          "resume": "返回 _propose，再准备 token/位置。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1060,
+              "label": "调用位置",
+              "end": 1066
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama_eagle3.py",
+              "line": 397,
+              "label": "实际实现",
+              "end": 418
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle3",
+                "step": 2,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "inputs",
+          "parent": "propose",
+          "number": "1.1.2",
+          "kind": "调用",
+          "title": "AscendSpecDecodeBaseProposer.set_inputs_first_pass()",
+          "summary": "对齐首轮 token、positions 与 hidden。",
+          "input": "已确认 anchor ID、target 前缀与 metadata。",
+          "changes": "token 左移并在请求末位补 next ID，hidden 保持对应源位置。",
+          "output": "草稿 input_ids/positions、采样索引、metadata。",
+          "resume": "返回 _propose，建立草稿 forward context。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1779,
+              "label": "实际实现",
+              "end": 1941
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle3",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "draftloop",
+          "parent": "propose",
+          "number": "1.1.3",
+          "kind": "调用",
+          "title": "AscendSpecDecodeBaseProposer._run_merged_draft()",
+          "summary": "_runnable 的实际内容；FULL 模式外有 ACLGraphWrapper。",
+          "input": "预填好的 input buffer、采样索引、metadata。",
+          "changes": "首次 self.model(**model_kwargs)，分离用于采样与递推的 hidden。",
+          "output": "第一步草稿 hidden。",
+          "resume": "随后 compute_logits/采样；串行方法继续迭代。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 300,
+              "label": "初始化绑定",
+              "end": 300
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1384,
+              "label": "调用与返回",
+              "end": 1395
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1451,
+              "label": "实际实现",
+              "end": 1492
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle3",
+                "step": 3,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "model",
+          "parent": "draftloop",
+          "number": "1.1.3.2",
+          "kind": "调用",
+          "title": "Eagle3LlamaForCausalLM.forward()",
+          "summary": "EAGLE-3 草稿返回采样 hidden 与递推 hidden。",
+          "input": "当前草稿 IDs/positions及递推 hidden。",
+          "changes": "进入已加载的草稿模型主体。",
+          "output": "草稿输出 hidden。",
+          "resume": "返回 _run_merged_draft 的 _split_draft_outputs。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1491,
+              "label": "调用位置",
+              "end": 1492
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/llama_eagle3.py",
+              "line": 364,
+              "label": "实际实现",
+              "end": 371
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle3",
+                "step": 3,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "draftsample",
+          "parent": "draftloop",
+          "number": "1.1.3.3",
+          "kind": "调用",
+          "title": "compute_draft_token_ids() / _sample_draft_from_logits()",
+          "summary": "将草稿 hidden 投影并选择候选 ID。",
+          "input": "草稿采样 hidden 与 sampling_metadata。",
+          "changes": "compute_logits 后按 greedy 或 configured probabilistic draft 采样。",
+          "output": "draft_token_ids 与可选 draft_probs。",
+          "resume": "DFlash parallel_drafting 直接返回 K 个；串行方法进入后续循环。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1423,
+              "label": "实际实现",
+              "end": 1449
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1616,
+              "label": "实际实现",
+              "end": 1643
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle3",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "return",
+          "parent": "draftloop",
+          "number": "1.1.3.4",
+          "kind": "循环",
+          "title": "for draft_index in range(K−1)",
+          "summary": "每次把前一个候选及草稿递推 hidden 喂回，位置前移。",
+          "input": "第一步候选与草稿状态。",
+          "changes": "self.model → compute_logits → sample；写入 draft_token_ids_tensor。",
+          "output": "候选矩阵 [B,K]。",
+          "resume": "经 _propose 返回 Runner；候选尚未确认。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1653,
+              "label": "实际实现",
+              "end": 1777
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle3",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "target",
+          "parent": null,
+          "number": "2",
+          "kind": "边界",
+          "title": "NPUModelRunner.execute_model() [下一轮 target]",
+          "summary": "调度器把草稿加入 target 本轮输入，跨轮交给 Runner。",
+          "input": "SchedulerOutput 的已确认 anchor 与候选序列；target KV。",
+          "changes": "准备 target metadata，调用 _model_forward；选择 logits rows。",
+          "output": "target hidden/logits 与 execute_model_state。",
+          "resume": "Worker 随后调用 sample_tokens；proposer 不直接调用 target forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2669,
+              "label": "实际实现",
+              "end": 2740
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle3",
+                "step": 6,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "sample",
+          "parent": null,
+          "number": "3",
+          "kind": "调用",
+          "title": "NPUModelRunner.sample_tokens() → _sample()",
+          "summary": "消费 target forward 保存的输出状态。",
+          "input": "target logits、SpecDecodeMetadata、可选 draft_probs。",
+          "changes": "_sample 在存在 spec metadata 时调用 rejection_sampler。",
+          "output": "SamplerOutput。",
+          "resume": "回到 sample_tokens 的 bookkeeping 与下轮提议。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2849,
+              "label": "实际实现",
+              "end": 2907
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3058,
+              "label": "实际实现",
+              "end": 3079
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle3",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "verify",
+          "parent": "sample",
+          "number": "3.1",
+          "kind": "调用",
+          "title": "AscendRejectionSampler.forward()",
+          "summary": "对齐候选、target logits 与 bonus 位置。",
+          "input": "draft IDs、num_draft_tokens、target/bonus logits indices。",
+          "changes": "选 bonus token、处理 target logits，调用 rejection_sample。",
+          "output": "有效接受前缀 + correction / bonus，其他槽位是占位。",
+          "resume": "返回 _sample，再回 sample_tokens。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 146,
+              "label": "实际实现",
+              "end": 254
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle3",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            },
+            {
+              "label": "打开串行 / 并行验证对照",
+              "action": {
+                "page": "comparison.html",
+                "mode": "comparison",
+                "step": 4,
+                "scenario": "middle"
+              }
+            }
+          ]
+        },
+        {
+          "id": "commit",
+          "parent": "sample",
+          "number": "3.2",
+          "kind": "返回",
+          "title": "sample_tokens 的 bookkeeping / ModelRunnerOutput",
+          "summary": "只有有效输出追加到请求状态。",
+          "input": "SamplerOutput、有效长度、原请求 IDs。",
+          "changes": "更新本地历史与输出对象，保留下一轮 drafter 输入。",
+          "output": "ModelRunnerOutput 或异步拷贝包装。",
+          "resume": "返回 Engine；Scheduler 按接受长度更新计算进度。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2950,
+              "label": "实际实现",
+              "end": 3055
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "eagle3",
+                "step": 8,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            },
+            {
+              "label": "打开串行 / 并行验证对照",
+              "action": {
+                "page": "comparison.html",
+                "mode": "comparison",
+                "step": 5,
+                "scenario": "middle"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mtp",
+      "title": "DeepSeek MTP · 普通单 KV 组",
+      "scope": "MRV1、greedy 验证、K=3 教学流程；候选具体词为教学值。初始化与每轮调用分开，target 验证属于下一调度轮。 普通 DeepSeek MTP 的通用单 KV 组路径；Gemma4、Step3.5、多 KV 组 MTP 的 proposer 另有分支。",
+      "entry": "select",
+      "repositories": {
+        "ascend": {
+          "url": "https://github.com/vllm-project/vllm-ascend",
+          "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875",
+          "label": "vLLM-Ascend"
+        },
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
+        }
+      },
+      "nodes": [
+        {
+          "id": "select",
+          "parent": null,
+          "number": "P1",
+          "kind": "分支",
+          "title": "get_spec_decode_method() [初始化一次]",
+          "summary": "配置决定 proposer 类型，不是每轮都加载草稿。",
+          "input": "SpeculativeConfig.method 与模型配置。",
+          "changes": "EAGLE/EAGLE3/普通 MTP 选 AscendEagleProposer；其他方法选各自 proposer。",
+          "output": "已加载的 drafter 对象。",
+          "resume": "后续 Runner.propose_draft_token_ids 调用该对象。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/__init__.py",
+              "line": 41,
+              "label": "实际实现",
+              "end": 70
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "mtp",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "runner",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "NPUModelRunner.propose_draft_token_ids()",
+          "summary": "上轮 target 采样/验证后开始准备下一轮候选。",
+          "input": "有效 sampled IDs、positions、target hidden、metadata。",
+          "changes": "按 self.drafter 实际类型选提议路径；清空旧 draft_probs。",
+          "output": "本轮候选 IDs。",
+          "resume": "返回 sample_tokens 保存，随后调度下一轮 target 验证。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 1983,
+              "label": "实际实现",
+              "end": 2013
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "mtp",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "propose",
+          "parent": "runner",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "AscendSpecDecodeBaseProposer._propose()",
+          "summary": "LLM proposer 的公共执行入口。",
+          "input": "target IDs/positions/hidden、已确认 next IDs、K。",
+          "changes": "K=0 可返回空；其余准备输入、metadata 和 forward context。",
+          "output": "供草稿 runnable 消费的 buffer。",
+          "resume": "在 with 块内调用 _runnable，退出后返回 draft_token_ids。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2183,
+              "label": "调用位置",
+              "end": 2203
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1010,
+              "label": "实际实现",
+              "end": 1080
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "mtp",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "inputs",
+          "parent": "propose",
+          "number": "1.1.2",
+          "kind": "调用",
+          "title": "AscendSpecDecodeBaseProposer.set_inputs_first_pass()",
+          "summary": "对齐首轮 token、positions 与 hidden。",
+          "input": "已确认 anchor ID、target 前缀与 metadata。",
+          "changes": "token 左移并在请求末位补 next ID，hidden 保持对应源位置。",
+          "output": "草稿 input_ids/positions、采样索引、metadata。",
+          "resume": "返回 _propose，建立草稿 forward context。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1779,
+              "label": "实际实现",
+              "end": 1941
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "mtp",
+                "step": 2,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "draftloop",
+          "parent": "propose",
+          "number": "1.1.3",
+          "kind": "调用",
+          "title": "AscendSpecDecodeBaseProposer._run_merged_draft()",
+          "summary": "_runnable 的实际内容；FULL 模式外有 ACLGraphWrapper。",
+          "input": "预填好的 input buffer、采样索引、metadata。",
+          "changes": "首次 self.model(**model_kwargs)，分离用于采样与递推的 hidden。",
+          "output": "第一步草稿 hidden。",
+          "resume": "随后 compute_logits/采样；串行方法继续迭代。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 300,
+              "label": "初始化绑定",
+              "end": 300
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1384,
+              "label": "调用与返回",
+              "end": 1395
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1451,
+              "label": "实际实现",
+              "end": 1492
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "mtp",
+                "step": 3,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "model",
+          "parent": "draftloop",
+          "number": "1.1.3.2",
+          "kind": "调用",
+          "title": "DeepSeekMTP.forward()",
+          "summary": "MTP 由位置选择预测层，将 token embedding 与 hidden 融合。",
+          "input": "当前草稿 IDs/positions及递推 hidden。",
+          "changes": "进入已加载的草稿模型主体。",
+          "output": "草稿输出 hidden。",
+          "resume": "返回 _run_merged_draft 的 _split_draft_outputs。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1491,
+              "label": "调用位置",
+              "end": 1492
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/deepseek_mtp.py",
+              "line": 279,
+              "label": "实际实现",
+              "end": 295
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "mtp",
+                "step": 3,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "draftsample",
+          "parent": "draftloop",
+          "number": "1.1.3.3",
+          "kind": "调用",
+          "title": "compute_draft_token_ids() / _sample_draft_from_logits()",
+          "summary": "将草稿 hidden 投影并选择候选 ID。",
+          "input": "草稿采样 hidden 与 sampling_metadata。",
+          "changes": "compute_logits 后按 greedy 或 configured probabilistic draft 采样。",
+          "output": "draft_token_ids 与可选 draft_probs。",
+          "resume": "DFlash parallel_drafting 直接返回 K 个；串行方法进入后续循环。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1423,
+              "label": "实际实现",
+              "end": 1449
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1616,
+              "label": "实际实现",
+              "end": 1643
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "mtp",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "return",
+          "parent": "draftloop",
+          "number": "1.1.3.4",
+          "kind": "循环",
+          "title": "for draft_index in range(K−1)",
+          "summary": "每次把前一个候选及草稿递推 hidden 喂回，位置前移。",
+          "input": "第一步候选与草稿状态。",
+          "changes": "self.model → compute_logits → sample；写入 draft_token_ids_tensor。",
+          "output": "候选矩阵 [B,K]。",
+          "resume": "经 _propose 返回 Runner；候选尚未确认。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1653,
+              "label": "实际实现",
+              "end": 1777
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "mtp",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "target",
+          "parent": null,
+          "number": "2",
+          "kind": "边界",
+          "title": "NPUModelRunner.execute_model() [下一轮 target]",
+          "summary": "调度器把草稿加入 target 本轮输入，跨轮交给 Runner。",
+          "input": "SchedulerOutput 的已确认 anchor 与候选序列；target KV。",
+          "changes": "准备 target metadata，调用 _model_forward；选择 logits rows。",
+          "output": "target hidden/logits 与 execute_model_state。",
+          "resume": "Worker 随后调用 sample_tokens；proposer 不直接调用 target forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2669,
+              "label": "实际实现",
+              "end": 2740
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "mtp",
+                "step": 6,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "sample",
+          "parent": null,
+          "number": "3",
+          "kind": "调用",
+          "title": "NPUModelRunner.sample_tokens() → _sample()",
+          "summary": "消费 target forward 保存的输出状态。",
+          "input": "target logits、SpecDecodeMetadata、可选 draft_probs。",
+          "changes": "_sample 在存在 spec metadata 时调用 rejection_sampler。",
+          "output": "SamplerOutput。",
+          "resume": "回到 sample_tokens 的 bookkeeping 与下轮提议。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2849,
+              "label": "实际实现",
+              "end": 2907
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3058,
+              "label": "实际实现",
+              "end": 3079
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "mtp",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "verify",
+          "parent": "sample",
+          "number": "3.1",
+          "kind": "调用",
+          "title": "AscendRejectionSampler.forward()",
+          "summary": "对齐候选、target logits 与 bonus 位置。",
+          "input": "draft IDs、num_draft_tokens、target/bonus logits indices。",
+          "changes": "选 bonus token、处理 target logits，调用 rejection_sample。",
+          "output": "有效接受前缀 + correction / bonus，其他槽位是占位。",
+          "resume": "返回 _sample，再回 sample_tokens。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 146,
+              "label": "实际实现",
+              "end": 254
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "mtp",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            },
+            {
+              "label": "打开串行 / 并行验证对照",
+              "action": {
+                "page": "comparison.html",
+                "mode": "comparison",
+                "step": 4,
+                "scenario": "middle"
+              }
+            }
+          ]
+        },
+        {
+          "id": "commit",
+          "parent": "sample",
+          "number": "3.2",
+          "kind": "返回",
+          "title": "sample_tokens 的 bookkeeping / ModelRunnerOutput",
+          "summary": "只有有效输出追加到请求状态。",
+          "input": "SamplerOutput、有效长度、原请求 IDs。",
+          "changes": "更新本地历史与输出对象，保留下一轮 drafter 输入。",
+          "output": "ModelRunnerOutput 或异步拷贝包装。",
+          "resume": "返回 Engine；Scheduler 按接受长度更新计算进度。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2950,
+              "label": "实际实现",
+              "end": 3055
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "mtp",
+                "step": 8,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            },
+            {
+              "label": "打开串行 / 并行验证对照",
+              "action": {
+                "page": "comparison.html",
+                "mode": "comparison",
+                "step": 5,
+                "scenario": "middle"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dflash",
+      "title": "DFlash · Qwen3 并行草稿",
+      "scope": "MRV1、greedy 验证、K=3 教学流程；候选具体词为教学值。初始化与每轮调用分开，target 验证属于下一调度轮。 Qwen3 DFlash-b16 的 head-free parallel_drafting；不是 DSpark/DFlash2。",
+      "entry": "select",
+      "repositories": {
+        "ascend": {
+          "url": "https://github.com/vllm-project/vllm-ascend",
+          "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875",
+          "label": "vLLM-Ascend"
+        },
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
+        }
+      },
+      "nodes": [
+        {
+          "id": "select",
+          "parent": null,
+          "number": "P1",
+          "kind": "分支",
+          "title": "get_spec_decode_method() [初始化一次]",
+          "summary": "配置决定 proposer 类型，不是每轮都加载草稿。",
+          "input": "SpeculativeConfig.method 与模型配置。",
+          "changes": "EAGLE/EAGLE3/普通 MTP 选 AscendEagleProposer；其他方法选各自 proposer。",
+          "output": "已加载的 drafter 对象。",
+          "resume": "后续 Runner.propose_draft_token_ids 调用该对象。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/__init__.py",
+              "line": 41,
+              "label": "实际实现",
+              "end": 70
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "dflash",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "runner",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "NPUModelRunner.propose_draft_token_ids()",
+          "summary": "上轮 target 采样/验证后开始准备下一轮候选。",
+          "input": "有效 sampled IDs、positions、target hidden、metadata。",
+          "changes": "按 self.drafter 实际类型选提议路径；清空旧 draft_probs。",
+          "output": "本轮候选 IDs。",
+          "resume": "返回 sample_tokens 保存，随后调度下一轮 target 验证。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 1983,
+              "label": "实际实现",
+              "end": 2013
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "dflash",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "propose",
+          "parent": "runner",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "AscendSpecDecodeBaseProposer._propose()",
+          "summary": "LLM proposer 的公共执行入口。",
+          "input": "target IDs/positions/hidden、已确认 next IDs、K。",
+          "changes": "K=0 可返回空；其余准备输入、metadata 和 forward context。",
+          "output": "供草稿 runnable 消费的 buffer。",
+          "resume": "在 with 块内调用 _runnable，退出后返回 draft_token_ids。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2183,
+              "label": "调用位置",
+              "end": 2203
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1010,
+              "label": "实际实现",
+              "end": 1080
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "dflash",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "combine",
+          "parent": "propose",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "DFlashQwen3ForCausalLM.combine_hidden_states()",
+          "summary": "合并 target 配置要求的辅助隐藏层。",
+          "input": "按 feature 维拼接的 target aux hidden。",
+          "changes": "使用 checkpoint 的融合投影与 Norm。",
+          "output": "融合后的上下文特征。",
+          "resume": "返回 _propose，再准备 token/位置。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1060,
+              "label": "调用位置",
+              "end": 1066
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/qwen3_dflash.py",
+              "line": 864,
+              "label": "实际实现",
+              "end": 884
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "dflash",
+                "step": 2,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "inputs",
+          "parent": "propose",
+          "number": "1.1.2",
+          "kind": "调用",
+          "title": "AscendDflashProposer.set_inputs_first_pass()",
+          "summary": "DFlash 查询块和 target 上下文分开准备。",
+          "input": "已确认 anchor ID、target 前缀与 metadata。",
+          "changes": "DFlash 写 anchor + MASK 查询块。",
+          "output": "草稿 input_ids/positions、采样索引、metadata。",
+          "resume": "返回 _propose，建立草稿 forward context。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/dflash_proposer.py",
+              "line": 105,
+              "label": "实际实现",
+              "end": 192
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "dflash",
+                "step": 3,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "draftloop",
+          "parent": "propose",
+          "number": "1.1.3",
+          "kind": "调用",
+          "title": "AscendSpecDecodeBaseProposer._run_merged_draft()",
+          "summary": "_runnable 的实际内容；FULL 模式外有 ACLGraphWrapper。",
+          "input": "预填好的 input buffer、采样索引、metadata。",
+          "changes": "首次 self.model(**model_kwargs)，分离用于采样与递推的 hidden。",
+          "output": "第一步草稿 hidden。",
+          "resume": "随后 compute_logits/采样；串行方法继续迭代。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 300,
+              "label": "初始化绑定",
+              "end": 300
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1384,
+              "label": "调用与返回",
+              "end": 1395
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1451,
+              "label": "实际实现",
+              "end": 1492
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "dflash",
+                "step": 3,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "contextkv",
+          "parent": "draftloop",
+          "number": "1.1.3.1",
+          "kind": "调用",
+          "title": "AscendDflashProposer.build_model_inputs_first_pass()",
+          "summary": "草稿查询前把上下文特征写成草稿侧 K/V。",
+          "input": "融合 target hidden、context positions、slot mappings。",
+          "changes": "调用 draft model.precompute_and_store_context_kv。",
+          "output": "草稿 Attention 可读取的上下文 K/V。",
+          "resume": "回到 _run_merged_draft 首次 self.model 调用。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/dflash_proposer.py",
+              "line": 306,
+              "label": "实际实现",
+              "end": 324
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "dflash",
+                "step": 4,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "model",
+          "parent": "draftloop",
+          "number": "1.1.3.2",
+          "kind": "调用",
+          "title": "DFlashQwen3ForCausalLM.forward()",
+          "summary": "一次草稿前向处理 anchor 与多个 MASK 查询位置。",
+          "input": "当前草稿 IDs/positions；上下文 K/V 已准备。",
+          "changes": "进入已加载的草稿模型主体。",
+          "output": "草稿输出 hidden。",
+          "resume": "返回 _run_merged_draft 的 _split_draft_outputs。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1491,
+              "label": "调用位置",
+              "end": 1492
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/qwen3_dflash.py",
+              "line": 820,
+              "label": "实际实现",
+              "end": 826
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "dflash",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "draftsample",
+          "parent": "draftloop",
+          "number": "1.1.3.3",
+          "kind": "调用",
+          "title": "compute_draft_token_ids() / _sample_draft_from_logits()",
+          "summary": "将草稿 hidden 投影并选择候选 ID。",
+          "input": "草稿采样 hidden 与 sampling_metadata。",
+          "changes": "compute_logits 后按 greedy 或 configured probabilistic draft 采样。",
+          "output": "draft_token_ids 与可选 draft_probs。",
+          "resume": "DFlash parallel_drafting 直接返回 K 个；串行方法进入后续循环。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1423,
+              "label": "实际实现",
+              "end": 1449
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1616,
+              "label": "实际实现",
+              "end": 1643
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "dflash",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "return",
+          "parent": "draftloop",
+          "number": "1.1.3.4",
+          "kind": "返回",
+          "title": "并行返回 [B,K]",
+          "summary": "DFlash 不把上一个预测 token 喂回下一次前向。",
+          "input": "第一步候选与草稿状态。",
+          "changes": "parallel_drafting 返回整块结果。",
+          "output": "候选矩阵 [B,K]。",
+          "resume": "经 _propose 返回 Runner；候选尚未确认。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1633,
+              "label": "实际实现",
+              "end": 1643
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "dflash",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "target",
+          "parent": null,
+          "number": "2",
+          "kind": "边界",
+          "title": "NPUModelRunner.execute_model() [下一轮 target]",
+          "summary": "调度器把草稿加入 target 本轮输入，跨轮交给 Runner。",
+          "input": "SchedulerOutput 的已确认 anchor 与候选序列；target KV。",
+          "changes": "准备 target metadata，调用 _model_forward；选择 logits rows。",
+          "output": "target hidden/logits 与 execute_model_state。",
+          "resume": "Worker 随后调用 sample_tokens；proposer 不直接调用 target forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2669,
+              "label": "实际实现",
+              "end": 2740
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "dflash",
+                "step": 6,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "sample",
+          "parent": null,
+          "number": "3",
+          "kind": "调用",
+          "title": "NPUModelRunner.sample_tokens() → _sample()",
+          "summary": "消费 target forward 保存的输出状态。",
+          "input": "target logits、SpecDecodeMetadata、可选 draft_probs。",
+          "changes": "_sample 在存在 spec metadata 时调用 rejection_sampler。",
+          "output": "SamplerOutput。",
+          "resume": "回到 sample_tokens 的 bookkeeping 与下轮提议。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2849,
+              "label": "实际实现",
+              "end": 2907
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3058,
+              "label": "实际实现",
+              "end": 3079
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "dflash",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "verify",
+          "parent": "sample",
+          "number": "3.1",
+          "kind": "调用",
+          "title": "AscendRejectionSampler.forward()",
+          "summary": "对齐候选、target logits 与 bonus 位置。",
+          "input": "draft IDs、num_draft_tokens、target/bonus logits indices。",
+          "changes": "选 bonus token、处理 target logits，调用 rejection_sample。",
+          "output": "有效接受前缀 + correction / bonus，其他槽位是占位。",
+          "resume": "返回 _sample，再回 sample_tokens。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 146,
+              "label": "实际实现",
+              "end": 254
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "dflash",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            },
+            {
+              "label": "打开串行 / 并行验证对照",
+              "action": {
+                "page": "comparison.html",
+                "mode": "comparison",
+                "step": 4,
+                "scenario": "middle"
+              }
+            }
+          ]
+        },
+        {
+          "id": "commit",
+          "parent": "sample",
+          "number": "3.2",
+          "kind": "返回",
+          "title": "sample_tokens 的 bookkeeping / ModelRunnerOutput",
+          "summary": "只有有效输出追加到请求状态。",
+          "input": "SamplerOutput、有效长度、原请求 IDs。",
+          "changes": "更新本地历史与输出对象，保留下一轮 drafter 输入。",
+          "output": "ModelRunnerOutput 或异步拷贝包装。",
+          "resume": "返回 Engine；Scheduler 按接受长度更新计算进度。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2950,
+              "label": "实际实现",
+              "end": 3055
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "dflash",
+                "step": 8,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            },
+            {
+              "label": "打开串行 / 并行验证对照",
+              "action": {
+                "page": "comparison.html",
+                "mode": "comparison",
+                "step": 5,
+                "scenario": "middle"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "draft",
+      "title": "独立 draft model",
+      "scope": "MRV1、greedy 验证、K=3 教学流程；候选具体词为教学值。初始化与每轮调用分开，target 验证属于下一调度轮。 checkpoint 未固定，因此草稿模型主体明确留作动态分派边界。",
+      "entry": "select",
+      "repositories": {
+        "ascend": {
+          "url": "https://github.com/vllm-project/vllm-ascend",
+          "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875",
+          "label": "vLLM-Ascend"
+        }
+      },
+      "nodes": [
+        {
+          "id": "select",
+          "parent": null,
+          "number": "P1",
+          "kind": "分支",
+          "title": "get_spec_decode_method() [初始化一次]",
+          "summary": "配置决定 proposer 类型，不是每轮都加载草稿。",
+          "input": "SpeculativeConfig.method 与模型配置。",
+          "changes": "EAGLE/EAGLE3/普通 MTP 选 AscendEagleProposer；其他方法选各自 proposer。",
+          "output": "已加载的 drafter 对象。",
+          "resume": "后续 Runner.propose_draft_token_ids 调用该对象。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/__init__.py",
+              "line": 41,
+              "label": "实际实现",
+              "end": 70
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "draft",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "runner",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "NPUModelRunner.propose_draft_token_ids()",
+          "summary": "上轮 target 采样/验证后开始准备下一轮候选。",
+          "input": "有效 sampled IDs、positions、target hidden、metadata。",
+          "changes": "按 self.drafter 实际类型选提议路径；清空旧 draft_probs。",
+          "output": "本轮候选 IDs。",
+          "resume": "返回 sample_tokens 保存，随后调度下一轮 target 验证。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 1983,
+              "label": "实际实现",
+              "end": 2013
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "draft",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "propose",
+          "parent": "runner",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "AscendSpecDecodeBaseProposer._propose()",
+          "summary": "LLM proposer 的公共执行入口。",
+          "input": "target IDs/positions/hidden、已确认 next IDs、K。",
+          "changes": "K=0 可返回空；其余准备输入、metadata 和 forward context。",
+          "output": "供草稿 runnable 消费的 buffer。",
+          "resume": "在 with 块内调用 _runnable，退出后返回 draft_token_ids。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2183,
+              "label": "调用位置",
+              "end": 2203
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1010,
+              "label": "实际实现",
+              "end": 1080
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "draft",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "inputs",
+          "parent": "propose",
+          "number": "1.1.2",
+          "kind": "调用",
+          "title": "AscendSpecDecodeBaseProposer.set_inputs_first_pass()",
+          "summary": "对齐首轮 token、positions 与 hidden。",
+          "input": "已确认 anchor ID、target 前缀与 metadata。",
+          "changes": "独立草稿保留/扩展输入 ID，不传 target hidden。",
+          "output": "草稿 input_ids/positions、采样索引、metadata。",
+          "resume": "返回 _propose，建立草稿 forward context。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1779,
+              "label": "实际实现",
+              "end": 1941
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "draft",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "draftloop",
+          "parent": "propose",
+          "number": "1.1.3",
+          "kind": "调用",
+          "title": "AscendSpecDecodeBaseProposer._run_merged_draft()",
+          "summary": "_runnable 的实际内容；FULL 模式外有 ACLGraphWrapper。",
+          "input": "预填好的 input buffer、采样索引、metadata。",
+          "changes": "首次 self.model(**model_kwargs)，分离用于采样与递推的 hidden。",
+          "output": "第一步草稿 hidden。",
+          "resume": "随后 compute_logits/采样；串行方法继续迭代。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 300,
+              "label": "初始化绑定",
+              "end": 300
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1384,
+              "label": "调用与返回",
+              "end": 1395
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1451,
+              "label": "实际实现",
+              "end": 1492
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "draft",
+                "step": 3,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "model",
+          "parent": "draftloop",
+          "number": "1.1.3.2",
+          "kind": "边界",
+          "title": "self.model(**model_kwargs) [配置的独立草稿]",
+          "summary": "实际类由独立 draft checkpoint 的 architectures 决定。",
+          "input": "草稿自己的 token IDs/positions 和 KV；不接收 target hidden。",
+          "changes": "用草稿模型自身权重做自回归 forward。",
+          "output": "草稿 hidden。",
+          "resume": "返回 _run_merged_draft；此边界不虚构固定模型类。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/draft_proposer.py",
+              "line": 8,
+              "label": "实际实现",
+              "end": 17
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1473,
+              "label": "实际实现",
+              "end": 1492
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "draft",
+                "step": 2,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "draftsample",
+          "parent": "draftloop",
+          "number": "1.1.3.3",
+          "kind": "调用",
+          "title": "compute_draft_token_ids() / _sample_draft_from_logits()",
+          "summary": "将草稿 hidden 投影并选择候选 ID。",
+          "input": "草稿采样 hidden 与 sampling_metadata。",
+          "changes": "compute_logits 后按 greedy 或 configured probabilistic draft 采样。",
+          "output": "draft_token_ids 与可选 draft_probs。",
+          "resume": "DFlash parallel_drafting 直接返回 K 个；串行方法进入后续循环。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1423,
+              "label": "实际实现",
+              "end": 1449
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1616,
+              "label": "实际实现",
+              "end": 1643
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "draft",
+                "step": 4,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "return",
+          "parent": "draftloop",
+          "number": "1.1.3.4",
+          "kind": "循环",
+          "title": "for draft_index in range(K−1)",
+          "summary": "每次把前一个候选及草稿递推 hidden 喂回，位置前移。",
+          "input": "第一步候选与草稿状态。",
+          "changes": "self.model → compute_logits → sample；写入 draft_token_ids_tensor。",
+          "output": "候选矩阵 [B,K]。",
+          "resume": "经 _propose 返回 Runner；候选尚未确认。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/llm_base_proposer.py",
+              "line": 1653,
+              "label": "实际实现",
+              "end": 1777
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "draft",
+                "step": 4,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "target",
+          "parent": null,
+          "number": "2",
+          "kind": "边界",
+          "title": "NPUModelRunner.execute_model() [下一轮 target]",
+          "summary": "调度器把草稿加入 target 本轮输入，跨轮交给 Runner。",
+          "input": "SchedulerOutput 的已确认 anchor 与候选序列；target KV。",
+          "changes": "准备 target metadata，调用 _model_forward；选择 logits rows。",
+          "output": "target hidden/logits 与 execute_model_state。",
+          "resume": "Worker 随后调用 sample_tokens；proposer 不直接调用 target forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2669,
+              "label": "实际实现",
+              "end": 2740
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "draft",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "sample",
+          "parent": null,
+          "number": "3",
+          "kind": "调用",
+          "title": "NPUModelRunner.sample_tokens() → _sample()",
+          "summary": "消费 target forward 保存的输出状态。",
+          "input": "target logits、SpecDecodeMetadata、可选 draft_probs。",
+          "changes": "_sample 在存在 spec metadata 时调用 rejection_sampler。",
+          "output": "SamplerOutput。",
+          "resume": "回到 sample_tokens 的 bookkeeping 与下轮提议。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2849,
+              "label": "实际实现",
+              "end": 2907
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3058,
+              "label": "实际实现",
+              "end": 3079
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "draft",
+                "step": 6,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "verify",
+          "parent": "sample",
+          "number": "3.1",
+          "kind": "调用",
+          "title": "AscendRejectionSampler.forward()",
+          "summary": "对齐候选、target logits 与 bonus 位置。",
+          "input": "draft IDs、num_draft_tokens、target/bonus logits indices。",
+          "changes": "选 bonus token、处理 target logits，调用 rejection_sample。",
+          "output": "有效接受前缀 + correction / bonus，其他槽位是占位。",
+          "resume": "返回 _sample，再回 sample_tokens。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 146,
+              "label": "实际实现",
+              "end": 254
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "draft",
+                "step": 6,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            },
+            {
+              "label": "打开串行 / 并行验证对照",
+              "action": {
+                "page": "comparison.html",
+                "mode": "comparison",
+                "step": 4,
+                "scenario": "middle"
+              }
+            }
+          ]
+        },
+        {
+          "id": "commit",
+          "parent": "sample",
+          "number": "3.2",
+          "kind": "返回",
+          "title": "sample_tokens 的 bookkeeping / ModelRunnerOutput",
+          "summary": "只有有效输出追加到请求状态。",
+          "input": "SamplerOutput、有效长度、原请求 IDs。",
+          "changes": "更新本地历史与输出对象，保留下一轮 drafter 输入。",
+          "output": "ModelRunnerOutput 或异步拷贝包装。",
+          "resume": "返回 Engine；Scheduler 按接受长度更新计算进度。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2950,
+              "label": "实际实现",
+              "end": 3055
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "draft",
+                "step": 7,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            },
+            {
+              "label": "打开串行 / 并行验证对照",
+              "action": {
+                "page": "comparison.html",
+                "mode": "comparison",
+                "step": 5,
+                "scenario": "middle"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "medusa",
+      "title": "Medusa · 并行预测头",
+      "scope": "MRV1、greedy 验证、K=3 教学流程；候选具体词为教学值。初始化与每轮调用分开，target 验证属于下一调度轮。",
+      "entry": "select",
+      "repositories": {
+        "ascend": {
+          "url": "https://github.com/vllm-project/vllm-ascend",
+          "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875",
+          "label": "vLLM-Ascend"
+        },
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
+        }
+      },
+      "nodes": [
+        {
+          "id": "select",
+          "parent": null,
+          "number": "P1",
+          "kind": "分支",
+          "title": "get_spec_decode_method() [初始化一次]",
+          "summary": "配置决定 proposer 类型，不是每轮都加载草稿。",
+          "input": "SpeculativeConfig.method 与模型配置。",
+          "changes": "EAGLE/EAGLE3/普通 MTP 选 AscendEagleProposer；其他方法选各自 proposer。",
+          "output": "已加载的 drafter 对象。",
+          "resume": "后续 Runner.propose_draft_token_ids 调用该对象。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/__init__.py",
+              "line": 41,
+              "label": "实际实现",
+              "end": 70
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "medusa",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "runner",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "NPUModelRunner.propose_draft_token_ids()",
+          "summary": "上轮 target 采样/验证后开始准备下一轮候选。",
+          "input": "有效 sampled IDs、positions、target hidden、metadata。",
+          "changes": "按 self.drafter 实际类型选提议路径；清空旧 draft_probs。",
+          "output": "本轮候选 IDs。",
+          "resume": "返回 sample_tokens 保存，随后调度下一轮 target 验证。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 1983,
+              "label": "实际实现",
+              "end": 2013
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "medusa",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "propose",
+          "parent": "runner",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "AscendMedusaProposer.propose()",
+          "summary": "按有效输出数选择最后已确认位置的 target hidden。",
+          "input": "sample_hidden_states 与每请求输出长度。",
+          "changes": "indices=offsets+num_accepted_tokens−1。",
+          "output": "每请求一行 hidden。",
+          "resume": "调用上游 MedusaProposer.propose。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/medusa_proposer.py",
+              "line": 46,
+              "label": "实际实现",
+              "end": 72
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "medusa",
+                "step": 2,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "base",
+          "parent": "propose",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "MedusaProposer.propose()",
+          "summary": "同一 target hidden 进入多个预测头。",
+          "input": "target_hidden_states[B,H]。",
+          "changes": "model(hidden) → model.compute_logits(blocks)。",
+          "output": "每个头的 logits。",
+          "resume": "逐头 argmax 后 stack。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/spec_decode/medusa.py",
+              "line": 38,
+              "label": "实际实现",
+              "end": 56
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "medusa",
+                "step": 3,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "heads",
+          "parent": "base",
+          "number": "1.1.1.1",
+          "kind": "调用",
+          "title": "Medusa.forward() → Medusa.compute_logits()",
+          "summary": "各 residual block/head 读取同一输入行。",
+          "input": "同一 target hidden。",
+          "changes": "各头独立计算本位置词表 logits。",
+          "output": "按未来位置排列的 logits 列表。",
+          "resume": "返回 MedusaProposer。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/medusa.py",
+              "line": 107,
+              "label": "实际实现",
+              "end": 108
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/models/medusa.py",
+              "line": 110,
+              "label": "实际实现",
+              "end": 139
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "medusa",
+                "step": 3,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "out",
+          "parent": "base",
+          "number": "1.1.1.2",
+          "kind": "动作",
+          "title": "torch.stack([logit.argmax(...)], dim=1)",
+          "summary": "各头独立 greedy 选择，未进行串行反馈。",
+          "input": "多个头的 logits。",
+          "changes": "argmax 并拼为 [B,num_heads]。",
+          "output": "草稿 IDs。",
+          "resume": "返回 AscendMedusaProposer，再返回 Runner。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/spec_decode/medusa.py",
+              "line": 52,
+              "label": "实际实现",
+              "end": 56
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "medusa",
+                "step": 3,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "target",
+          "parent": null,
+          "number": "2",
+          "kind": "边界",
+          "title": "NPUModelRunner.execute_model() [下一轮 target]",
+          "summary": "调度器把草稿加入 target 本轮输入，跨轮交给 Runner。",
+          "input": "SchedulerOutput 的已确认 anchor 与候选序列；target KV。",
+          "changes": "准备 target metadata，调用 _model_forward；选择 logits rows。",
+          "output": "target hidden/logits 与 execute_model_state。",
+          "resume": "Worker 随后调用 sample_tokens；proposer 不直接调用 target forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2669,
+              "label": "实际实现",
+              "end": 2740
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "medusa",
+                "step": 4,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "sample",
+          "parent": null,
+          "number": "3",
+          "kind": "调用",
+          "title": "NPUModelRunner.sample_tokens() → _sample()",
+          "summary": "消费 target forward 保存的输出状态。",
+          "input": "target logits、SpecDecodeMetadata、可选 draft_probs。",
+          "changes": "_sample 在存在 spec metadata 时调用 rejection_sampler。",
+          "output": "SamplerOutput。",
+          "resume": "回到 sample_tokens 的 bookkeeping 与下轮提议。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2849,
+              "label": "实际实现",
+              "end": 2907
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3058,
+              "label": "实际实现",
+              "end": 3079
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "medusa",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "verify",
+          "parent": "sample",
+          "number": "3.1",
+          "kind": "调用",
+          "title": "AscendRejectionSampler.forward()",
+          "summary": "对齐候选、target logits 与 bonus 位置。",
+          "input": "draft IDs、num_draft_tokens、target/bonus logits indices。",
+          "changes": "选 bonus token、处理 target logits，调用 rejection_sample。",
+          "output": "有效接受前缀 + correction / bonus，其他槽位是占位。",
+          "resume": "返回 _sample，再回 sample_tokens。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 146,
+              "label": "实际实现",
+              "end": 254
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "medusa",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            },
+            {
+              "label": "打开串行 / 并行验证对照",
+              "action": {
+                "page": "comparison.html",
+                "mode": "comparison",
+                "step": 4,
+                "scenario": "middle"
+              }
+            }
+          ]
+        },
+        {
+          "id": "commit",
+          "parent": "sample",
+          "number": "3.2",
+          "kind": "返回",
+          "title": "sample_tokens 的 bookkeeping / ModelRunnerOutput",
+          "summary": "只有有效输出追加到请求状态。",
+          "input": "SamplerOutput、有效长度、原请求 IDs。",
+          "changes": "更新本地历史与输出对象，保留下一轮 drafter 输入。",
+          "output": "ModelRunnerOutput 或异步拷贝包装。",
+          "resume": "返回 Engine；Scheduler 按接受长度更新计算进度。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2950,
+              "label": "实际实现",
+              "end": 3055
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "medusa",
+                "step": 6,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            },
+            {
+              "label": "打开串行 / 并行验证对照",
+              "action": {
+                "page": "comparison.html",
+                "mode": "comparison",
+                "step": 5,
+                "scenario": "middle"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ngram",
+      "title": "n-gram · CPU 历史查找",
+      "scope": "MRV1、greedy 验证、K=3 教学流程；候选具体词为教学值。初始化与每轮调用分开，target 验证属于下一调度轮。",
+      "entry": "select",
+      "repositories": {
+        "ascend": {
+          "url": "https://github.com/vllm-project/vllm-ascend",
+          "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875",
+          "label": "vLLM-Ascend"
+        },
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
+        }
+      },
+      "nodes": [
+        {
+          "id": "select",
+          "parent": null,
+          "number": "P1",
+          "kind": "分支",
+          "title": "get_spec_decode_method() [初始化一次]",
+          "summary": "配置决定 proposer 类型，不是每轮都加载草稿。",
+          "input": "SpeculativeConfig.method 与模型配置。",
+          "changes": "EAGLE/EAGLE3/普通 MTP 选 AscendEagleProposer；其他方法选各自 proposer。",
+          "output": "已加载的 drafter 对象。",
+          "resume": "后续 Runner.propose_draft_token_ids 调用该对象。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/__init__.py",
+              "line": 41,
+              "label": "实际实现",
+              "end": 70
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "ngram",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "runner",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "NPUModelRunner.propose_draft_token_ids()",
+          "summary": "上轮 target 采样/验证后开始准备下一轮候选。",
+          "input": "有效 sampled IDs、positions、target hidden、metadata。",
+          "changes": "按 self.drafter 实际类型选提议路径；清空旧 draft_probs。",
+          "output": "本轮候选 IDs。",
+          "resume": "返回 sample_tokens 保存，随后调度下一轮 target 验证。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 1983,
+              "label": "实际实现",
+              "end": 2013
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "ngram",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "propose",
+          "parent": "runner",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "AscendNgramProposer.propose()",
+          "summary": "过滤无有效输出或达到最大长度的请求。",
+          "input": "CPU token_ids_cpu、num_tokens_no_spec、K。",
+          "changes": "构造 valid_ngram_requests。",
+          "output": "请求索引列表与有效历史。",
+          "resume": "调用继承的 batch_propose。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/spec_decode/ngram_proposer.py",
+              "line": 29,
+              "label": "实际实现",
+              "end": 60
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "ngram",
+                "step": 1,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "batch",
+          "parent": "propose",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "NgramProposer.batch_propose()",
+          "summary": "批量调用 numba 查找。",
+          "input": "各请求 CPU 历史、有效长度、min_n/max_n。",
+          "changes": "batch_propose_numba；按实际候选长度转回 list。",
+          "output": "每请求候选或空列表。",
+          "resume": "返回 Ascend proposer。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/spec_decode/ngram_proposer.py",
+              "line": 64,
+              "label": "实际实现",
+              "end": 136
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "ngram",
+                "step": 2,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "numba",
+          "parent": "batch",
+          "number": "1.1.1.1",
+          "kind": "调用",
+          "title": "batch_propose_numba()",
+          "summary": "只读取每请求有效历史，不跨请求搜索。",
+          "input": "token_ids_cpu[idx,:num_tokens]。",
+          "changes": "调用最长后缀匹配函数。",
+          "output": "匹配后的候选 slice。",
+          "resume": "写入 valid_ngram_draft / counts。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/spec_decode/ngram_proposer.py",
+              "line": 181,
+              "label": "实际实现",
+              "end": 206
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "ngram",
+                "step": 2,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "match",
+          "parent": "numba",
+          "number": "1.1.1.1.1",
+          "kind": "调用",
+          "title": "_find_longest_matched_ngram_and_propose_tokens()",
+          "summary": "匹配历史后缀并复制其后的 token。",
+          "input": "origin_tokens、min/max n、K。",
+          "changes": "寻找可用匹配；限制 K 不超长度；无匹配返回空。",
+          "output": "最多 K 个历史 token ID。",
+          "resume": "返回 numba，再返回 Runner；不用草稿模型/hidden。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/spec_decode/ngram_proposer.py",
+              "line": 210,
+              "label": "实际实现",
+              "end": 295
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "ngram",
+                "step": 3,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "target",
+          "parent": null,
+          "number": "2",
+          "kind": "边界",
+          "title": "NPUModelRunner.execute_model() [下一轮 target]",
+          "summary": "调度器把草稿加入 target 本轮输入，跨轮交给 Runner。",
+          "input": "SchedulerOutput 的已确认 anchor 与候选序列；target KV。",
+          "changes": "准备 target metadata，调用 _model_forward；选择 logits rows。",
+          "output": "target hidden/logits 与 execute_model_state。",
+          "resume": "Worker 随后调用 sample_tokens；proposer 不直接调用 target forward。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2669,
+              "label": "实际实现",
+              "end": 2740
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "ngram",
+                "step": 4,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "sample",
+          "parent": null,
+          "number": "3",
+          "kind": "调用",
+          "title": "NPUModelRunner.sample_tokens() → _sample()",
+          "summary": "消费 target forward 保存的输出状态。",
+          "input": "target logits、SpecDecodeMetadata、可选 draft_probs。",
+          "changes": "_sample 在存在 spec metadata 时调用 rejection_sampler。",
+          "output": "SamplerOutput。",
+          "resume": "回到 sample_tokens 的 bookkeeping 与下轮提议。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2849,
+              "label": "实际实现",
+              "end": 2907
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3058,
+              "label": "实际实现",
+              "end": 3079
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "ngram",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            }
+          ]
+        },
+        {
+          "id": "verify",
+          "parent": "sample",
+          "number": "3.1",
+          "kind": "调用",
+          "title": "AscendRejectionSampler.forward()",
+          "summary": "对齐候选、target logits 与 bonus 位置。",
+          "input": "draft IDs、num_draft_tokens、target/bonus logits indices。",
+          "changes": "选 bonus token、处理 target logits，调用 rejection_sample。",
+          "output": "有效接受前缀 + correction / bonus，其他槽位是占位。",
+          "resume": "返回 _sample，再回 sample_tokens。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/sample/rejection_sampler.py",
+              "line": 146,
+              "label": "实际实现",
+              "end": 254
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "ngram",
+                "step": 5,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            },
+            {
+              "label": "打开串行 / 并行验证对照",
+              "action": {
+                "page": "comparison.html",
+                "mode": "comparison",
+                "step": 4,
+                "scenario": "middle"
+              }
+            }
+          ]
+        },
+        {
+          "id": "commit",
+          "parent": "sample",
+          "number": "3.2",
+          "kind": "返回",
+          "title": "sample_tokens 的 bookkeeping / ModelRunnerOutput",
+          "summary": "只有有效输出追加到请求状态。",
+          "input": "SamplerOutput、有效长度、原请求 IDs。",
+          "changes": "更新本地历史与输出对象，保留下一轮 drafter 输入。",
+          "output": "ModelRunnerOutput 或异步拷贝包装。",
+          "resume": "返回 Engine；Scheduler 按接受长度更新计算进度。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2950,
+              "label": "实际实现",
+              "end": 3055
+            }
+          ],
+          "targets": [
+            {
+              "label": "查看对应流程",
+              "action": {
+                "mode": "ngram",
+                "step": 6,
+                "scenario": "middle",
+                "page": "index.html"
+              }
+            },
+            {
+              "label": "打开串行 / 并行验证对照",
+              "action": {
+                "page": "comparison.html",
+                "mode": "comparison",
+                "step": 5,
+                "scenario": "middle"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1547 @@
+{
+  "title": "PagedAttention：块分配、写槽与注意力读取",
+  "defaultVariant": "decode",
+  "variants": [
+    {
+      "id": "decode",
+      "title": "跨页 Decode · PA 捕获依赖",
+      "scope": "单卡 Ascend MRV1，A2 支持 PA，头维度 128，无滑窗/投机；配置 FULL_DECODE_ONLY 且 pa_shape_list 含 1。Attention 子树展开进入 Python forward/图捕获时的真实依赖；稳定形状的后续 replay 不重复 Python 子调用。 只跟踪一层；启动阶段已分配并绑定物理 KV。多个根连接调度、执行器、Worker 和模型内 Attention 的边界，不表示跨进程同步直接调用。块号是教学取值。",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
+        },
+        "ascend": {
+          "url": "https://github.com/vllm-project/vllm-ascend",
+          "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875",
+          "label": "vLLM-Ascend"
+        }
+      },
+      "nodes": [
+        {
+          "id": "schedule",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "Scheduler.schedule()",
+          "summary": "按本轮位置需求取得逻辑块并打包 SchedulerOutput。",
+          "input": "R 的已知 token、计算起点；原块 #7 已装满 128 个位置。",
+          "changes": "成功分配后登记块表和配额；构造输出时仍保留本轮原起点。",
+          "output": "本例块表 [7,3]，起点 128、配额 1。",
+          "resume": "EngineCore 获得计划后才提交执行；调度字段不是设备 KV。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 764,
+              "end": 775,
+              "label": "RUNNING 分配"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1244,
+              "end": 1264,
+              "label": "WAITING 分配"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1500,
+              "end": 1509,
+              "label": "打包"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到跨页 Decode第 1 步",
+              "action": {
+                "mode": "decode",
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "allocate",
+          "parent": "schedule",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "KVCacheManager.allocate_slots()",
+          "summary": "通过协调器与 BlockPool 分配所缺设备块的逻辑 ID。",
+          "input": "R 的已有块链和本轮需要的总位置。",
+          "changes": "容量足够后 coordinator.allocate_new_blocks() 为各组向块池申请块；仅更新引用/块链。",
+          "output": "本例新块 #3；物理 K/V 张量已在启动阶段预分配。",
+          "resume": "返回 schedule()，成功才扣预算并登记本轮计划。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 767,
+              "end": 771,
+              "label": "续算调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1245,
+              "end": 1262,
+              "label": "首次调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 576,
+              "end": 618,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 311,
+              "end": 320,
+              "label": "协调器转发"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 372,
+              "end": 411,
+              "label": "块池调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/block_pool.py",
+              "line": 666,
+              "end": 700,
+              "label": "块 ID 来源"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到跨页 Decode第 1 步",
+              "action": {
+                "mode": "decode",
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "dispatch",
+          "parent": null,
+          "number": "2",
+          "kind": "提交",
+          "title": "EngineCore.step() → Executor.execute_model()",
+          "summary": "计划越过执行器边界，交给 Worker。",
+          "input": "SchedulerOutput：请求、配额、块 ID、原计算起点。",
+          "changes": "以 non_block=True 提交；具体 RPC/执行器实现不在本页展开。",
+          "output": "future；不表示模型已执行完成。",
+          "resume": "EngineCore 后续 future.result() 等待结果；Worker 的入口另列为第 3 根。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 654,
+              "end": 673,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到跨页 Decode第 2 步",
+              "action": {
+                "mode": "decode",
+                "step": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "runner",
+          "parent": null,
+          "number": "3",
+          "kind": "调用",
+          "title": "NPUModelRunner.execute_model()",
+          "summary": "Worker 消费计划，准备索引和元数据后执行模型。",
+          "input": "SchedulerOutput 与本 Worker 的请求缓存、输入批次、常驻 KV。",
+          "changes": "先更新持久 batch，再准备本轮输入、注意力元数据与 forward context。",
+          "output": "模型 hidden_states，后续由 logits/采样路径形成 ModelRunnerOutput。",
+          "resume": "返回 Worker/Executor；EngineCore 等待后将结果回交 Scheduler。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2314,
+              "end": 2327,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2393,
+              "end": 2396,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2681,
+              "end": 2693,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到跨页 Decode第 2 步",
+              "action": {
+                "mode": "decode",
+                "step": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "states",
+          "parent": "runner",
+          "number": "3.1",
+          "kind": "调用",
+          "title": "NPUModelRunner._update_states() → GPUModelRunner._update_states()",
+          "summary": "将新增块号写入本 Worker 的请求行。",
+          "input": "本轮新增块 ID；已有 request state/input_batch。",
+          "changes": "Ascend 处理后转调基类；续算追加块号，恢复请求替换块号，再更新 block_table 行。",
+          "output": "R 的本地块表 [7,3]。",
+          "resume": "回到 execute_model()，_prepare_inputs() 使用这份本地表生成输入位置。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2393,
+              "end": 2396,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 968,
+              "end": 1005,
+              "label": "继承转调"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1440,
+              "end": 1473,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到跨页 Decode第 2 步",
+              "action": {
+                "mode": "decode",
+                "step": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "inputs",
+          "parent": "runner",
+          "number": "3.2",
+          "kind": "调用",
+          "title": "NPUModelRunner._prepare_inputs()",
+          "summary": "把本轮 token 及其位置整理为设备输入。",
+          "input": "请求原起点、num_scheduled_tokens、块表。",
+          "changes": "计算 positions、query_start_loc 等；调用 block_table.compute_slot_mapping()。",
+          "output": "本例 position=128，1 个新 token。",
+          "resume": "返回 execute_model()，随后构造注意力元数据。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2442,
+              "end": 2449,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 1353,
+              "end": 1368,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 1694,
+              "end": 1700,
+              "label": "写槽计算调用"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到跨页 Decode第 3 步",
+              "action": {
+                "mode": "decode",
+                "step": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "slots",
+          "parent": "inputs",
+          "number": "3.2.1",
+          "kind": "调用",
+          "title": "MultiGroupBlockTable.compute_slot_mapping()",
+          "summary": "将逻辑位置映射到真实写入槽。",
+          "input": "positions；R 的 block_table；block_size=128。",
+          "changes": "逐组调用 BlockTable，再运行 slot mapping kernel：block_number×128+offset。",
+          "output": "本例 slot=3×128+0=384。",
+          "resume": "返回 _prepare_inputs()；scatter 消费 slot_mapping，attention 读缓存另用 block_table。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 1696,
+              "end": 1700,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/block_table.py",
+              "line": 498,
+              "end": 532,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/block_table.py",
+              "line": 160,
+              "end": 203,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/triton/compute_slot_mapping.py",
+              "line": 80,
+              "end": 90,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到跨页 Decode第 3 步",
+              "action": {
+                "mode": "decode",
+                "step": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "metadata",
+          "parent": "runner",
+          "number": "3.3",
+          "kind": "调用",
+          "title": "NPUModelRunner._build_attention_metadata()",
+          "summary": "按各注意力层准备本轮控制信息。",
+          "input": "本轮长度、block tables、slot mapping、运行模式。",
+          "changes": "组织各层 metadata；标明 DecodeOnly 与 seq_len=129。",
+          "output": "与 layer_name 对应的 attn_metadata；不是从 Scheduler 传来的 K/V tensor。",
+          "resume": "execute_model() 在 set_ascend_forward_context 中发布元数据，随后调用 _model_forward()。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2580,
+              "end": 2593,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3527,
+              "end": 3546,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2639,
+              "end": 2655,
+              "label": "上下文发布"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 326,
+              "end": 357,
+              "label": "后端 builder"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到跨页 Decode第 4 步",
+              "action": {
+                "mode": "decode",
+                "step": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "model",
+          "parent": "runner",
+          "number": "3.4",
+          "kind": "边界",
+          "title": "NPUModelRunner._model_forward() → model(...)",
+          "summary": "模型投影产生 Q/K/V，并调用各层 Attention。",
+          "input": "token IDs、positions、已发布的 forward context。",
+          "changes": "模型执行 embedding、decoder 等；本页只跟入某一层 Attention。",
+          "output": "该层的 Q、K、V，及最终返回 Runner 的 hidden_states。",
+          "resume": "下列第 4 根是模型内部 Attention 边界的展开；图回放时直接重放已捕获依赖，不重复 Python 层体。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2681,
+              "end": 2683,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3277,
+              "end": 3299,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3327,
+              "end": 3345,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到跨页 Decode第 5 步",
+              "action": {
+                "mode": "decode",
+                "step": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "attention",
+          "parent": null,
+          "number": "4",
+          "kind": "调用",
+          "title": "Attention.forward()",
+          "summary": "把本层 Q/K/V 交给已选中的 Ascend 后端。",
+          "input": "Q [tokens,heads,head_dim]；K/V [tokens,kv_heads,head_dim]；layer_name。",
+          "changes": "准备 output buffer，整理维度；通过 direct call 或注册 custom op 进入 unified_attention_with_output。",
+          "output": "原地写出的 attention output，最终展平成 hidden 维度。",
+          "resume": "返回模型调用方；模型再做输出投影/残差等处理。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 488,
+              "end": 501,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 523,
+              "end": 579,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 85,
+              "end": 90,
+              "label": "实际后端类"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到跨页 Decode第 5 步",
+              "action": {
+                "mode": "decode",
+                "step": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "context",
+          "parent": "attention",
+          "number": "4.1",
+          "kind": "调用",
+          "title": "unified_attention_with_output() → get_attention_context()",
+          "summary": "按 layer_name 取本轮元数据与常驻缓存引用。",
+          "input": "Q/K/V 和 output；forward context 中的层名。",
+          "changes": "从 no_compile_layers 定位层，从 attn_metadata 定位 metadata，读取 layer.kv_cache。",
+          "output": "attn_layer.impl.forward() 收到 Q/K/V、缓存引用、metadata、output。",
+          "resume": "调用 AscendAttentionBackendImpl.forward()；完成后返回统一包装器。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 551,
+              "end": 578,
+              "label": "入口调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 703,
+              "end": 721,
+              "label": "上下文读取"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 765,
+              "end": 801,
+              "label": "后端调用与注册"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到跨页 Decode第 4 步",
+              "action": {
+                "mode": "decode",
+                "step": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "backend",
+          "parent": "context",
+          "number": "4.1.1",
+          "kind": "调用",
+          "title": "AscendAttentionBackendImpl.forward()",
+          "summary": "先写入当前 K/V，再执行本层 attention。",
+          "input": "本轮 Q/K/V、常驻 key_cache/value_cache、metadata。",
+          "changes": "绑定缓存引用；有 K/V 时 reshape_and_cache()；之后 forward_impl() 选择读缓存方式。",
+          "output": "本层 output buffer。",
+          "resume": "返回 unified_attention_with_output()，再返回 Attention.forward()。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 782,
+              "end": 794,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 1304,
+              "end": 1372,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到跨页 Decode第 6 步",
+              "action": {
+                "mode": "decode",
+                "step": 6
+              }
+            }
+          ]
+        },
+        {
+          "id": "scatter",
+          "parent": "backend",
+          "number": "4.1.1.1",
+          "kind": "调用",
+          "title": "AscendAttentionBackendImpl.reshape_and_cache()",
+          "summary": "scatter 只把本轮新 K/V 写入指定槽。",
+          "input": "K/V 当前 token 与 slot_mapping；本例槽 384。",
+          "changes": "DeviceOperator.reshape_and_cache 按 slot 写入本层缓存；Q 不写入 KV cache。",
+          "output": "本层常驻 KV 包含本轮新位置；逻辑块表不因 scatter 改变。",
+          "resume": "返回 backend.forward()，然后调用 forward_impl()；不能把写完误画成输出 O 已产生。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 1352,
+              "end": 1361,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 1203,
+              "end": 1237,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到跨页 Decode第 6 步",
+              "action": {
+                "mode": "decode",
+                "step": 6
+              }
+            }
+          ]
+        },
+        {
+          "id": "choose",
+          "parent": "backend",
+          "number": "4.1.1.2",
+          "kind": "分支",
+          "title": "AscendAttentionBackendImpl.forward_impl()",
+          "summary": "根据 attention 状态与后端条件选择 PA 或 FIA。",
+          "input": "Q、K/V、缓存、metadata、output。",
+          "changes": "DecodeOnly 且无滑窗并满足 using_paged_attention() 才走 PA；其余走 FIA。",
+          "output": "本分支为 专用 PA。",
+          "resume": "选中子调用完成后，forward_impl() 返回 output。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 1367,
+              "end": 1370,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 1281,
+              "end": 1302,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/utils.py",
+              "line": 194,
+              "end": 212,
+              "label": "PA 选路条件"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到跨页 Decode第 7 步",
+              "action": {
+                "mode": "decode",
+                "step": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "kernel",
+          "parent": "choose",
+          "number": "4.1.1.2.1",
+          "kind": "边界",
+          "title": "AscendAttentionBackendImpl.forward_paged_attention()",
+          "summary": "把 Q 与正确的 K/V 来源送入设备算子。",
+          "input": "Q；缓存 K/V；block_table=[7,3]；context_lens=129。",
+          "changes": " PA 按块表和有效长度读取第 0…128 位；捕获时进入 full_graph_pa，非捕获时直接提交 _npu_paged_attention。",
+          "output": "本例 1 个查询位置 的 attention output；算子内部不展开。",
+          "resume": "output 经 backend.forward() → unified wrapper → Attention.forward() 交回模型。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 1293,
+              "end": 1300,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 1135,
+              "end": 1154,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 818,
+              "end": 853,
+              "label": "捕获分支"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到跨页 Decode第 7 步",
+              "action": {
+                "mode": "decode",
+                "step": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "result",
+          "parent": null,
+          "number": "5",
+          "kind": "返回",
+          "title": "EngineCore.step() → Scheduler.update_from_output()",
+          "summary": "模型结果沿执行器返回，调度器消费本轮回报。",
+          "input": "future 返回值；必要时 sample_tokens() 生成 token；同一份 SchedulerOutput。",
+          "changes": "update_from_output() 扣回本轮在途 token，并按输出更新请求。",
+          "output": "下一轮的请求状态；已写好的 KV 留在本卡常驻缓存。",
+          "resume": "下一轮 schedule() 从新的逻辑进度继续；图第 8 步只展示本层输出消费者，不展开采样数值。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 661,
+              "end": 673,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2076,
+              "end": 2082,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到跨页 Decode第 8 步",
+              "action": {
+                "mode": "decode",
+                "step": 8
+              }
+            }
+          ]
+        },
+        {
+          "id": "release",
+          "parent": null,
+          "number": "6",
+          "kind": "返回",
+          "title": "请求结束 → KVCacheManager.free()",
+          "summary": "生命周期出口：释放块引用，复用物理缓存空间。",
+          "input": "请求结束状态；R 的已分配块链。",
+          "changes": "调度器释放请求块；引用归零的块可被后续请求重新分配。",
+          "output": "块 ID 重新可用；每层 KV tensor 的预分配存储仍存在。",
+          "resume": "后续请求可复用这些设备槽。此释放是后续生命周期，图中无单独快照。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2223,
+              "end": 2229,
+              "label": "结束处理"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 620,
+              "end": 633,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/block_pool.py",
+              "line": 774,
+              "end": 795,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到跨页 Decode第 8 步",
+              "action": {
+                "mode": "decode",
+                "step": 8
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "prefill",
+      "title": "首次 Prefill · FIA",
+      "scope": "单卡 Ascend MRV1，普通 decoder full attention、NHD；首次 128-token Prefill，无前缀命中，不走 FULL Decode 回放。 只跟踪一层；启动阶段已分配并绑定物理 KV。多个根连接调度、执行器、Worker 和模型内 Attention 的边界，不表示跨进程同步直接调用。块号是教学取值。",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
+        },
+        "ascend": {
+          "url": "https://github.com/vllm-project/vllm-ascend",
+          "commit": "94e3e25f836d79b5ee5c1aed257999ee61d10875",
+          "label": "vLLM-Ascend"
+        }
+      },
+      "nodes": [
+        {
+          "id": "schedule",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "Scheduler.schedule()",
+          "summary": "按本轮位置需求取得逻辑块并打包 SchedulerOutput。",
+          "input": "R 的已知 token、计算起点；首次输入 128 个 token，尚无请求块。",
+          "changes": "成功分配后登记块表和配额；构造输出时仍保留本轮原起点。",
+          "output": "本例块表 [7]，起点 0、配额 128。",
+          "resume": "EngineCore 获得计划后才提交执行；调度字段不是设备 KV。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 764,
+              "end": 775,
+              "label": "RUNNING 分配"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1244,
+              "end": 1264,
+              "label": "WAITING 分配"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1500,
+              "end": 1509,
+              "label": "打包"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到首次 Prefill第 1 步",
+              "action": {
+                "mode": "prefill",
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "allocate",
+          "parent": "schedule",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "KVCacheManager.allocate_slots()",
+          "summary": "通过协调器与 BlockPool 分配所缺设备块的逻辑 ID。",
+          "input": "R 的已有块链和本轮需要的总位置。",
+          "changes": "容量足够后 coordinator.allocate_new_blocks() 为各组向块池申请块；仅更新引用/块链。",
+          "output": "本例新块 #7；物理 K/V 张量已在启动阶段预分配。",
+          "resume": "返回 schedule()，成功才扣预算并登记本轮计划。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 767,
+              "end": 771,
+              "label": "续算调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1245,
+              "end": 1262,
+              "label": "首次调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 576,
+              "end": 618,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 311,
+              "end": 320,
+              "label": "协调器转发"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 372,
+              "end": 411,
+              "label": "块池调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/block_pool.py",
+              "line": 666,
+              "end": 700,
+              "label": "块 ID 来源"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到首次 Prefill第 1 步",
+              "action": {
+                "mode": "prefill",
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "dispatch",
+          "parent": null,
+          "number": "2",
+          "kind": "提交",
+          "title": "EngineCore.step() → Executor.execute_model()",
+          "summary": "计划越过执行器边界，交给 Worker。",
+          "input": "SchedulerOutput：请求、配额、块 ID、原计算起点。",
+          "changes": "以 non_block=True 提交；具体 RPC/执行器实现不在本页展开。",
+          "output": "future；不表示模型已执行完成。",
+          "resume": "EngineCore 后续 future.result() 等待结果；Worker 的入口另列为第 3 根。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 654,
+              "end": 673,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到首次 Prefill第 2 步",
+              "action": {
+                "mode": "prefill",
+                "step": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "runner",
+          "parent": null,
+          "number": "3",
+          "kind": "调用",
+          "title": "NPUModelRunner.execute_model()",
+          "summary": "Worker 消费计划，准备索引和元数据后执行模型。",
+          "input": "SchedulerOutput 与本 Worker 的请求缓存、输入批次、常驻 KV。",
+          "changes": "先更新持久 batch，再准备本轮输入、注意力元数据与 forward context。",
+          "output": "模型 hidden_states，后续由 logits/采样路径形成 ModelRunnerOutput。",
+          "resume": "返回 Worker/Executor；EngineCore 等待后将结果回交 Scheduler。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2314,
+              "end": 2327,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2393,
+              "end": 2396,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2681,
+              "end": 2693,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到首次 Prefill第 2 步",
+              "action": {
+                "mode": "prefill",
+                "step": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "states",
+          "parent": "runner",
+          "number": "3.1",
+          "kind": "调用",
+          "title": "NPUModelRunner._update_states() → GPUModelRunner._update_states()",
+          "summary": "将新增块号写入本 Worker 的请求行。",
+          "input": "本轮新增块 ID；已有 request state/input_batch。",
+          "changes": "Ascend 处理后转调基类；续算追加块号，恢复请求替换块号，再更新 block_table 行。",
+          "output": "R 的本地块表 [7]。",
+          "resume": "回到 execute_model()，_prepare_inputs() 使用这份本地表生成输入位置。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2393,
+              "end": 2396,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 968,
+              "end": 1005,
+              "label": "继承转调"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1440,
+              "end": 1473,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到首次 Prefill第 2 步",
+              "action": {
+                "mode": "prefill",
+                "step": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "inputs",
+          "parent": "runner",
+          "number": "3.2",
+          "kind": "调用",
+          "title": "NPUModelRunner._prepare_inputs()",
+          "summary": "把本轮 token 及其位置整理为设备输入。",
+          "input": "请求原起点、num_scheduled_tokens、块表。",
+          "changes": "计算 positions、query_start_loc 等；调用 block_table.compute_slot_mapping()。",
+          "output": "本例 positions=0…127，128 个新 token。",
+          "resume": "返回 execute_model()，随后构造注意力元数据。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2442,
+              "end": 2449,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 1353,
+              "end": 1368,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 1694,
+              "end": 1700,
+              "label": "写槽计算调用"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到首次 Prefill第 3 步",
+              "action": {
+                "mode": "prefill",
+                "step": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "slots",
+          "parent": "inputs",
+          "number": "3.2.1",
+          "kind": "调用",
+          "title": "MultiGroupBlockTable.compute_slot_mapping()",
+          "summary": "将逻辑位置映射到真实写入槽。",
+          "input": "positions；R 的 block_table；block_size=128。",
+          "changes": "逐组调用 BlockTable，再运行 slot mapping kernel：block_number×128+offset。",
+          "output": "本例 slots=7×128+[0…127]。",
+          "resume": "返回 _prepare_inputs()；scatter 消费 slot_mapping，attention 读缓存另用 block_table。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 1696,
+              "end": 1700,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/block_table.py",
+              "line": 498,
+              "end": 532,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/block_table.py",
+              "line": 160,
+              "end": 203,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/ops/triton/compute_slot_mapping.py",
+              "line": 80,
+              "end": 90,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到首次 Prefill第 3 步",
+              "action": {
+                "mode": "prefill",
+                "step": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "metadata",
+          "parent": "runner",
+          "number": "3.3",
+          "kind": "调用",
+          "title": "NPUModelRunner._build_attention_metadata()",
+          "summary": "按各注意力层准备本轮控制信息。",
+          "input": "本轮长度、block tables、slot mapping、运行模式。",
+          "changes": "组织各层 metadata；本例无缓存命中，选 PrefillNoCache，query 长 128。",
+          "output": "与 layer_name 对应的 attn_metadata；不是从 Scheduler 传来的 K/V tensor。",
+          "resume": "execute_model() 在 set_ascend_forward_context 中发布元数据，随后调用 _model_forward()。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2580,
+              "end": 2593,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3527,
+              "end": 3546,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2639,
+              "end": 2655,
+              "label": "上下文发布"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 326,
+              "end": 357,
+              "label": "后端 builder"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到首次 Prefill第 4 步",
+              "action": {
+                "mode": "prefill",
+                "step": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "model",
+          "parent": "runner",
+          "number": "3.4",
+          "kind": "边界",
+          "title": "NPUModelRunner._model_forward() → model(...)",
+          "summary": "模型投影产生 Q/K/V，并调用各层 Attention。",
+          "input": "token IDs、positions、已发布的 forward context。",
+          "changes": "模型执行 embedding、decoder 等；本页只跟入某一层 Attention。",
+          "output": "该层的 Q、K、V，及最终返回 Runner 的 hidden_states。",
+          "resume": "下列第 4 根是模型内部 Attention 边界的展开；图回放时直接重放已捕获依赖，不重复 Python 层体。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 2681,
+              "end": 2683,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3277,
+              "end": 3299,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/worker/model_runner_v1.py",
+              "line": 3327,
+              "end": 3345,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到首次 Prefill第 5 步",
+              "action": {
+                "mode": "prefill",
+                "step": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "attention",
+          "parent": null,
+          "number": "4",
+          "kind": "调用",
+          "title": "Attention.forward()",
+          "summary": "把本层 Q/K/V 交给已选中的 Ascend 后端。",
+          "input": "Q [tokens,heads,head_dim]；K/V [tokens,kv_heads,head_dim]；layer_name。",
+          "changes": "准备 output buffer，整理维度；通过 direct call 或注册 custom op 进入 unified_attention_with_output。",
+          "output": "原地写出的 attention output，最终展平成 hidden 维度。",
+          "resume": "返回模型调用方；模型再做输出投影/残差等处理。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 488,
+              "end": 501,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 523,
+              "end": 579,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 85,
+              "end": 90,
+              "label": "实际后端类"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到首次 Prefill第 5 步",
+              "action": {
+                "mode": "prefill",
+                "step": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "context",
+          "parent": "attention",
+          "number": "4.1",
+          "kind": "调用",
+          "title": "unified_attention_with_output() → get_attention_context()",
+          "summary": "按 layer_name 取本轮元数据与常驻缓存引用。",
+          "input": "Q/K/V 和 output；forward context 中的层名。",
+          "changes": "从 no_compile_layers 定位层，从 attn_metadata 定位 metadata，读取 layer.kv_cache。",
+          "output": "attn_layer.impl.forward() 收到 Q/K/V、缓存引用、metadata、output。",
+          "resume": "调用 AscendAttentionBackendImpl.forward()；完成后返回统一包装器。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 551,
+              "end": 578,
+              "label": "入口调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 703,
+              "end": 721,
+              "label": "上下文读取"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 765,
+              "end": 801,
+              "label": "后端调用与注册"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到首次 Prefill第 4 步",
+              "action": {
+                "mode": "prefill",
+                "step": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "backend",
+          "parent": "context",
+          "number": "4.1.1",
+          "kind": "调用",
+          "title": "AscendAttentionBackendImpl.forward()",
+          "summary": "先写入当前 K/V，再执行本层 attention。",
+          "input": "本轮 Q/K/V、常驻 key_cache/value_cache、metadata。",
+          "changes": "绑定缓存引用；有 K/V 时 reshape_and_cache()；之后 forward_impl() 选择读缓存方式。",
+          "output": "本层 output buffer。",
+          "resume": "返回 unified_attention_with_output()，再返回 Attention.forward()。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/model_executor/layers/attention/attention.py",
+              "line": 782,
+              "end": 794,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 1304,
+              "end": 1372,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到首次 Prefill第 6 步",
+              "action": {
+                "mode": "prefill",
+                "step": 6
+              }
+            }
+          ]
+        },
+        {
+          "id": "scatter",
+          "parent": "backend",
+          "number": "4.1.1.1",
+          "kind": "调用",
+          "title": "AscendAttentionBackendImpl.reshape_and_cache()",
+          "summary": "scatter 只把本轮新 K/V 写入指定槽。",
+          "input": "K/V 当前 token 与 slot_mapping；本例槽 896…1023。",
+          "changes": "DeviceOperator.reshape_and_cache 按 slot 写入本层缓存；Q 不写入 KV cache。",
+          "output": "本层常驻 KV 包含本轮新位置；逻辑块表不因 scatter 改变。",
+          "resume": "返回 backend.forward()，然后调用 forward_impl()；不能把写完误画成输出 O 已产生。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 1352,
+              "end": 1361,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 1203,
+              "end": 1237,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到首次 Prefill第 6 步",
+              "action": {
+                "mode": "prefill",
+                "step": 6
+              }
+            }
+          ]
+        },
+        {
+          "id": "choose",
+          "parent": "backend",
+          "number": "4.1.1.2",
+          "kind": "分支",
+          "title": "AscendAttentionBackendImpl.forward_impl()",
+          "summary": "根据 attention 状态与后端条件选择 PA 或 FIA。",
+          "input": "Q、K/V、缓存、metadata、output。",
+          "changes": "DecodeOnly 且无滑窗并满足 using_paged_attention() 才走 PA；其余走 FIA。",
+          "output": "本分支为 首次 Prefill 的 FIA。",
+          "resume": "选中子调用完成后，forward_impl() 返回 output。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 1367,
+              "end": 1370,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 1281,
+              "end": 1302,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/utils.py",
+              "line": 194,
+              "end": 212,
+              "label": "PA 选路条件"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到首次 Prefill第 7 步",
+              "action": {
+                "mode": "prefill",
+                "step": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "kernel",
+          "parent": "choose",
+          "number": "4.1.1.2.1",
+          "kind": "边界",
+          "title": "AscendAttentionBackendImpl.forward_fused_infer_attention()",
+          "summary": "把 Q 与正确的 K/V 来源送入设备算子。",
+          "input": "Q 与本轮连续 K/V；actual_seq_lengths_q=128。",
+          "changes": " _get_fia_params() 对 PrefillNoCache 令 block_table=None，沿用当前 K/V；写缓存仍为后续 Decode 保留。",
+          "output": "本例 128 个查询位置 的 attention output；算子内部不展开。",
+          "resume": "output 经 backend.forward() → unified wrapper → Attention.forward() 交回模型。",
+          "evidence": [
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 1293,
+              "end": 1300,
+              "label": "调用位置"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 908,
+              "end": 931,
+              "label": "实际实现"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 886,
+              "end": 905,
+              "label": "FIA 参数来源"
+            },
+            {
+              "repo": "ascend",
+              "path": "vllm_ascend/attention/attention_v1.py",
+              "line": 1027,
+              "end": 1052,
+              "label": "普通 FIA 提交"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到首次 Prefill第 7 步",
+              "action": {
+                "mode": "prefill",
+                "step": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "result",
+          "parent": null,
+          "number": "5",
+          "kind": "返回",
+          "title": "EngineCore.step() → Scheduler.update_from_output()",
+          "summary": "模型结果沿执行器返回，调度器消费本轮回报。",
+          "input": "future 返回值；必要时 sample_tokens() 生成 token；同一份 SchedulerOutput。",
+          "changes": "update_from_output() 扣回本轮在途 token，并按输出更新请求。",
+          "output": "下一轮的请求状态；已写好的 KV 留在本卡常驻缓存。",
+          "resume": "下一轮 schedule() 从新的逻辑进度继续；图第 8 步只展示本层输出消费者，不展开采样数值。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 661,
+              "end": 673,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2076,
+              "end": 2082,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到首次 Prefill第 8 步",
+              "action": {
+                "mode": "prefill",
+                "step": 8
+              }
+            }
+          ]
+        },
+        {
+          "id": "release",
+          "parent": null,
+          "number": "6",
+          "kind": "返回",
+          "title": "请求结束 → KVCacheManager.free()",
+          "summary": "生命周期出口：释放块引用，复用物理缓存空间。",
+          "input": "请求结束状态；R 的已分配块链。",
+          "changes": "调度器释放请求块；引用归零的块可被后续请求重新分配。",
+          "output": "块 ID 重新可用；每层 KV tensor 的预分配存储仍存在。",
+          "resume": "后续请求可复用这些设备槽。此释放是后续生命周期，图中无单独快照。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2223,
+              "end": 2229,
+              "label": "结束处理"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 620,
+              "end": 633,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/block_pool.py",
+              "line": 774,
+              "end": 795,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到首次 Prefill第 8 步",
+              "action": {
+                "mode": "prefill",
+                "step": 8
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

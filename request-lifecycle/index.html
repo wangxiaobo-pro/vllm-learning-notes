@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-visualize-standalone>
+<html lang="zh-CN" data-visualize-standalone data-lesson-topic="request-lifecycle" data-lesson-palette="mcp">
 <head>
 <meta charset="utf-8">
 <!-- learning-scope-style:start -->
@@ -24,7 +24,74 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>vLLM 请求完整生命周期</title>
 <style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;max-width:736px;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
-
+<!-- lesson-theme:start -->
+<style>
+/* Scheduler palette. Inlined into each document by scripts/build_learning_ui.py. */
+:root {
+  color-scheme:light !important;
+  --lesson-bg:#f5f5ef; --lesson-panel:#fffefa; --lesson-ink:#192923;
+  --lesson-muted:#52655b; --lesson-line:#d5ddd2; --lesson-grid:#e4e8e0;
+  --lesson-green:#12634b; --lesson-mint:#e7f3e8; --lesson-amber:#8a4a18;
+  --lesson-sand:#fcf0dc; --lesson-shade:#f0f3eb;
+}
+@media(prefers-color-scheme:dark) {
+  :root:not([data-theme=light]) {
+    color-scheme:dark !important;
+    --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+    --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+    --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+    --lesson-sand:#473625; --lesson-shade:#212f27;
+  }
+}
+:root[data-theme=dark] {
+  color-scheme:dark !important;
+  --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+  --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+  --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+  --lesson-sand:#473625; --lesson-shade:#212f27;
+}
+:root {
+  --bg:var(--lesson-bg) !important; --background:var(--lesson-bg) !important;
+  --panel:var(--lesson-panel) !important; --surface:var(--lesson-panel) !important;
+  --card:var(--lesson-panel) !important; --popover:var(--lesson-panel) !important;
+  --ink:var(--lesson-ink) !important; --fg:var(--lesson-ink) !important;
+  --text:var(--lesson-ink) !important; --foreground:var(--lesson-ink) !important;
+  --card-foreground:var(--lesson-ink) !important; --popover-foreground:var(--lesson-ink) !important;
+  --muted-foreground:var(--lesson-muted) !important; --sub:var(--lesson-muted) !important;
+  --line:var(--lesson-line) !important; --border:var(--lesson-line) !important;
+  --grid:var(--lesson-grid) !important; --shade:var(--lesson-shade) !important;
+  --muted:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+  --accent-foreground:var(--lesson-ink) !important;
+  --primary:var(--lesson-green) !important; --primary-foreground:var(--lesson-panel) !important;
+  --accent-soft:var(--lesson-mint) !important; --hover:var(--lesson-shade) !important;
+  --mint:var(--lesson-mint) !important; --sand:var(--lesson-sand) !important;
+  --color-background-primary:var(--lesson-bg) !important;
+  --color-background-secondary:var(--lesson-panel) !important;
+  --color-background-tertiary:var(--lesson-shade) !important;
+  --color-text-primary:var(--lesson-ink) !important;
+  --color-text-secondary:var(--lesson-muted) !important;
+  --color-border-secondary:var(--lesson-line) !important;
+  --viz-panel:var(--lesson-panel) !important;
+  --viz-border:var(--lesson-line) !important;
+  --viz-muted:var(--lesson-muted) !important;
+  background:var(--lesson-bg) !important;
+}
+:root[data-lesson-palette=text] {
+  --muted:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+}
+:root[data-lesson-topic=model-architecture] {
+  --soft:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+}
+:root[data-lesson-palette=matrix] {
+  --soft:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+  --wash:var(--lesson-mint) !important;
+}
+body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !important; }
+.learning-scope-shell { color:var(--lesson-muted) !important; }
+.learning-scope { background:var(--lesson-shade) !important; border-color:var(--lesson-line) !important; }
+.learning-scope-kind { color:var(--lesson-green) !important; }
+</style>
+<!-- lesson-theme:end -->
 </head>
 <body>
 <!-- learning-scope:start -->
@@ -39,7 +106,7 @@
 </aside>
 <!-- learning-scope:end -->
 <iframe id="codex-visualization" sandbox="allow-scripts" referrerpolicy="no-referrer" title="vLLM 请求完整生命周期" data-srcdoc="&lt;!doctype html&gt;
-&lt;html lang=&quot;zh-CN&quot; data-visualize-standalone&gt;
+&lt;html lang=&quot;zh-CN&quot; data-visualize-standalone data-lesson-topic=&quot;request-lifecycle&quot; data-lesson-palette=&quot;mcp&quot;&gt;
 &lt;head&gt;
 &lt;meta charset=&quot;utf-8&quot;&gt;
 &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
@@ -2108,6 +2175,137 @@ html&gt;body{padding:0}&lt;/style&gt;
   new ResizeObserver(()=&gt;{if(Math.abs(root.getBoundingClientRect().width-lastWidth)&gt;1)draw();}).observe(root);
 })();
 &lt;/script&gt;
+&lt;!-- lesson-theme:start --&gt;
+&lt;style&gt;
+/* Scheduler palette. Inlined into each document by scripts/build_learning_ui.py. */
+:root {
+  color-scheme:light !important;
+  --lesson-bg:#f5f5ef; --lesson-panel:#fffefa; --lesson-ink:#192923;
+  --lesson-muted:#52655b; --lesson-line:#d5ddd2; --lesson-grid:#e4e8e0;
+  --lesson-green:#12634b; --lesson-mint:#e7f3e8; --lesson-amber:#8a4a18;
+  --lesson-sand:#fcf0dc; --lesson-shade:#f0f3eb;
+}
+@media(prefers-color-scheme:dark) {
+  :root:not([data-theme=light]) {
+    color-scheme:dark !important;
+    --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+    --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+    --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+    --lesson-sand:#473625; --lesson-shade:#212f27;
+  }
+}
+:root[data-theme=dark] {
+  color-scheme:dark !important;
+  --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+  --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+  --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+  --lesson-sand:#473625; --lesson-shade:#212f27;
+}
+:root {
+  --bg:var(--lesson-bg) !important; --background:var(--lesson-bg) !important;
+  --panel:var(--lesson-panel) !important; --surface:var(--lesson-panel) !important;
+  --card:var(--lesson-panel) !important; --popover:var(--lesson-panel) !important;
+  --ink:var(--lesson-ink) !important; --fg:var(--lesson-ink) !important;
+  --text:var(--lesson-ink) !important; --foreground:var(--lesson-ink) !important;
+  --card-foreground:var(--lesson-ink) !important; --popover-foreground:var(--lesson-ink) !important;
+  --muted-foreground:var(--lesson-muted) !important; --sub:var(--lesson-muted) !important;
+  --line:var(--lesson-line) !important; --border:var(--lesson-line) !important;
+  --grid:var(--lesson-grid) !important; --shade:var(--lesson-shade) !important;
+  --muted:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+  --accent-foreground:var(--lesson-ink) !important;
+  --primary:var(--lesson-green) !important; --primary-foreground:var(--lesson-panel) !important;
+  --accent-soft:var(--lesson-mint) !important; --hover:var(--lesson-shade) !important;
+  --mint:var(--lesson-mint) !important; --sand:var(--lesson-sand) !important;
+  --color-background-primary:var(--lesson-bg) !important;
+  --color-background-secondary:var(--lesson-panel) !important;
+  --color-background-tertiary:var(--lesson-shade) !important;
+  --color-text-primary:var(--lesson-ink) !important;
+  --color-text-secondary:var(--lesson-muted) !important;
+  --color-border-secondary:var(--lesson-line) !important;
+  --viz-panel:var(--lesson-panel) !important;
+  --viz-border:var(--lesson-line) !important;
+  --viz-muted:var(--lesson-muted) !important;
+  background:var(--lesson-bg) !important;
+}
+:root[data-lesson-palette=text] {
+  --muted:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+}
+:root[data-lesson-topic=model-architecture] {
+  --soft:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+}
+:root[data-lesson-palette=matrix] {
+  --soft:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+  --wash:var(--lesson-mint) !important;
+}
+body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !important; }
+.learning-scope-shell { color:var(--lesson-muted) !important; }
+.learning-scope { background:var(--lesson-shade) !important; border-color:var(--lesson-line) !important; }
+.learning-scope-kind { color:var(--lesson-green) !important; }
+&lt;/style&gt;
+&lt;!-- lesson-theme:end --&gt;
+&lt;!-- call-adapter:start --&gt;
+&lt;script&gt;
+// 插入含 #vllm-life-r1 的真实可视化 document，位于现有脚本之后。
+window.openLessonTarget = async function(action) {
+  const root = document.getElementById(&#x27;vllm-life-r1&#x27;);
+  const step = Number(action?.step);
+  if (!root || action?.mode !== &#x27;v1&#x27; || !Number.isInteger(step) || step &lt; 1 || step &gt; 20) throw new Error(&#x27;请求生命周期跳转参数无效&#x27;);
+  const waitFor = async (test) =&gt; {
+    const deadline = Date.now() + 4000;
+    let stable = 0;
+    while (Date.now() &lt; deadline) {
+      if (test()) { if (++stable &gt;= 2) return; } else stable = 0;
+      await new Promise(resolve =&gt; setTimeout(resolve, 20));
+    }
+    throw new Error(&#x27;可视化未到达请求的模式与步骤&#x27;);
+  };
+  const button = root.querySelector(&#x27;button[data-step=&quot;&#x27; + step + &#x27;&quot;]&#x27;);
+  if (!button) throw new Error(&#x27;目标步骤按钮尚未建立&#x27;);
+  button.click();
+  const counter = root.querySelector(&#x27;[data-slot=&quot;counter&quot;]&#x27;);
+  await waitFor(() =&gt; counter?.textContent.startsWith(step + &#x27; / 20&#x27;) &amp;&amp; !root.querySelector(&#x27;[data-slot=&quot;detail&quot;]&#x27;).hidden);
+  return {label: root.querySelector(&#x27;[data-slot=&quot;state&quot;]&#x27;).textContent.trim()};
+};
+// Runs in the visualization document, including sandboxed srcdoc frames.
+(() =&gt; {
+  const pending = new Map();
+  let queue = Promise.resolve();
+  const ready = document.readyState === &#x27;loading&#x27;
+    ? new Promise(resolve =&gt; document.addEventListener(&#x27;DOMContentLoaded&#x27;,resolve,{once:true}))
+    : Promise.resolve();
+  const pause = () =&gt; document.querySelectorAll(&#x27;button&#x27;).forEach(button =&gt; {
+    if (/^(暂停(?:流程|播放|动画)?|停止播放)$/.test(button.textContent.trim())) button.click();
+  });
+  window.addEventListener(&#x27;lesson-pause-visual&#x27;,pause);
+  if (parent === window) return;
+  const post = data =&gt; parent.postMessage(data,&#x27;*&#x27;);
+  window.addEventListener(&#x27;message&#x27;,async event =&gt; {
+    if (event.source !== parent || !event.data || typeof event.data !== &#x27;object&#x27;) return;
+    const {type,id,action} = event.data;
+    if (type === &#x27;lesson-call-ping&#x27;) {
+      await ready; post({type:&#x27;lesson-call-ready&#x27;}); return;
+    }
+    if (type === &#x27;lesson-call-pause&#x27;) { pause(); return; }
+    if (type !== &#x27;lesson-call-open&#x27; || typeof id !== &#x27;string&#x27;) return;
+    if (!pending.has(id)) {
+      const work = queue.then(() =&gt; ready).then(() =&gt; {
+        if (typeof window.openLessonTarget !== &#x27;function&#x27;) throw new Error(&#x27;可视化步骤入口尚未就绪&#x27;);
+        return window.openLessonTarget(action);
+      });
+      pending.set(id,work);
+      queue = work.catch(() =&gt; {});
+      if (pending.size &gt; 16) pending.delete(pending.keys().next().value);
+    }
+    try { post({type:&#x27;lesson-call-result&#x27;,id,ok:true,result:await pending.get(id)}); }
+    catch (error) { post({type:&#x27;lesson-call-result&#x27;,id,ok:false,error:error.message}); }
+  });
+  for (const name of [&#x27;click&#x27;,&#x27;change&#x27;]) document.addEventListener(name,event =&gt; {
+    if (event.isTrusted &amp;&amp; event.target.closest(&#x27;button,select,input&#x27;)) post({type:&#x27;lesson-call-edited&#x27;});
+  },true);
+  ready.then(() =&gt; post({type:&#x27;lesson-call-ready&#x27;}));
+})();
+&lt;/script&gt;
+&lt;!-- call-adapter:end --&gt;
 
 &lt;script&gt;
 (() =&gt; {
@@ -2894,5 +3092,355 @@ html&gt;body{padding:0}&lt;/style&gt;
   delete frame.dataset.srcdoc;
 })();
 </script>
+<!-- call-ui:start -->
+<style>
+/* Scope every rule: the visualizations keep their original layout and semantics. */
+.code-walkthrough { width:100%; max-width:960px; margin:18px auto 24px; color:var(--lesson-ink); font:14px/1.6 system-ui,"Microsoft YaHei",sans-serif; text-align:left; }
+.code-walkthrough * { box-sizing:border-box; }
+.code-walkthrough [hidden],.lesson-original.lesson-hidden { display:none !important; }
+html[data-call-chain-ready=true],html[data-call-chain-ready=true] body { overflow-anchor:none; }
+.code-walkthrough[data-cw-screen=visual] { padding-top:55px; }
+.code-walkthrough[data-cw-screen=visual] .cw-nav { position:fixed; z-index:100; top:8px; left:50%; transform:translateX(-50%); width:calc(100% - 32px); max-width:960px; margin:0; padding:7px 9px; border:1px solid var(--lesson-line); border-radius:9px; background:var(--lesson-bg); box-shadow:0 3px 12px #0000000b; }
+.code-walkthrough h1,.code-walkthrough h2,.code-walkthrough h3,.code-walkthrough p,.code-walkthrough dl,.code-walkthrough dd { margin:0; }
+.code-walkthrough button,.code-walkthrough select { font:inherit; color:inherit; cursor:pointer; }
+.code-walkthrough button:disabled { cursor:wait; opacity:.6; }
+.code-walkthrough a { color:var(--lesson-green); text-underline-offset:3px; }
+.code-walkthrough :is(button,select,a,summary):focus-visible { outline:3px solid var(--lesson-amber); outline-offset:3px; }
+.code-walkthrough code { font-family:ui-monospace,Consolas,"Microsoft YaHei",monospace; overflow-wrap:anywhere; }
+.cw-header { padding:8px 0 16px; }
+.cw-header>a { font-size:12px; text-decoration:none; }
+.cw-header h1 { font-size:clamp(24px,4vw,34px); line-height:1.35; margin:13px 0 8px; font-weight:700; letter-spacing:-.025em; }
+.cw-header p { color:var(--lesson-muted); font-size:13px; }
+.cw-nav { display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin:12px 0; }
+.code-walkthrough .cw-nav button,.cw-tools button,.cw-jump { border:1px solid var(--lesson-line); border-radius:7px; padding:7px 12px; background:var(--lesson-panel); font-size:13px; font-weight:650; }
+.code-walkthrough .cw-nav button[aria-pressed=true],.cw-jump { background:var(--lesson-mint); color:var(--lesson-green); border-color:var(--lesson-green); }
+.cw-variant { display:grid; grid-template-columns:minmax(0,1fr); gap:7px; padding:13px 15px; margin:12px 0; border:1px solid var(--lesson-line); border-radius:10px; background:var(--lesson-panel); }
+.cw-variant label { display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-size:13px; font-weight:650; }
+.cw-variant select { padding:5px 9px; max-width:100%; min-width:0; border:1px solid var(--lesson-line); border-radius:6px; background:var(--lesson-panel); font-size:13px; }
+.cw-variant p,.cw-scope { font-size:12px; color:var(--lesson-muted); overflow-wrap:anywhere; }
+.cw-scope summary { cursor:pointer; color:var(--lesson-green); font-weight:650; }
+.cw-scope a { display:block; margin-top:4px; overflow-wrap:anywhere; }
+.cw-guide { color:var(--lesson-muted); font-size:12px; margin:12px 0 !important; }
+.cw-layout { display:grid; grid-template-columns:minmax(0,1.12fr) minmax(0,1fr); gap:14px; align-items:start; }
+.cw-tree-panel,.cw-detail { min-width:0; background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:12px; }
+.cw-tree-panel { overflow:hidden; }
+.cw-tools { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:5px; padding:10px 12px; border-bottom:1px solid var(--lesson-line); }
+.cw-tools strong { font-size:13px; }
+.cw-tools button { padding:3px 7px; font-size:11px; }
+.cw-tree-scroll { max-height:680px; overflow:auto; padding:12px 9px; scrollbar-gutter:stable; }
+.code-walkthrough .cw-tree { padding:0; margin:0; list-style:none; min-width:0; }
+.code-walkthrough .cw-tree li { padding:0; margin:0; }
+.code-walkthrough .cw-tree .cw-tree { margin-left:12px; border-left:1px solid var(--lesson-line); }
+.cw-row { display:flex; align-items:flex-start; min-width:0; margin:2px 0; }
+.code-walkthrough .cw-toggle,.cw-branch { flex:0 0 22px; width:22px; padding:7px 0; border:0; background:transparent; text-align:center; color:var(--lesson-green); font:13px/1.5 ui-monospace,Consolas,monospace; }
+.code-walkthrough .cw-node { min-width:0; flex:1; display:grid; grid-template-columns:auto minmax(0,1fr); align-items:start; gap:5px; padding:7px; text-align:left; border:1px solid transparent; border-radius:6px; background:transparent; line-height:1.45; }
+.code-walkthrough .cw-node:hover { background:var(--lesson-shade); }
+.code-walkthrough .cw-node[aria-current=true] { background:var(--lesson-mint); border-color:var(--lesson-green); }
+.cw-number { padding-top:1px; color:var(--lesson-green); font:600 11px/1.6 ui-monospace,Consolas,monospace; }
+.cw-node code { display:block; font-size:13px; font-weight:650; }
+.cw-node small { display:block; margin-top:2px; color:var(--lesson-muted); font-size:12px; }
+.cw-detail { padding:17px; scroll-margin-top:14px; }
+.cw-kicker { color:var(--lesson-green); font:700 11px/1.5 ui-monospace,Consolas,monospace; }
+.cw-detail h2 { margin:5px 0 7px; font-size:19px; line-height:1.4; overflow-wrap:anywhere; }
+.cw-summary { font-size:14px; }
+.cw-data { margin-top:12px !important; font-size:13px; }
+.cw-data dt { margin-top:12px; color:var(--lesson-green); font-weight:700; }
+.cw-data dd { margin-top:3px; overflow-wrap:anywhere; }
+.code-walkthrough .cw-note { padding:9px 10px; margin-top:12px; border-left:3px solid var(--lesson-amber); background:var(--lesson-sand); color:var(--lesson-amber); font-size:12px; }
+.cw-evidence,.cw-targets { margin-top:14px; padding-top:10px; border-top:1px solid var(--lesson-line); }
+.cw-evidence h3,.cw-targets h3 { margin:0 0 5px; font-size:13px; }
+.cw-evidence a { display:block; margin-top:6px; font-size:11px; overflow-wrap:anywhere; }
+.cw-evidence a small { display:block; color:var(--lesson-muted); font:10px/1.5 ui-monospace,Consolas,monospace; }
+.cw-targets p { color:var(--lesson-muted); font-size:12px; margin-bottom:7px; }
+.cw-jump { display:block; margin:7px 0 0; max-width:100%; text-align:left; white-space:normal; }
+.cw-context { padding:9px 12px; border:1px solid var(--lesson-line); background:var(--lesson-shade); border-radius:8px; font-size:12px; color:var(--lesson-muted); overflow-wrap:anywhere; }
+.cw-error { margin:10px 0 !important; border:1px solid var(--lesson-amber); padding:10px; background:var(--lesson-sand); color:var(--lesson-amber); border-radius:7px; }
+@media(max-width:760px) { .cw-layout { grid-template-columns:minmax(0,1fr); } .cw-tree-scroll { max-height:420px; } .cw-detail { padding:14px; } }
+@media(max-width:400px) { .code-walkthrough .cw-tree .cw-tree { margin-left:7px; } .code-walkthrough .cw-toggle,.cw-branch { flex-basis:18px; width:18px; } .code-walkthrough .cw-node { padding:6px 4px; gap:4px; } }
+</style>
+<script type="application/json" id="lesson-call-chain-data">{"title":"请求生命周期：真实调用与消息边界","defaultVariant":"v1-stream","variants":[{"id":"v1-stream","title":"V1 同步流式聊天 · v0.11.0","scope":"单卡 UniProcExecutor；纯文本 full attention；无投机解码、无 PD。HTTP、引擎循环与前端输出任务以消息边界相接；静态源码核实，token 为教学数据。","entry":"http","repositories":{"vllm":{"url":"https://github.com/vllm-project/vllm","commit":"b8b302cde434df8c9289a2b465406b47ebab1c2d","label":"vLLM v0.11.0"}},"nodes":[{"id":"http","parent":null,"number":"1","kind":"调用","title":"api_server.create_chat_completion()","summary":"接收流式聊天请求。","input":"R1：messages，stream=true，max_tokens=3。","changes":"选择聊天处理器并等待其建立结果生成器。","output":"返回 StreamingResponse，后续逐段消费生成器。","resume":"HTTP 层保持连接，等待流式响应。","evidence":[{"repo":"vllm","path":"vllm/entrypoints/openai/api_server.py","line":603,"end":621,"label":"入口及处理器调用"}],"targets":[{"label":"跳到第 1 步 · HTTP 接入","action":{"mode":"v1","step":1}}]},{"id":"chat","parent":"http","number":"1.1","kind":"调用","title":"OpenAIServingChat.create_chat_completion()","summary":"准备聊天输入并选择流式返回。","input":"messages 与聊天模板、分词器和采样参数。","changes":"先预处理聊天，再创建引擎结果生成器；流式分支返回 SSE 生成器。","output":"教学输入编码为 [p1,p2,p3,p4]，输出采用增量形式。","resume":"返回 HTTP handler；生成器被消费后才持续推进请求。","evidence":[{"repo":"vllm","path":"vllm/entrypoints/openai/api_server.py","line":610,"label":"调用位置"},{"repo":"vllm","path":"vllm/entrypoints/openai/serving_chat.py","line":163,"label":"方法定义"},{"repo":"vllm","path":"vllm/entrypoints/openai/serving_chat.py","line":239,"end":247,"label":"预处理调用"},{"repo":"vllm","path":"vllm/entrypoints/openai/serving_chat.py","line":312,"end":336,"label":"引擎生成与流式返回"}],"targets":[{"label":"跳到第 2 步 · 模板和分词","action":{"mode":"v1","step":2}}]},{"id":"preprocess","parent":"chat","number":"1.1.1","kind":"调用","title":"OpenAIServing._preprocess_chat()","summary":"把 messages 转成引擎输入。","input":"原始对话消息及 tokenizer。","changes":"应用聊天模板，再调用异步分词入口生成 token IDs。","output":"本例得到长度 4 的 prompt；不是模型已经执行。","resume":"回到 create_chat_completion() 构造采样参数及引擎生成器。","evidence":[{"repo":"vllm","path":"vllm/entrypoints/openai/serving_chat.py","line":239,"end":247,"label":"调用位置"},{"repo":"vllm","path":"vllm/entrypoints/openai/serving_engine.py","line":736,"label":"方法定义"},{"repo":"vllm","path":"vllm/entrypoints/openai/serving_engine.py","line":791,"end":803,"label":"模板应用"},{"repo":"vllm","path":"vllm/entrypoints/openai/serving_engine.py","line":822,"end":831,"label":"分词调用"}],"targets":[{"label":"跳到第 2 步 · 4-token prompt","action":{"mode":"v1","step":2}}]},{"id":"generate","parent":"chat","number":"1.1.2","kind":"调用","title":"AsyncLLM.generate()","summary":"注册请求并等待输出 collector。","input":"R1、已处理 prompt、max_tokens=3。","changes":"消费异步生成器时调用 add_request()；随后从 collector 读取输出并 yield。","output":"逐次得到 RequestOutput，而非一次返回全部文本。","resume":"有输出交给 ServingChat；未结束则继续等待 collector。","evidence":[{"repo":"vllm","path":"vllm/entrypoints/openai/serving_chat.py","line":312,"end":322,"label":"生成器创建位置"},{"repo":"vllm","path":"vllm/v1/engine/async_llm.py","line":323,"label":"生成器定义"},{"repo":"vllm","path":"vllm/v1/engine/async_llm.py","line":370,"end":392,"label":"注册请求、等待与 yield"}],"targets":[{"label":"跳到第 3 步 · 前端注册","action":{"mode":"v1","step":3}},{"label":"跳到第 11 步 · 输出 collector","action":{"mode":"v1","step":11}}]},{"id":"register","parent":"generate","number":"1.1.2.1","kind":"调用","title":"AsyncLLM.add_request()","summary":"先登记输出状态，再提交引擎请求。","input":"处理后的 EngineCoreRequest 与 R1 的输出 collector。","changes":"先向 OutputProcessor 注册请求，再调用引擎客户端 add_request_async()。","output":"前端已能接收 R1 输出；请求尚需由后台 EngineCore 准入。","resume":"返回 collector 给 generate()，后者等待结果。","evidence":[{"repo":"vllm","path":"vllm/v1/engine/async_llm.py","line":370,"end":376,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/engine/async_llm.py","line":261,"label":"方法定义"},{"repo":"vllm","path":"vllm/v1/engine/async_llm.py","line":309,"end":313,"label":"注册与发送顺序"}],"targets":[{"label":"跳到第 3 步 · 登记输出状态","action":{"mode":"v1","step":3}}]},{"id":"add-ipc","parent":"register","number":"1.1.2.1.1","kind":"提交","title":"AsyncMPClient.add_request_async()","summary":"以 ADD 消息发送 CPU 请求元数据。","input":"R1 的 token IDs、采样参数与请求标识。","changes":"调用 _send_input()，编码后通过 ZeroMQ 发送；没有传输模型权重和 KV 张量。","output":"后台进程稍后收到 ADD；发送完成不等于推理完成。","resume":"前端返回注册路径并等输出；接收侧从独立的输入循环继续。","evidence":[{"repo":"vllm","path":"vllm/v1/engine/async_llm.py","line":313,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/engine/core_client.py","line":903,"end":910,"label":"实际提交入口"},{"repo":"vllm","path":"vllm/v1/engine/core_client.py","line":849,"end":875,"label":"编码与发送"}],"targets":[{"label":"跳到第 4 步 · ADD / IPC","action":{"mode":"v1","step":4}}],"note":"跨进程提交与接收是消息连接，不画成前端直接同步调用 Scheduler。"},{"id":"engine-add","parent":null,"number":"2","kind":"边界","title":"EngineCore 接收 ADD → add_request()","summary":"消息消费后把请求交给调度器。","input":"输入循环接收到的 Request 与请求轮次。","changes":"_handle_client_request() 分派 ADD 到 add_request()，再调用 Scheduler.add_request()。","output":"R1 登记到 requests 和 waiting，计算游标为 0。","resume":"返回引擎循环，后续 step() 从等待队列选取请求。","evidence":[{"repo":"vllm","path":"vllm/v1/engine/core.py","line":763,"end":769,"label":"ADD 消费与分派"},{"repo":"vllm","path":"vllm/v1/engine/core.py","line":217,"end":243,"label":"请求入口与调度器调用"},{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":1097,"end":1101,"label":"等待队列登记"}],"targets":[{"label":"跳到第 5 步 · WAITING","action":{"mode":"v1","step":5}}]},{"id":"step","parent":null,"number":"3","kind":"循环","title":"EngineCore.step()","summary":"每轮调度、同步执行并回写结果。","input":"R1 的持久状态；首轮 prompt 长 4，之后每轮处理一个欠算 token。","changes":"依次调用 schedule()、执行器和 update_from_output()。","output":"三轮分别输入 4、1、1 个 token，得到 t1、t2、t3。","resume":"本轮输出进入输出队列；未完成请求留待下一轮。","evidence":[{"repo":"vllm","path":"vllm/v1/engine/core.py","line":272,"end":291,"label":"完整同步轮次"},{"repo":"vllm","path":"vllm/v1/engine/core.py","line":750,"end":757,"label":"循环消费与输出队列"}],"targets":[{"label":"跳到第 6 步 · Prefill 轮","action":{"mode":"v1","step":6}},{"label":"跳到第 13 步 · Decode 轮","action":{"mode":"v1","step":13}}],"note":"固定 v0.11.0 同步路径；不混用新版拆分 sample_tokens() 的路径。"},{"id":"schedule","parent":"step","number":"3.1","kind":"调用","title":"Scheduler.schedule()","summary":"选择欠算位置并建立本轮计划。","input":"首轮 R1 在 WAITING，预算至少为 4，前缀无命中。","changes":"首轮等待准入；之后 RUNNING 需求按已知长度减已计算长度得到 1。","output":"首轮计划 4 个位置；后两轮各 1，块表持续指向 B7。","resume":"返回计划给 step()，执行器随后准备设备输入。","evidence":[{"repo":"vllm","path":"vllm/v1/engine/core.py","line":283,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":179,"label":"方法定义"},{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":210,"end":226,"label":"运行请求需求"},{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":380,"end":384,"label":"等待请求前缀查询"},{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":626,"end":645,"label":"返回前预记计算游标"}],"targets":[{"label":"跳到第 6 步 · 首次调度","action":{"mode":"v1","step":6}},{"label":"跳到第 16 步 · 输入 t2","action":{"mode":"v1","step":16}}]},{"id":"allocate","parent":"schedule","number":"3.1.1","kind":"调用","title":"KVCacheManager.allocate_slots()","summary":"给本轮计算保留缓存位置。","input":"首轮 4 个位置及 R1 的缓存需求。","changes":"等待路径调用 allocate_slots()；本例分配 16 槽的教学块 B7，后两轮使用余下空槽。","output":"逻辑块表已建立，物理 K/V 需等前向写入。","resume":"返回 schedule()，请求转为 RUNNING 并加入 SchedulerOutput。","evidence":[{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":471,"end":479,"label":"等待准入调用"},{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":255,"end":258,"label":"运行请求调用"},{"repo":"vllm","path":"vllm/v1/core/kv_cache_manager.py","line":193,"label":"方法定义"}],"targets":[{"label":"跳到第 6 步 · 分配 B7","action":{"mode":"v1","step":6}},{"label":"跳到第 13 步 · 复用空槽","action":{"mode":"v1","step":13}}]},{"id":"executor","parent":"step","number":"3.2","kind":"边界","title":"Executor.execute_model() → Worker.execute_model()","summary":"单卡执行器在工作进程内转调 Worker。","input":"SchedulerOutput：R1、计算量与块表。","changes":"基础执行器调用 collective_rpc()；UniProcExecutor 使用 run_method() 在当前进程调用 Worker。","output":"Worker 将计划交给其 GPUModelRunner；返回后把模型结果交回引擎。","resume":"执行器返回后，step() 才调用 update_from_output()。","evidence":[{"repo":"vllm","path":"vllm/v1/engine/core.py","line":284,"end":286,"label":"执行器提交位置"},{"repo":"vllm","path":"vllm/v1/engine/core.py","line":254,"end":261,"label":"错误日志包装实际调用 model_fn"},{"repo":"vllm","path":"vllm/v1/executor/abstract.py","line":98,"end":106,"label":"执行器转发"},{"repo":"vllm","path":"vllm/executor/uniproc_executor.py","line":71,"end":86,"label":"单进程方法分派"},{"repo":"vllm","path":"vllm/v1/worker/gpu_worker.py","line":427,"end":450,"label":"Worker 调用 Runner"}],"targets":[{"label":"跳到第 7 步 · 执行器与 Worker","action":{"mode":"v1","step":7}}],"note":"UniProcExecutor 名称中的 collective_rpc 不表示此路径另起 Worker 进程；前端到 EngineCore 的 IPC 是另一边界。 EngineCore 经 execute_model_with_error_logging() 包装转调执行器；包装只记录失败详情。"},{"id":"runner","parent":"executor","number":"3.2.1","kind":"调用","title":"GPUModelRunner.execute_model()","summary":"准备输入、前向、采样并形成 CPU 结果。","input":"首轮 p1…p4；Decode 轮依次输入 t1、t2，并读取历史 KV。","changes":"更新持久请求状态和设备元数据，执行模型、logits 与采样，再同步整理结果。","output":"先写入 4、5、6 个输入位置的 KV，分别得到 t1、t2、t3；t3 未再输入，故没有自身 KV。","resume":"ModelRunnerOutput 沿 Worker、Executor 返回 EngineCore。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_worker.py","line":447,"end":448,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2231,"end":2257,"label":"定义与输入准备"},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2298,"end":2304,"label":"模型前向"},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2331,"label":"logits 调用"},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2367,"label":"采样调用"},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2404,"end":2438,"label":"同步整理与返回"}],"targets":[{"label":"跳到第 8 步 · 首 token","action":{"mode":"v1","step":8}},{"label":"跳到第 17 步 · t3 没有自身 KV","action":{"mode":"v1","step":17}}],"note":"具体模型层与注意力内核是本图边界；示例 token 与 B7 均为教学数据。"},{"id":"update","parent":"step","number":"3.3","kind":"调用","title":"Scheduler.update_from_output()","summary":"追加 token、判停并释放完成请求。","input":"模型返回的采样 IDs 与原调度计划。","changes":"调用 _update_request_with_output() 追加 token 并 check_stop()；第三个输出满足长度上限后调用 _free_request()。","output":"前两轮继续 RUNNING；第三轮释放 R1 的块引用并登记 finished_req_ids。","resume":"形成 EngineCoreOutput；前端收到最终输出，后续 Worker 轮次消费完成 ID。","evidence":[{"repo":"vllm","path":"vllm/v1/engine/core.py","line":287,"end":288,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":861,"label":"方法定义"},{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":921,"end":937,"label":"更新与结束释放"},{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":1024,"end":1042,"label":"追加 token 与 check_stop"},{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":1147,"end":1165,"label":"块引用释放"}],"targets":[{"label":"跳到第 10 步 · t1 后继续","action":{"mode":"v1","step":10}},{"label":"跳到第 18 步 · 长度结束","action":{"mode":"v1","step":18}}]},{"id":"front-output","parent":null,"number":"4","kind":"边界","title":"output_handler() → OutputProcessor.process_outputs()","summary":"独立前端任务接收输出并增量解码。","input":"IPC 返回的 EngineCoreOutputs，包含 R1 的 token 与结束原因。","changes":"output_handler() 等待引擎输出，再调用 OutputProcessor 更新 detokenizer 和 collector。","output":"generate() 获得 RequestOutput；最终输出后移除前端请求状态。","resume":"collector 唤醒 generate()，ServingChat 继续消费增量。","evidence":[{"repo":"vllm","path":"vllm/v1/engine/async_llm.py","line":435,"end":463,"label":"异步输出消费与处理调用"},{"repo":"vllm","path":"vllm/v1/engine/output_processor.py","line":380,"label":"处理器定义"},{"repo":"vllm","path":"vllm/v1/engine/output_processor.py","line":423,"end":467,"label":"增量解码与结束清理"}],"targets":[{"label":"跳到第 11 步 · 前端增量解码","action":{"mode":"v1","step":11}},{"label":"跳到第 19 步 · 最终输出","action":{"mode":"v1","step":19}}],"note":"这是独立输出任务，不能画成 Scheduler 同步调用前端 detokenizer。"},{"id":"stream","parent":"chat","number":"1.1.3","kind":"调用","title":"OpenAIServingChat.chat_completion_stream_generator()","summary":"把增量输出封装成 SSE。","input":"AsyncLLM.generate() 提供的 RequestOutput。","changes":"先发送角色信息，再发送内容增量；最终结果带 finish_reason，按配置输出 usage 后发送 DONE。","output":"客户端消费流式文本并结束连接；token 与文本片段不保证一一对应。","resume":"生成器完成后 StreamingResponse 结束。","evidence":[{"repo":"vllm","path":"vllm/entrypoints/openai/serving_chat.py","line":331,"end":336,"label":"生成器创建"},{"repo":"vllm","path":"vllm/entrypoints/openai/serving_chat.py","line":478,"label":"生成器定义"},{"repo":"vllm","path":"vllm/entrypoints/openai/serving_chat.py","line":574,"end":620,"label":"消费结果与首段 SSE"},{"repo":"vllm","path":"vllm/entrypoints/openai/serving_chat.py","line":1091,"end":1149,"label":"结束流与 DONE"}],"targets":[{"label":"跳到第 12 步 · 首段 SSE","action":{"mode":"v1","step":12}},{"label":"跳到第 19 步 · DONE","action":{"mode":"v1","step":19}}]},{"id":"cleanup","parent":null,"number":"5","kind":"边界","title":"后续轮次 GPUModelRunner._update_states()","summary":"按完成 ID 清理 Worker 持久状态。","input":"后续 SchedulerOutput 携带 finished_req_ids={R1}。","changes":"execute_model() 在检查零计算量之前先调用 _update_states()，移除请求及 batch 槽。","output":"R1 的 Worker 状态清理；启动时的模型和 GPU KV 池继续驻留。","resume":"若该轮没有其他输入则返回空模型输出。","evidence":[{"repo":"vllm","path":"vllm/v1/core/sched/scheduler.py","line":594,"label":"打包完成 ID"},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2236,"end":2245,"label":"清理早于零输入返回"},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":526,"end":546,"label":"完成请求清理实现"}],"targets":[{"label":"跳到第 20 步 · Worker 清理","action":{"mode":"v1","step":20}}],"note":"这是后续调度消息的消费，与第 19 步最终 SSE 没有固定先后。"}]}],"topic":"request-lifecycle"}</script>
+<script>
+/* Common entry: verified call tree -> existing visualization, preserving native DOM. */
+(() => {
+  function mount() {
+    const dataElement = document.getElementById('lesson-call-chain-data');
+    if (!dataElement || document.getElementById('lesson-call-chain')) return;
+    const data = JSON.parse(dataElement.textContent);
+    const variants = new Map(data.variants.map(variant => [variant.id,variant]));
+    const fallback = variants.get(data.defaultVariant) || data.variants[0];
+    const topic = data.topic;
+    const original = [...document.body.children].filter(node =>
+      !['SCRIPT','STYLE','LINK','META','NOSCRIPT'].includes(node.tagName) && !node.classList.contains('learning-scope-shell'));
+    original.forEach(node => node.classList.add('lesson-original'));
+    const frame = document.getElementById('codex-visualization');
+    const storageKey = 'lesson-call-chain:' + topic + ':' + location.pathname.split('/').at(-1);
+    let variant = fallback, selected = variant.entry || variant.nodes[0].id, screen = 'chain', targetIndex = null;
+    let collapsed = new Set(), busy = false, revision = 0, frameReady = false, requestId = 0;
+    const replies = new Map();
+    let nativeQueue = Promise.resolve();
+    const nodeById = id => variant.nodes.find(node => node.id === id);
+    const make = (tag,text,className) => {
+      const node = document.createElement(tag);
+      if (text !== undefined) node.textContent = text;
+      if (className) node.className = className;
+      return node;
+    };
+    const root = make('section',undefined,'code-walkthrough');
+    root.id = 'lesson-call-chain';
+    root.innerHTML = `<header class="cw-header"><a href="../index.html">← vLLM 学习笔记</a><h1></h1><p>先沿源码调用链定位接口，再进入对应的可视化步骤。</p></header>
+      <nav class="cw-nav" aria-label="阅读方式"><button type="button" data-cw-view="chain">01 整体调用链</button><button type="button" data-cw-view="visual">02 可视化执行</button></nav>
+      <p class="cw-error" role="alert" hidden></p>
+      <section class="cw-chain"><div class="cw-variant"><label>实现与场景 <select aria-label="选择调用链实现"></select></label><p class="cw-scope-text"></p><details class="cw-scope"><summary>源码仓库与固定 commit</summary><div class="cw-repositories"></div></details></div>
+      <p class="cw-guide">点 ＋ 展开子调用，点名称查看输入、状态变化与返回续点。「动作」「分支」「循环」表示控制块；异步提交与完成回报分开标记。</p>
+      <div class="cw-layout"><section class="cw-tree-panel" aria-label="源码调用树"><div class="cw-tools"><strong></strong><div><button type="button" data-cw-expand>全部展开</button> <button type="button" data-cw-fold>只看主链</button></div></div><div class="cw-tree-scroll"><ol class="cw-tree"></ol></div></section>
+      <article class="cw-detail" tabindex="-1" aria-labelledby="cw-node-title"><div class="cw-kicker"></div><h2 id="cw-node-title"></h2><p class="cw-summary"></p><dl class="cw-data"></dl><p class="cw-note" hidden></p>
+      <section class="cw-evidence"><h3>源码依据 · 行号属于所示 commit</h3><div></div></section><section class="cw-targets"><h3>进入可视化执行</h3><p>按下列入口定位现有图中的对应步骤。</p><div></div></section></article></div></section>
+      <div class="cw-context" tabindex="-1" hidden></div>`;
+    document.body.insertBefore(root,original[0] || dataElement);
+    const $ = selector => root.querySelector(selector);
+    $('.cw-header h1').textContent = data.title;
+    for (const item of data.variants) {
+      const option = make('option',item.title); option.value = item.id; $('.cw-variant select').append(option);
+    }
+    function validState(value) {
+      const nextVariant = variants.get(value?.variant);
+      const node = nextVariant?.nodes.find(item => item.id === value.node);
+      if (!node || !['chain','visual'].includes(value.screen)) return null;
+      const target = value.target === null ? null : Number(value.target);
+      if (target !== null && (!Number.isInteger(target) || target < 0 || target >= node.targets.length)) return null;
+      return {variant:nextVariant.id,node:node.id,screen:value.screen,target};
+    }
+    const state = () => ({variant:variant.id,node:selected,screen,target:targetIndex});
+    function parseRoute() {
+      const query = new URLSearchParams(location.search);
+      if (!query.has('cw-view')) return null;
+      return validState({variant:query.get('cw-variant'),node:query.get('cw-node'),screen:query.get('cw-view'),target:query.has('cw-target') ? query.get('cw-target') : null});
+    }
+    function applyState(next) {
+      variant = variants.get(next.variant); selected = next.node; screen = next.screen; targetIndex = next.target;
+    }
+    try {
+      const saved = validState(JSON.parse(localStorage.getItem(storageKey)));
+      if (saved) applyState({...saved,screen:'chain'});
+    } catch {}
+    const requested = parseRoute();
+    if (requested) applyState(requested);
+    function routeKey() {
+      const query = new URLSearchParams(location.search);
+      return ['cw-view','cw-variant','cw-node','cw-target'].map(key => query.get(key)).join('|');
+    }
+    let lastRoute = routeKey();
+    function urlFor(next = state(),url = new URL(location.href)) {
+      url.searchParams.set('cw-view',next.screen); url.searchParams.set('cw-variant',next.variant); url.searchParams.set('cw-node',next.node);
+      if (next.target === null) url.searchParams.delete('cw-target'); else url.searchParams.set('cw-target',String(next.target));
+      return url;
+    }
+    function remember(method = 'replace') {
+      try { localStorage.setItem(storageKey,JSON.stringify(state())); } catch {}
+      const url = urlFor();
+      if (url.href !== location.href) {
+        try { history[method + 'State']({...history.state,lessonCallChain:state()},'',url); } catch {}
+      }
+      lastRoute = routeKey();
+    }
+    function resetTree() {
+      collapsed = new Set(variant.nodes.filter(node => node.parent !== null).map(node => node.id));
+      revealSelected();
+    }
+    function revealSelected() {
+      let node = nodeById(selected);
+      while (node?.parent) { collapsed.delete(node.parent); node = nodeById(node.parent); }
+    }
+    function buildTree() {
+      const top = $('.cw-tree'); top.replaceChildren();
+      const append = (list,parent) => {
+        const children = variant.nodes.filter(node => node.parent === parent);
+        children.forEach((node,index) => {
+          const item = make('li'), row = make('div',undefined,'cw-row');
+          const hasChildren = variant.nodes.some(child => child.parent === node.id);
+          const branch = make(hasChildren ? 'button' : 'span',hasChildren ? (collapsed.has(node.id) ? '+' : '−') : (index === children.length - 1 ? '└─' : '├─'),hasChildren ? 'cw-toggle' : 'cw-branch');
+          if (hasChildren) {
+            branch.type = 'button'; branch.dataset.cwToggle = node.id;
+            branch.setAttribute('aria-expanded',!collapsed.has(node.id)); branch.setAttribute('aria-label',(collapsed.has(node.id) ? '展开 ' : '收起 ') + node.title);
+          } else branch.setAttribute('aria-hidden','true');
+          const button = make('button',undefined,'cw-node'); button.type = 'button'; button.dataset.cwNode = node.id;
+          const label = make('span'); label.append(make('code',node.title),make('small','[' + node.kind + '] ' + node.summary));
+          button.append(make('span',node.number,'cw-number'),label); row.append(branch,button); item.append(row);
+          if (hasChildren) { const nested = make('ol',undefined,'cw-tree'); nested.hidden = collapsed.has(node.id); append(nested,node.id); item.append(nested); }
+          list.append(item);
+        });
+      };
+      append(top,null); $('.cw-tools strong').textContent = '调用与返回 · ' + variant.nodes.length + ' 个节点';
+    }
+    function detail() {
+      const node = nodeById(selected);
+      root.querySelectorAll('[data-cw-node]').forEach(button => {
+        if (button.dataset.cwNode === selected) button.setAttribute('aria-current','true'); else button.removeAttribute('aria-current');
+      });
+      $('.cw-kicker').textContent = '节点 ' + node.number + ' / ' + node.kind;
+      $('#cw-node-title').textContent = node.title; $('.cw-summary').textContent = node.summary;
+      $('.cw-data').replaceChildren();
+      for (const [label,key] of [['输入从哪来','input'],['内部动作与持久状态','changes'],['输出交给谁','output'],['返回后在哪里继续','resume']]) $('.cw-data').append(make('dt',label),make('dd',node[key]));
+      $('.cw-note').hidden = !node.note; $('.cw-note').textContent = node.note || '';
+      $('.cw-evidence>div').replaceChildren();
+      $('.cw-evidence h3').textContent = variant.provenance === 'teaching' ? '算法教学对照 · 不绑定源码' : '源码依据 · 行号属于所示 commit';
+      if (variant.provenance === 'teaching') $('.cw-evidence>div').append(make('p','此分支说明教学算法，不表示 vLLM 内存在同名函数。','cw-guide'));
+      for (const evidence of node.evidence) {
+        const repo = variant.repositories[evidence.repo];
+        const link = make('a',evidence.label + ' · ' + evidence.path + ':' + evidence.line + (evidence.end ? '–' + evidence.end : ''));
+        link.href = repo.url + '/blob/' + repo.commit + '/' + evidence.path + '#L' + evidence.line + (evidence.end ? '-L' + evidence.end : '');
+        link.target = '_blank'; link.rel = 'noopener noreferrer'; link.title = repo.commit;
+        link.append(make('small',(repo.label || evidence.repo) + ' @ ' + repo.commit.slice(0,10)));
+        $('.cw-evidence>div').append(link);
+      }
+      $('.cw-targets>div').replaceChildren();
+      node.targets.forEach((target,index) => {
+        const button = make('button',target.label + ' →','cw-jump'); button.type = 'button'; button.dataset.cwTarget = index; button.disabled = busy;
+        $('.cw-targets>div').append(button);
+      });
+    }
+    function render() {
+      const visual = screen === 'visual';
+      root.dataset.cwBusy = String(busy);
+      root.dataset.cwScreen = screen;
+      original.forEach(node => node.classList.toggle('lesson-hidden',!visual));
+      $('.cw-header').hidden = visual; $('.cw-chain').hidden = visual; $('.cw-context').hidden = !visual;
+      root.querySelectorAll('[data-cw-view]').forEach(button => button.setAttribute('aria-pressed',button.dataset.cwView === screen));
+      $('[data-cw-view=chain]').textContent = visual ? '← 返回调用链' : '01 整体调用链';
+      $('.cw-variant select').value = variant.id; $('.cw-scope-text').textContent = variant.scope;
+      const repos = $('.cw-repositories'); repos.replaceChildren();
+      $('.cw-scope summary').textContent = variant.provenance === 'teaching' ? '算法教学对照 · 无源码仓库' : '源码仓库与固定 commit';
+      for (const [key,repo] of Object.entries(variant.repositories)) {
+        const link = make('a',(repo.label || key) + ' · ' + repo.url.replace('https://github.com/','') + ' @ ' + repo.commit);
+        link.href = repo.url + '/tree/' + repo.commit; link.target = '_blank'; link.rel = 'noopener noreferrer'; repos.append(link);
+      }
+      $('.cw-context').textContent = targetIndex === null
+        ? '当前展示原交互流程。从调用链的具体节点跳转，可定位对应模式和步骤。'
+        : '来自节点 ' + nodeById(selected).number + ' · ' + nodeById(selected).title + '。可继续使用图中的模式与步进控件。';
+      detail();
+      if (visual) window.dispatchEvent(new Event('resize'));
+    }
+    function scrollSelected() {
+      const button = root.querySelector('[data-cw-node="' + selected + '"]'), box = $('.cw-tree-scroll');
+      const a = button.getBoundingClientRect(), b = box.getBoundingClientRect();
+      if (a.top < b.top) box.scrollTop += a.top - b.top - 8;
+      else if (a.bottom > b.bottom) box.scrollTop += a.bottom - b.bottom + 8;
+    }
+    function clearError() { $('.cw-error').hidden = true; $('.cw-error').textContent = ''; }
+    function errorMessage(error) { $('.cw-error').textContent = '无法定位该步骤：' + error.message; $('.cw-error').hidden = false; }
+    window.addEventListener('message',event => {
+      if (!frame || event.source !== frame.contentWindow || !event.data) return;
+      if (event.data.type === 'lesson-call-ready') frameReady = true;
+      if (event.data.type === 'lesson-call-result') {
+        const pending = replies.get(event.data.id);
+        if (pending) { replies.delete(event.data.id); clearTimeout(pending.timer); event.data.ok ? pending.resolve(event.data.result) : pending.reject(new Error(event.data.error)); }
+      }
+      if (event.data.type === 'lesson-call-edited' && !busy && screen === 'visual') markEdited();
+    });
+    function markEdited() {
+      targetIndex = null;
+      $('.cw-context').textContent = '图中的模式或步骤已手动调整，当前状态不再绑定调用链节点。返回调用链可重新定位源码对应步骤。';
+      remember();
+    }
+    async function invoke(action) {
+      if (!frame) {
+        if (typeof window.openLessonTarget !== 'function') throw new Error('当前页面缺少步骤入口');
+        const work = nativeQueue.then(() => window.openLessonTarget(action));
+        nativeQueue = work.catch(() => {});
+        return work;
+      }
+      const deadline = Date.now() + 5000;
+      while (!frameReady && Date.now() < deadline) {
+        frame.contentWindow?.postMessage({type:'lesson-call-ping'},'*');
+        await new Promise(resolve => setTimeout(resolve,80));
+      }
+      if (!frameReady) throw new Error('内嵌可视化尚未就绪，请稍后重试');
+      const id = topic + ':' + ++requestId;
+      return new Promise((resolve,reject) => {
+        const timer = setTimeout(() => { replies.delete(id); reject(new Error('步骤定位超时')); },8000);
+        replies.set(id,{resolve,reject,timer});
+        frame.contentWindow.postMessage({type:'lesson-call-open',id,action},'*');
+      });
+    }
+    async function openTarget(index,method = 'push',scroll = true) {
+      const target = nodeById(selected).targets[index];
+      if (!target) return;
+      const currentPage = location.pathname.split('/').at(-1);
+      if (target.action.page && target.action.page !== currentPage) {
+        if (!['index.html','comparison.html'].includes(target.action.page)) throw new Error('不支持的页面目标');
+        const url = new URL(target.action.page,location.href); url.hash = '';
+        location.assign(urlFor({...state(),screen:'visual',target:index},url)); return;
+      }
+      const job = ++revision; busy = true; screen = 'visual'; targetIndex = index; clearError(); render();
+      $('.cw-context').textContent = '正在定位：' + target.label;
+      try {
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const result = await invoke(target.action);
+        if (job !== revision) return;
+        $('.cw-context').textContent = '来自节点 ' + nodeById(selected).number + ' · ' + nodeById(selected).title + ' → ' + (result?.label || target.label);
+        if (method) remember(method);
+        if (scroll) { $('.cw-context').scrollIntoView({block:'start'}); $('.cw-context').focus({preventScroll:true}); }
+      } catch (error) {
+        if (job === revision) { screen = 'chain'; render(); errorMessage(error); }
+      } finally { if (job === revision) { busy = false; root.dataset.cwBusy = 'false'; detail(); } }
+    }
+    function pauseVisual() {
+      if (frame) frame.contentWindow?.postMessage({type:'lesson-call-pause'},'*');
+      else window.dispatchEvent(new Event('lesson-pause-visual'));
+    }
+    function openChain() {
+      revision++; busy = false; screen = 'chain'; clearError();
+      pauseVisual();
+      revealSelected(); buildTree(); render(); remember('push'); scrollSelected();
+      root.scrollIntoView({block:'start'});
+    }
+    root.addEventListener('click',event => {
+      const target = event.target.closest('[data-cw-target]');
+      if (target) { openTarget(Number(target.dataset.cwTarget)); return; }
+      const layer = event.target.closest('[data-cw-view]');
+      if (layer) {
+        if (layer.dataset.cwView === 'chain') openChain();
+        else if (targetIndex !== null) openTarget(targetIndex);
+        else { screen = 'visual'; clearError(); render(); remember('push'); }
+        return;
+      }
+      const toggle = event.target.closest('[data-cw-toggle]');
+      if (toggle) {
+        const id = toggle.dataset.cwToggle;
+        if (collapsed.has(id)) collapsed.delete(id); else collapsed.add(id);
+        buildTree(); detail(); root.querySelector('[data-cw-toggle="' + id + '"]').focus({preventScroll:true}); return;
+      }
+      const button = event.target.closest('[data-cw-node]');
+      if (button) {
+        selected = button.dataset.cwNode; targetIndex = null; clearError(); detail(); remember('push');
+        if (matchMedia('(max-width:760px)').matches) { $('.cw-detail').scrollIntoView({block:'start'}); $('.cw-detail').focus({preventScroll:true}); }
+      }
+    });
+    $('[data-cw-expand]').addEventListener('click',() => { collapsed.clear(); buildTree(); detail(); });
+    $('[data-cw-fold]').addEventListener('click',() => { collapsed = new Set(variant.nodes.filter(node => node.parent !== null).map(node => node.id)); buildTree(); detail(); });
+    $('.cw-variant select').addEventListener('change',event => {
+      variant = variants.get(event.target.value); selected = variant.entry || variant.nodes[0].id; targetIndex = null;
+      resetTree(); buildTree(); clearError(); render(); remember('push');
+    });
+    for (const name of ['click','change']) document.addEventListener(name,event => {
+      if (event.isTrusted && !busy && screen === 'visual' && event.target.closest('.lesson-original') && event.target.closest('button,select,input')) markEdited();
+    },true);
+    window.addEventListener('popstate',() => {
+      if (routeKey() === lastRoute) return;
+      lastRoute = routeKey(); revision++; busy = false;
+      const next = parseRoute() || {variant:fallback.id,node:fallback.entry || fallback.nodes[0].id,screen:'chain',target:null};
+      applyState(next); resetTree(); buildTree(); render(); clearError();
+      if (screen === 'visual' && targetIndex !== null) openTarget(targetIndex,null,false);
+      else if (screen === 'chain') { pauseVisual(); scrollSelected(); }
+    });
+    resetTree(); buildTree(); render();
+    if (screen === 'visual' && targetIndex !== null) openTarget(targetIndex,null,false);
+    else if (screen === 'chain') scrollSelected();
+    document.documentElement.dataset.callChainReady = 'true';
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded',mount,{once:true}); else mount();
+})();
+</script>
+<!-- call-ui:end -->
 </body>
 </html>

@@ -112,3 +112,14 @@ python verify_combinations.py
 训练 DP 的独立梯度、平均梯度和更新检查通过；全批次有限差分误差为 `2.76e-10`。页面布局检查范围与结果见 [LAYOUT-CHECKS.md](LAYOUT-CHECKS.md)。
 
 [verify_combinations.py](verify_combinations.py) 同样仅使用 Python 标准库，从 [combo-examples.json](combo-examples.json) 的输入重新计算三种组合，检查 Attention/专家/MLP 算术、请求与专家所有权、通信组、PP flattened payload、目的 TP All-Gather 恢复及未切分参考结果。它忽略存储的验证成功标志，不声称验证了通信后端或硬件执行。当前三种组合全部通过：TP+SP 最大误差为 0，DP+EP 为 `8.88e-16`，DP+TP+PP 为 0。
+
+## 真实调用链
+
+[call-chain.json](call-chain.json) 保存 9 条实现路径：TP、SP、TP+SP、EP、DP+EP、CP、PP、推理 DP、DP+TP+PP，共 77 个节点。每个节点记录输入、状态变化、输出消费者、返回续点和固定 commit 的源码范围；跨 Worker、DP 实例或设备库的边界单独标出。
+
+- TP 的源码例子是 Llama SwiGLU；图中的小型 ReLU 网络用于展示切片与求和，不代表实际模型参数。
+- SP/TP+SP 固定 DeepSeek activation/MoE SP、PP=1。EP/DP+EP 固定模块化 DeepEP low latency 后端，外部 `deep_ep` 库内部不展开。
+- CP 固定 FlashAttention DCP 的 `ag_rs`、历史 context 非空分支；历史 KV 保留分片，先合并 LSE 再校正输出。
+- 推理 DP 从客户端路由到独立 EngineCore；PP 的异步发送与对端接收分属不同进程。训练 DP 是算法对照，没有虚构 vLLM 训练实现链。
+
+[call-chain-adapter.js](call-chain-adapter.js) 按目标切换实际模式、设备/数值视图及步骤，并读取页面状态确认定位成功。数据基线为 vLLM `295c062db8a48ea73bbd05d1174cb37d24bf86f9`。页面示例与源码静态走读均不代表设备实测。

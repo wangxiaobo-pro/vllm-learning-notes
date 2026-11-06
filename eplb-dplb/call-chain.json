@@ -1,0 +1,1118 @@
+{
+  "title": "DPLB 与 EPLB：请求分流和同步专家重排",
+  "defaultVariant": "dplb",
+  "variants": [
+    {
+      "id": "dplb",
+      "title": "DPLB 请求选择 · v0.11.0",
+      "scope": "内部负载均衡；DP=2、单 API client、未指定 DP rank。统计反馈与请求提交是并发消息链；专家执行不迁移请求/KV。",
+      "entry": "submit",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "b8b302cde434df8c9289a2b465406b47ebab1c2d",
+          "label": "vLLM v0.11.0"
+        }
+      },
+      "nodes": [
+        {
+          "id": "counts",
+          "parent": null,
+          "number": "1",
+          "kind": "边界",
+          "title": "DPEngineCoreProc._maybe_publish_request_counts()",
+          "summary": "各 DP 引擎发布自己的队列计数。",
+          "input": "Scheduler 返回顺序为 (running, waiting)：原例 DP0=(4,2)，DP1=(2,1)。",
+          "changes": "忙循环调用统计发布函数；计数改变时按命名字段封装 SchedulerStats，放入输出队列。",
+          "output": "Coordinator 按 waiting、running 顺序保存和发布快照，原例为 [[2,4],[1,2]]。",
+          "resume": "引擎继续本地调度；Coordinator 异步接收，不阻塞新请求分流。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 1046,
+              "label": "忙循环调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 1022,
+              "end": 1034,
+              "label": "统计发布实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1093,
+              "end": 1095,
+              "label": "队列计数定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/coordinator.py",
+              "line": 308,
+              "end": 310,
+              "label": "发布视图采用等待、运行顺序"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到反馈第 1 步 · 队列计数",
+              "action": {
+                "mode": "feedback",
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "coordinator",
+          "parent": null,
+          "number": "2",
+          "kind": "边界",
+          "title": "DPCoordinatorProc.process_input_socket()",
+          "summary": "汇总各引擎计数并发布快照。",
+          "input": "后端引擎送来的 SchedulerStats。",
+          "changes": "读取 engine_index 更新对应计数，按发布循环把各 DP 计数发送给 API 客户端。",
+          "output": "本地视图可得到 [[2,4],[1,2]]。",
+          "resume": "客户端统计任务收到快照后覆盖本地估计。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/coordinator.py",
+              "line": 144,
+              "label": "统计循环定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/coordinator.py",
+              "line": 280,
+              "end": 311,
+              "label": "引擎统计消费"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/coordinator.py",
+              "line": 207,
+              "end": 218,
+              "label": "快照发布"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到反馈第 2 步 · 发布快照",
+              "action": {
+                "mode": "feedback",
+                "step": 2
+              }
+            }
+          ],
+          "note": "这是消息消费阶段，与引擎发布不是同步父子调用。"
+        },
+        {
+          "id": "stats-task",
+          "parent": null,
+          "number": "3",
+          "kind": "边界",
+          "title": "DPAsyncMPClient 的统计更新任务",
+          "summary": "后台接收快照更新 lb_engines。",
+          "input": "Coordinator 发布的 counts、wave 和运行状态。",
+          "changes": "_ensure_stats_update_task() 建立任务；任务读取最新消息，把切片 counts 写入 lb_engines。",
+          "output": "之后新请求的打分读取最新本地统计。",
+          "resume": "回到后台接收循环，不直接迁移已有请求。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core_client.py",
+              "line": 996,
+              "end": 1009,
+              "label": "任务创建及消费者定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core_client.py",
+              "line": 1074,
+              "end": 1081,
+              "label": "快照写入本地视图"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到反馈第 2 步 · API 本地视图",
+              "action": {
+                "mode": "feedback",
+                "step": 2
+              }
+            },
+            {
+              "label": "跳到反馈第 7 步 · 新统计覆盖",
+              "action": {
+                "mode": "feedback",
+                "step": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "submit",
+          "parent": null,
+          "number": "4",
+          "kind": "调用",
+          "title": "DPAsyncMPClient.add_request_async()",
+          "summary": "为新请求选择引擎并提交 ADD。",
+          "input": "新请求 R，没有指定 data_parallel_rank。",
+          "changes": "确保统计任务运行，调用实际 DPLB 子类的 get_core_engine_for_request()。",
+          "output": "选中 DP1 后向该引擎发送 ADD。",
+          "resume": "提交完成后等待该引擎结果；后续 Decode 保持同一请求归属。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core_client.py",
+              "line": 1086,
+              "end": 1102,
+              "label": "新增请求入口与调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core_client.py",
+              "line": 1108,
+              "end": 1110,
+              "label": "实际负载均衡子类"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到反馈第 3 步 · 为 R 选组",
+              "action": {
+                "mode": "feedback",
+                "step": 3
+              }
+            },
+            {
+              "label": "跳到反馈第 4 步 · 发送请求",
+              "action": {
+                "mode": "feedback",
+                "step": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "choose",
+          "parent": "submit",
+          "number": "4.1",
+          "kind": "调用",
+          "title": "DPLBAsyncMPClient.get_core_engine_for_request()",
+          "summary": "选择 waiting×4+running 最小的 DP。",
+          "input": "原例分值 DP0=12、DP1=6；单客户端从 DP0 起扫描。",
+          "changes": "按固定扫描起点遍历；只有严格更小才替换当前选择，因此同分保留先遇到者。",
+          "output": "原例选 DP1；同分情景选 DP0。",
+          "resume": "在返回选中引擎前先增加其本地 waiting 估计。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core_client.py",
+              "line": 1092,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core_client.py",
+              "line": 1130,
+              "end": 1158,
+              "label": "起点、打分与返回"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到原例 · 选择 DP1",
+              "action": {
+                "mode": "choice",
+                "step": 3,
+                "preset": "original"
+              }
+            },
+            {
+              "label": "跳到反例 · 请求总数更少仍不选",
+              "action": {
+                "mode": "choice",
+                "step": 3,
+                "preset": "counter"
+              }
+            },
+            {
+              "label": "跳到同分 · 保留 DP0",
+              "action": {
+                "mode": "choice",
+                "step": 3,
+                "preset": "tie"
+              }
+            }
+          ],
+          "note": "评分不直接使用 token 数、缓存命中率或设备利用率。"
+        },
+        {
+          "id": "estimate",
+          "parent": "choose",
+          "number": "4.1.1",
+          "kind": "动作",
+          "title": "发送前补偿本地 waiting 估计",
+          "summary": "减少同一统计周期的集中分配。",
+          "input": "选中 DP1；本地 waiting=1；client_count=1。",
+          "changes": "源码在返回引擎标识前将 waiting 增加 client_count，并保存请求到引擎的映射。",
+          "output": "原例 R1 后 DP1 分值 6→10；R2 后 10→14；R3 转选 DP0。",
+          "resume": "返回 chosen_engine 给 add_request_async()，然后才调用发送。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core_client.py",
+              "line": 1153,
+              "end": 1158,
+              "label": "本地估计和请求归属记录"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core_client.py",
+              "line": 1092,
+              "end": 1094,
+              "label": "选择返回后的发送续点"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 R1 · 本地补偿",
+              "action": {
+                "mode": "choice",
+                "step": 4,
+                "preset": "original"
+              }
+            },
+            {
+              "label": "跳到 R2 · 再选 DP1",
+              "action": {
+                "mode": "choice",
+                "step": 5,
+                "preset": "original"
+              }
+            },
+            {
+              "label": "跳到 R3 · 转选 DP0",
+              "action": {
+                "mode": "choice",
+                "step": 6,
+                "preset": "original"
+              }
+            }
+          ],
+          "note": "动画把发送与本地补偿合为一步；真实代码先在选组函数中增加估计，再提交 ADD。"
+        },
+        {
+          "id": "send",
+          "parent": "submit",
+          "number": "4.2",
+          "kind": "提交",
+          "title": "AsyncMPClient._send_input()",
+          "summary": "向被选中的 DP 引擎发请求消息。",
+          "input": "chosen_engine=DP1 与 CPU 请求元数据。",
+          "changes": "编码 ADD 并经输入 socket 发送；不复制 KV 到其他 DP。",
+          "output": "DP1 输入循环收到该请求。",
+          "resume": "前端等待输出；DP1 从独立消费入口继续。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core_client.py",
+              "line": 1093,
+              "end": 1100,
+              "label": "目标引擎发送与等待"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core_client.py",
+              "line": 849,
+              "end": 875,
+              "label": "编码发送实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到反馈第 4 步 · ADD 到 DP1",
+              "action": {
+                "mode": "feedback",
+                "step": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "own",
+          "parent": null,
+          "number": "5",
+          "kind": "边界",
+          "title": "DP1 EngineCore → Scheduler.add_request()",
+          "summary": "请求与 KV 归属保持在被选中的 DP。",
+          "input": "DP1 消费的 ADD 请求 R。",
+          "changes": "引擎转调 Scheduler.add_request()，后续本地 step() 分配和执行。",
+          "output": "R 的队列与 KV 保持 DP1 所有；专家执行可通过 EP 位于另一 GPU。",
+          "resume": "结果交回 API；未完成请求仍在原 DP 继续 Decode。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 763,
+              "end": 769,
+              "label": "ADD 消费"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 217,
+              "end": 243,
+              "label": "Scheduler 调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1097,
+              "end": 1101,
+              "label": "请求登记"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 272,
+              "end": 291,
+              "label": "本地调度循环"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到反馈第 5 步 · DP1 持有请求",
+              "action": {
+                "mode": "feedback",
+                "step": 5
+              }
+            },
+            {
+              "label": "跳到总览第 4 步 · 专家执行可跨卡",
+              "action": {
+                "mode": "overview",
+                "step": 4
+              }
+            }
+          ],
+          "note": "EP 激活通信不等于迁移请求、Scheduler 状态或 KV。"
+        },
+        {
+          "id": "output",
+          "parent": null,
+          "number": "6",
+          "kind": "返回",
+          "title": "EngineCoreOutputs → API 输出通路",
+          "summary": "输出返回客户端，已有请求不重新选 DP。",
+          "input": "DP1 的本轮生成结果。",
+          "changes": "引擎循环将输出交回前端；该请求继续绑定 DP1。",
+          "output": "生成文本返回客户端；R 尚未结束时继续原引擎循环。",
+          "resume": "新请求才会再次调用负载均衡选择入口。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 750,
+              "end": 757,
+              "label": "输出队列提交"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core_client.py",
+              "line": 1157,
+              "label": "请求与引擎映射"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到反馈第 6 步 · 生成结果返回",
+              "action": {
+                "mode": "feedback",
+                "step": 6
+              }
+            }
+          ]
+        },
+        {
+          "id": "refresh",
+          "parent": null,
+          "number": "7",
+          "kind": "循环",
+          "title": "新队列统计覆盖本地预测",
+          "summary": "完成统计反馈闭环。",
+          "input": "R 从等待进入运行后，DP1 真实计数为 waiting=1、running=3。",
+          "changes": "新统计经 Coordinator 送来，客户端替换此前的补偿估计。",
+          "output": "新分值为 4×1+3=7，供后续新请求选择。",
+          "resume": "重复统计和新请求提交两条并发路径。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 1027,
+              "end": 1034,
+              "label": "变化时发布"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core_client.py",
+              "line": 1074,
+              "end": 1079,
+              "label": "覆盖旧估计"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到反馈第 7 步 · 分值更新为 7",
+              "action": {
+                "mode": "feedback",
+                "step": 7
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eplb",
+      "title": "同步 EPLB · v0.11.0",
+      "scope": "单节点、DP=2、TP=PP=1、EP跨两GPU；四个逻辑专家与六槽。教学窗口/间隔4，显示一组合法并列放置；未运行设备测量。",
+      "entry": "runner",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "b8b302cde434df8c9289a2b465406b47ebab1c2d",
+          "label": "vLLM v0.11.0"
+        }
+      },
+      "nodes": [
+        {
+          "id": "runner",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "GPUModelRunner.execute_model()",
+          "summary": "先完成本步计算和采样，再进行同步 EPLB。",
+          "input": "A/B 归 DP0，C 归 DP1；旧布局供本步模型使用。",
+          "changes": "forward、采样和同步结果整理完成后调用 eplb_step()。",
+          "output": "到期时先重排，再构造和返回当前模型输出。",
+          "resume": "未结束请求下一步使用新布局继续生成。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2231,
+              "label": "入口定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2367,
+              "label": "先采样"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2404,
+              "end": 2438,
+              "label": "整理、EPLB 与输出顺序"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到时间线第 6 步 · 先完成本步",
+              "action": {
+                "mode": "timeline",
+                "step": 6
+              }
+            },
+            {
+              "label": "跳到时间线第 14 步 · 重排后返回",
+              "action": {
+                "mode": "timeline",
+                "step": 14
+              }
+            }
+          ]
+        },
+        {
+          "id": "eplb-step",
+          "parent": "runner",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "GPUModelRunner.eplb_step()",
+          "summary": "启用 EPLB 时转交平衡状态机。",
+          "input": "本步专家命中及已保存的映射、窗口和计数。",
+          "changes": "检查 enable_eplb，取得 MoE 模型并调用 EplbState.step()。",
+          "output": "状态机获得本步负载；未启用则直接返回。",
+          "resume": "返回 Runner，继续本步结果构造。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2424,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1795,
+              "end": 1812,
+              "label": "实际入口和状态机调用"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到时间线第 7 步 · 步后检查",
+              "action": {
+                "mode": "timeline",
+                "step": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "state-step",
+          "parent": "eplb-step",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "EplbState.step()",
+          "summary": "保存负载窗口并推进重排计数。",
+          "input": "教学窗口和间隔均为 4；每步逻辑命中为 [3,1,1,1]。",
+          "changes": "非 dummy 步写入循环窗口并清本次计数；重排计数每步增加。",
+          "output": "第 3 步计数 3 不触发；第 4 步达到 4 后重置并调用 rearrange()。",
+          "resume": "未到期直接返回；到期进入规划和搬运。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1807,
+              "end": 1812,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/eplb_state.py",
+              "line": 329,
+              "end": 345,
+              "label": "方法定义及 dummy 语义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/eplb_state.py",
+              "line": 394,
+              "end": 411,
+              "label": "窗口和周期触发"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 3 个模型步 · 尚未到期",
+              "action": {
+                "mode": "timeline",
+                "step": 5
+              }
+            },
+            {
+              "label": "跳到第 4 个模型步 · 到期",
+              "action": {
+                "mode": "timeline",
+                "step": 7
+              }
+            }
+          ],
+          "note": "教学计数从一次正常重排后的零点开始；不是初始化默认值。dummy 步不写窗口但仍推进重排周期。"
+        },
+        {
+          "id": "rearrange",
+          "parent": "state-step",
+          "number": "1.1.1.1",
+          "kind": "调用",
+          "title": "EplbState.rearrange()",
+          "summary": "从窗口负载生成并实施新专家布局。",
+          "input": "物理槽负载、旧映射、模型专家权重与 EP 组。",
+          "changes": "先归并并汇总逻辑负载，再规划新副本和槽位；迁移完成后才切映射。",
+          "output": "目标布局及权重成为下一步的有效布局。",
+          "resume": "返回 step()，再返回 Runner。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/eplb_state.py",
+              "line": 411,
+              "label": "到期调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/eplb_state.py",
+              "line": 413,
+              "label": "方法定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/eplb_state.py",
+              "line": 509,
+              "end": 543,
+              "label": "规划、搬运、映射切换顺序"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到时间线第 8 步 · 新布局规划",
+              "action": {
+                "mode": "timeline",
+                "step": 8
+              }
+            }
+          ]
+        },
+        {
+          "id": "loads",
+          "parent": "rearrange",
+          "number": "1.1.1.1.1",
+          "kind": "动作",
+          "title": "物理命中归并为逻辑专家负载",
+          "summary": "同一逻辑专家的多份副本先合并。",
+          "input": "按旧 physical_to_logical_map 记录的四步窗口。",
+          "changes": "scatter_add_ 按逻辑专家归并，再沿窗口求和并在 EP 组 all_reduce。",
+          "output": "教学逻辑负载为 [12,4,4,4]。",
+          "resume": "将此负载传给 rebalance_experts()。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/eplb_state.py",
+              "line": 436,
+              "end": 449,
+              "label": "按旧映射归并"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/eplb_state.py",
+              "line": 466,
+              "end": 467,
+              "label": "窗口求和与跨 rank 汇总"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到放置第 1 步 · [12,4,4,4]",
+              "action": {
+                "mode": "placement",
+                "step": 1
+              }
+            },
+            {
+              "label": "跳到时间线第 8 步 · 汇总负载",
+              "action": {
+                "mode": "timeline",
+                "step": 8
+              }
+            }
+          ]
+        },
+        {
+          "id": "plan",
+          "parent": "rearrange",
+          "number": "1.1.1.1.2",
+          "kind": "调用",
+          "title": "rebalance_experts()",
+          "summary": "生成逻辑与物理映射及副本数。",
+          "input": "四个逻辑专家，六个物理槽，两张 GPU，单节点。",
+          "changes": "将负载移到 CPU 规划，选择分层算法生成映射。",
+          "output": "E0 获得三份，其余各一份；产生新槽位映射。",
+          "resume": "规划结果返回 rearrange()，此时原权重尚未被改写。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/eplb_state.py",
+              "line": 509,
+              "end": 515,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/rebalance_algo.py",
+              "line": 182,
+              "label": "入口定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/rebalance_algo.py",
+              "line": 212,
+              "end": 221,
+              "label": "分层算法分派"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到放置第 2 步 · 基础副本",
+              "action": {
+                "mode": "placement",
+                "step": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "hierarchical",
+          "parent": "plan",
+          "number": "1.1.1.1.2.1",
+          "kind": "调用",
+          "title": "rebalance_experts_hierarchical()",
+          "summary": "先分配副本，再均衡放入设备。",
+          "input": "同一节点内四个专家及六个槽位。",
+          "changes": "调用 replicate_experts() 得到副本数，再按每副本预测负载调用 balanced_packing()。",
+          "output": "本例每份预测负载均为 4，每张 GPU 占三个槽。",
+          "resume": "把新物理顺序和副本数返回上层规划入口。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/rebalance_algo.py",
+              "line": 216,
+              "end": 221,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/rebalance_algo.py",
+              "line": 99,
+              "label": "方法定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/rebalance_algo.py",
+              "line": 155,
+              "end": 179,
+              "label": "副本与装箱调用及返回"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到放置第 5 步 · 排列副本",
+              "action": {
+                "mode": "placement",
+                "step": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "replicate",
+          "parent": "hierarchical",
+          "number": "1.1.1.1.2.1.1",
+          "kind": "调用",
+          "title": "replicate_experts()",
+          "summary": "逐个把冗余槽给当前每副本负载最大者。",
+          "input": "初始副本数 [1,1,1,1]，多出两个槽。",
+          "changes": "最大 L/c 先为 E0 的 12，再为 E0 的 6，两次都增加 E0 副本。",
+          "output": "副本数成为 [3,1,1,1]，六份预测负载均为 4。",
+          "resume": "返回分层算法，再执行均衡装箱。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/rebalance_algo.py",
+              "line": 157,
+              "end": 158,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/rebalance_algo.py",
+              "line": 66,
+              "end": 96,
+              "label": "方法定义与副本循环"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 1 个冗余槽",
+              "action": {
+                "mode": "placement",
+                "step": 3
+              }
+            },
+            {
+              "label": "跳到第 2 个冗余槽",
+              "action": {
+                "mode": "placement",
+                "step": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "packing",
+          "parent": "hierarchical",
+          "number": "1.1.1.1.2.1.2",
+          "kind": "调用",
+          "title": "balanced_packing()",
+          "summary": "每张 GPU 固定三个槽，平衡预测总负载。",
+          "input": "按负载排序后的六份专家，每份负载 4。",
+          "changes": "逐份选择尚未装满且累计负载最小的 GPU。",
+          "output": "教学目标为 [0,2,0 | 1,3,0]，两侧预测负载均 12。",
+          "resume": "返回新槽位顺序，后续再执行权重迁移。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/rebalance_algo.py",
+              "line": 163,
+              "end": 164,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/rebalance_algo.py",
+              "line": 18,
+              "label": "方法定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/rebalance_algo.py",
+              "line": 43,
+              "end": 63,
+              "label": "排序与容量受限装箱"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到首份装箱",
+              "action": {
+                "mode": "placement",
+                "step": 6
+              }
+            },
+            {
+              "label": "跳到完成目标布局",
+              "action": {
+                "mode": "placement",
+                "step": 11
+              }
+            }
+          ],
+          "note": "并列副本采用一组合法教学顺序；源码排序并不保证唯一槽位排列。"
+        },
+        {
+          "id": "transfer",
+          "parent": "rearrange",
+          "number": "1.1.1.1.3",
+          "kind": "调用",
+          "title": "rearrange_expert_weights_inplace()",
+          "summary": "按新旧映射逐层重排权重。",
+          "input": "旧布局 [0,1,2 | 3,2,3] 与新布局，以及每层专家权重。",
+          "changes": "建立临时缓冲，逐层同步后调用 shuffle_layer()。",
+          "output": "所有层权重先达到目标物理槽，映射仍待上层切换。",
+          "resume": "返回 rearrange() 后才更新逻辑与物理映射。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/eplb_state.py",
+              "line": 518,
+              "end": 525,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/rebalance_execute.py",
+              "line": 244,
+              "label": "方法定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/rebalance_execute.py",
+              "line": 305,
+              "end": 335,
+              "label": "缓冲与逐层调用"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到时间线第 9 步 · 临时缓冲",
+              "action": {
+                "mode": "timeline",
+                "step": 9
+              }
+            }
+          ]
+        },
+        {
+          "id": "shuffle",
+          "parent": "transfer",
+          "number": "1.1.1.1.3.1",
+          "kind": "调用",
+          "title": "shuffle_layer()",
+          "summary": "本地复制与跨卡传输共同填充目标缓冲。",
+          "input": "单层旧权重、旧新索引及临时缓冲。",
+          "changes": "本地来源先复制到缓冲；跨卡来源构造 P2P 发送接收，再提交通信。",
+          "output": "GPU1 的目标缓冲收到 E1/E3/E0；在用权重尚未整体写回。",
+          "resume": "等待所有传输后，再把缓冲写到目标槽。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/rebalance_execute.py",
+              "line": 327,
+              "end": 335,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/rebalance_execute.py",
+              "line": 99,
+              "label": "方法定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/rebalance_execute.py",
+              "line": 117,
+              "end": 137,
+              "label": "本地来源复制"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/rebalance_execute.py",
+              "line": 176,
+              "end": 226,
+              "label": "P2P 提交与等待"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到本地复制",
+              "action": {
+                "mode": "timeline",
+                "step": 9
+              }
+            },
+            {
+              "label": "跳到跨卡权重传输",
+              "action": {
+                "mode": "timeline",
+                "step": 10
+              }
+            }
+          ]
+        },
+        {
+          "id": "wait-write",
+          "parent": "shuffle",
+          "number": "1.1.1.1.3.1.1",
+          "kind": "等待",
+          "title": "等待通信并写回目标槽",
+          "summary": "传输完成不等于新映射已经生效。",
+          "input": "batch_isend_irecv() 返回的通信请求及目标缓冲。",
+          "changes": "逐个 req.wait()，完成后把缓冲复制回目标物理权重位置。",
+          "output": "该层权重就绪；逐层循环继续，全部完成才返回上层。",
+          "resume": "返回 rearrange() 的映射切换动作。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/rebalance_execute.py",
+              "line": 224,
+              "end": 241,
+              "label": "通信完成与权重写回"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到等待发送接收",
+              "action": {
+                "mode": "timeline",
+                "step": 11
+              }
+            },
+            {
+              "label": "跳到缓冲写回",
+              "action": {
+                "mode": "timeline",
+                "step": 12
+              }
+            }
+          ]
+        },
+        {
+          "id": "switch",
+          "parent": "rearrange",
+          "number": "1.1.1.1.4",
+          "kind": "动作",
+          "title": "权重完成后切换专家映射",
+          "summary": "让后续 token 使用新副本位置。",
+          "input": "所有层已迁移的权重与规划得到的新映射。",
+          "changes": "更新 physical_to_logical_map、logical_to_physical_map 和 logical_replica_count。",
+          "output": "新布局生效；A/B/C 仍属于原 DP，KV 不迁移。",
+          "resume": "返回 EplbState.step()，再返回 Runner 的结果构造。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/distributed/eplb/eplb_state.py",
+              "line": 518,
+              "end": 543,
+              "label": "先搬权重、后更新映射"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到所有层完成后的映射切换",
+              "action": {
+                "mode": "timeline",
+                "step": 13
+              }
+            }
+          ]
+        },
+        {
+          "id": "return",
+          "parent": "runner",
+          "number": "1.2",
+          "kind": "返回",
+          "title": "返回本步 ModelRunnerOutput",
+          "summary": "同步重排完成后才把本步输出交回。",
+          "input": "本步已采样结果和已更新的专家布局。",
+          "changes": "Runner 构造模型输出并在同步配置下返回。",
+          "output": "第 4 步结果返回；第 5 步同一请求使用新布局继续。",
+          "resume": "调度器判停；请求结束与专家迁移是不同事件。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2424,
+              "end": 2438,
+              "label": "EPLB 后返回输出"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 287,
+              "end": 288,
+              "label": "调度器消费输出"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到返回第 4 步输出",
+              "action": {
+                "mode": "timeline",
+                "step": 14
+              }
+            },
+            {
+              "label": "跳到新布局执行下一步",
+              "action": {
+                "mode": "timeline",
+                "step": 15
+              }
+            },
+            {
+              "label": "跳到请求最终结束",
+              "action": {
+                "mode": "timeline",
+                "step": 16
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

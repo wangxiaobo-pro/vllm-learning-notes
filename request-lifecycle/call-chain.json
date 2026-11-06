@@ -1,0 +1,835 @@
+{
+  "title": "请求生命周期：真实调用与消息边界",
+  "defaultVariant": "v1-stream",
+  "variants": [
+    {
+      "id": "v1-stream",
+      "title": "V1 同步流式聊天 · v0.11.0",
+      "scope": "单卡 UniProcExecutor；纯文本 full attention；无投机解码、无 PD。HTTP、引擎循环与前端输出任务以消息边界相接；静态源码核实，token 为教学数据。",
+      "entry": "http",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "b8b302cde434df8c9289a2b465406b47ebab1c2d",
+          "label": "vLLM v0.11.0"
+        }
+      },
+      "nodes": [
+        {
+          "id": "http",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "api_server.create_chat_completion()",
+          "summary": "接收流式聊天请求。",
+          "input": "R1：messages，stream=true，max_tokens=3。",
+          "changes": "选择聊天处理器并等待其建立结果生成器。",
+          "output": "返回 StreamingResponse，后续逐段消费生成器。",
+          "resume": "HTTP 层保持连接，等待流式响应。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/openai/api_server.py",
+              "line": 603,
+              "end": 621,
+              "label": "入口及处理器调用"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 1 步 · HTTP 接入",
+              "action": {
+                "mode": "v1",
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "chat",
+          "parent": "http",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "OpenAIServingChat.create_chat_completion()",
+          "summary": "准备聊天输入并选择流式返回。",
+          "input": "messages 与聊天模板、分词器和采样参数。",
+          "changes": "先预处理聊天，再创建引擎结果生成器；流式分支返回 SSE 生成器。",
+          "output": "教学输入编码为 [p1,p2,p3,p4]，输出采用增量形式。",
+          "resume": "返回 HTTP handler；生成器被消费后才持续推进请求。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/openai/api_server.py",
+              "line": 610,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/openai/serving_chat.py",
+              "line": 163,
+              "label": "方法定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/openai/serving_chat.py",
+              "line": 239,
+              "end": 247,
+              "label": "预处理调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/openai/serving_chat.py",
+              "line": 312,
+              "end": 336,
+              "label": "引擎生成与流式返回"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 2 步 · 模板和分词",
+              "action": {
+                "mode": "v1",
+                "step": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "preprocess",
+          "parent": "chat",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "OpenAIServing._preprocess_chat()",
+          "summary": "把 messages 转成引擎输入。",
+          "input": "原始对话消息及 tokenizer。",
+          "changes": "应用聊天模板，再调用异步分词入口生成 token IDs。",
+          "output": "本例得到长度 4 的 prompt；不是模型已经执行。",
+          "resume": "回到 create_chat_completion() 构造采样参数及引擎生成器。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/openai/serving_chat.py",
+              "line": 239,
+              "end": 247,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/openai/serving_engine.py",
+              "line": 736,
+              "label": "方法定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/openai/serving_engine.py",
+              "line": 791,
+              "end": 803,
+              "label": "模板应用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/openai/serving_engine.py",
+              "line": 822,
+              "end": 831,
+              "label": "分词调用"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 2 步 · 4-token prompt",
+              "action": {
+                "mode": "v1",
+                "step": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "generate",
+          "parent": "chat",
+          "number": "1.1.2",
+          "kind": "调用",
+          "title": "AsyncLLM.generate()",
+          "summary": "注册请求并等待输出 collector。",
+          "input": "R1、已处理 prompt、max_tokens=3。",
+          "changes": "消费异步生成器时调用 add_request()；随后从 collector 读取输出并 yield。",
+          "output": "逐次得到 RequestOutput，而非一次返回全部文本。",
+          "resume": "有输出交给 ServingChat；未结束则继续等待 collector。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/openai/serving_chat.py",
+              "line": 312,
+              "end": 322,
+              "label": "生成器创建位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/async_llm.py",
+              "line": 323,
+              "label": "生成器定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/async_llm.py",
+              "line": 370,
+              "end": 392,
+              "label": "注册请求、等待与 yield"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 3 步 · 前端注册",
+              "action": {
+                "mode": "v1",
+                "step": 3
+              }
+            },
+            {
+              "label": "跳到第 11 步 · 输出 collector",
+              "action": {
+                "mode": "v1",
+                "step": 11
+              }
+            }
+          ]
+        },
+        {
+          "id": "register",
+          "parent": "generate",
+          "number": "1.1.2.1",
+          "kind": "调用",
+          "title": "AsyncLLM.add_request()",
+          "summary": "先登记输出状态，再提交引擎请求。",
+          "input": "处理后的 EngineCoreRequest 与 R1 的输出 collector。",
+          "changes": "先向 OutputProcessor 注册请求，再调用引擎客户端 add_request_async()。",
+          "output": "前端已能接收 R1 输出；请求尚需由后台 EngineCore 准入。",
+          "resume": "返回 collector 给 generate()，后者等待结果。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/async_llm.py",
+              "line": 370,
+              "end": 376,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/async_llm.py",
+              "line": 261,
+              "label": "方法定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/async_llm.py",
+              "line": 309,
+              "end": 313,
+              "label": "注册与发送顺序"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 3 步 · 登记输出状态",
+              "action": {
+                "mode": "v1",
+                "step": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "add-ipc",
+          "parent": "register",
+          "number": "1.1.2.1.1",
+          "kind": "提交",
+          "title": "AsyncMPClient.add_request_async()",
+          "summary": "以 ADD 消息发送 CPU 请求元数据。",
+          "input": "R1 的 token IDs、采样参数与请求标识。",
+          "changes": "调用 _send_input()，编码后通过 ZeroMQ 发送；没有传输模型权重和 KV 张量。",
+          "output": "后台进程稍后收到 ADD；发送完成不等于推理完成。",
+          "resume": "前端返回注册路径并等输出；接收侧从独立的输入循环继续。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/async_llm.py",
+              "line": 313,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core_client.py",
+              "line": 903,
+              "end": 910,
+              "label": "实际提交入口"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core_client.py",
+              "line": 849,
+              "end": 875,
+              "label": "编码与发送"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 4 步 · ADD / IPC",
+              "action": {
+                "mode": "v1",
+                "step": 4
+              }
+            }
+          ],
+          "note": "跨进程提交与接收是消息连接，不画成前端直接同步调用 Scheduler。"
+        },
+        {
+          "id": "engine-add",
+          "parent": null,
+          "number": "2",
+          "kind": "边界",
+          "title": "EngineCore 接收 ADD → add_request()",
+          "summary": "消息消费后把请求交给调度器。",
+          "input": "输入循环接收到的 Request 与请求轮次。",
+          "changes": "_handle_client_request() 分派 ADD 到 add_request()，再调用 Scheduler.add_request()。",
+          "output": "R1 登记到 requests 和 waiting，计算游标为 0。",
+          "resume": "返回引擎循环，后续 step() 从等待队列选取请求。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 763,
+              "end": 769,
+              "label": "ADD 消费与分派"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 217,
+              "end": 243,
+              "label": "请求入口与调度器调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1097,
+              "end": 1101,
+              "label": "等待队列登记"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 5 步 · WAITING",
+              "action": {
+                "mode": "v1",
+                "step": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "step",
+          "parent": null,
+          "number": "3",
+          "kind": "循环",
+          "title": "EngineCore.step()",
+          "summary": "每轮调度、同步执行并回写结果。",
+          "input": "R1 的持久状态；首轮 prompt 长 4，之后每轮处理一个欠算 token。",
+          "changes": "依次调用 schedule()、执行器和 update_from_output()。",
+          "output": "三轮分别输入 4、1、1 个 token，得到 t1、t2、t3。",
+          "resume": "本轮输出进入输出队列；未完成请求留待下一轮。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 272,
+              "end": 291,
+              "label": "完整同步轮次"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 750,
+              "end": 757,
+              "label": "循环消费与输出队列"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 6 步 · Prefill 轮",
+              "action": {
+                "mode": "v1",
+                "step": 6
+              }
+            },
+            {
+              "label": "跳到第 13 步 · Decode 轮",
+              "action": {
+                "mode": "v1",
+                "step": 13
+              }
+            }
+          ],
+          "note": "固定 v0.11.0 同步路径；不混用新版拆分 sample_tokens() 的路径。"
+        },
+        {
+          "id": "schedule",
+          "parent": "step",
+          "number": "3.1",
+          "kind": "调用",
+          "title": "Scheduler.schedule()",
+          "summary": "选择欠算位置并建立本轮计划。",
+          "input": "首轮 R1 在 WAITING，预算至少为 4，前缀无命中。",
+          "changes": "首轮等待准入；之后 RUNNING 需求按已知长度减已计算长度得到 1。",
+          "output": "首轮计划 4 个位置；后两轮各 1，块表持续指向 B7。",
+          "resume": "返回计划给 step()，执行器随后准备设备输入。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 283,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 179,
+              "label": "方法定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 210,
+              "end": 226,
+              "label": "运行请求需求"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 380,
+              "end": 384,
+              "label": "等待请求前缀查询"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 626,
+              "end": 645,
+              "label": "返回前预记计算游标"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 6 步 · 首次调度",
+              "action": {
+                "mode": "v1",
+                "step": 6
+              }
+            },
+            {
+              "label": "跳到第 16 步 · 输入 t2",
+              "action": {
+                "mode": "v1",
+                "step": 16
+              }
+            }
+          ]
+        },
+        {
+          "id": "allocate",
+          "parent": "schedule",
+          "number": "3.1.1",
+          "kind": "调用",
+          "title": "KVCacheManager.allocate_slots()",
+          "summary": "给本轮计算保留缓存位置。",
+          "input": "首轮 4 个位置及 R1 的缓存需求。",
+          "changes": "等待路径调用 allocate_slots()；本例分配 16 槽的教学块 B7，后两轮使用余下空槽。",
+          "output": "逻辑块表已建立，物理 K/V 需等前向写入。",
+          "resume": "返回 schedule()，请求转为 RUNNING 并加入 SchedulerOutput。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 471,
+              "end": 479,
+              "label": "等待准入调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 255,
+              "end": 258,
+              "label": "运行请求调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 193,
+              "label": "方法定义"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 6 步 · 分配 B7",
+              "action": {
+                "mode": "v1",
+                "step": 6
+              }
+            },
+            {
+              "label": "跳到第 13 步 · 复用空槽",
+              "action": {
+                "mode": "v1",
+                "step": 13
+              }
+            }
+          ]
+        },
+        {
+          "id": "executor",
+          "parent": "step",
+          "number": "3.2",
+          "kind": "边界",
+          "title": "Executor.execute_model() → Worker.execute_model()",
+          "summary": "单卡执行器在工作进程内转调 Worker。",
+          "input": "SchedulerOutput：R1、计算量与块表。",
+          "changes": "基础执行器调用 collective_rpc()；UniProcExecutor 使用 run_method() 在当前进程调用 Worker。",
+          "output": "Worker 将计划交给其 GPUModelRunner；返回后把模型结果交回引擎。",
+          "resume": "执行器返回后，step() 才调用 update_from_output()。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 284,
+              "end": 286,
+              "label": "执行器提交位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 254,
+              "end": 261,
+              "label": "错误日志包装实际调用 model_fn"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/abstract.py",
+              "line": 98,
+              "end": 106,
+              "label": "执行器转发"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/executor/uniproc_executor.py",
+              "line": 71,
+              "end": 86,
+              "label": "单进程方法分派"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_worker.py",
+              "line": 427,
+              "end": 450,
+              "label": "Worker 调用 Runner"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 7 步 · 执行器与 Worker",
+              "action": {
+                "mode": "v1",
+                "step": 7
+              }
+            }
+          ],
+          "note": "UniProcExecutor 名称中的 collective_rpc 不表示此路径另起 Worker 进程；前端到 EngineCore 的 IPC 是另一边界。 EngineCore 经 execute_model_with_error_logging() 包装转调执行器；包装只记录失败详情。"
+        },
+        {
+          "id": "runner",
+          "parent": "executor",
+          "number": "3.2.1",
+          "kind": "调用",
+          "title": "GPUModelRunner.execute_model()",
+          "summary": "准备输入、前向、采样并形成 CPU 结果。",
+          "input": "首轮 p1…p4；Decode 轮依次输入 t1、t2，并读取历史 KV。",
+          "changes": "更新持久请求状态和设备元数据，执行模型、logits 与采样，再同步整理结果。",
+          "output": "先写入 4、5、6 个输入位置的 KV，分别得到 t1、t2、t3；t3 未再输入，故没有自身 KV。",
+          "resume": "ModelRunnerOutput 沿 Worker、Executor 返回 EngineCore。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_worker.py",
+              "line": 447,
+              "end": 448,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2231,
+              "end": 2257,
+              "label": "定义与输入准备"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2298,
+              "end": 2304,
+              "label": "模型前向"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2331,
+              "label": "logits 调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2367,
+              "label": "采样调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2404,
+              "end": 2438,
+              "label": "同步整理与返回"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 8 步 · 首 token",
+              "action": {
+                "mode": "v1",
+                "step": 8
+              }
+            },
+            {
+              "label": "跳到第 17 步 · t3 没有自身 KV",
+              "action": {
+                "mode": "v1",
+                "step": 17
+              }
+            }
+          ],
+          "note": "具体模型层与注意力内核是本图边界；示例 token 与 B7 均为教学数据。"
+        },
+        {
+          "id": "update",
+          "parent": "step",
+          "number": "3.3",
+          "kind": "调用",
+          "title": "Scheduler.update_from_output()",
+          "summary": "追加 token、判停并释放完成请求。",
+          "input": "模型返回的采样 IDs 与原调度计划。",
+          "changes": "调用 _update_request_with_output() 追加 token 并 check_stop()；第三个输出满足长度上限后调用 _free_request()。",
+          "output": "前两轮继续 RUNNING；第三轮释放 R1 的块引用并登记 finished_req_ids。",
+          "resume": "形成 EngineCoreOutput；前端收到最终输出，后续 Worker 轮次消费完成 ID。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 287,
+              "end": 288,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 861,
+              "label": "方法定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 921,
+              "end": 937,
+              "label": "更新与结束释放"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1024,
+              "end": 1042,
+              "label": "追加 token 与 check_stop"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1147,
+              "end": 1165,
+              "label": "块引用释放"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 10 步 · t1 后继续",
+              "action": {
+                "mode": "v1",
+                "step": 10
+              }
+            },
+            {
+              "label": "跳到第 18 步 · 长度结束",
+              "action": {
+                "mode": "v1",
+                "step": 18
+              }
+            }
+          ]
+        },
+        {
+          "id": "front-output",
+          "parent": null,
+          "number": "4",
+          "kind": "边界",
+          "title": "output_handler() → OutputProcessor.process_outputs()",
+          "summary": "独立前端任务接收输出并增量解码。",
+          "input": "IPC 返回的 EngineCoreOutputs，包含 R1 的 token 与结束原因。",
+          "changes": "output_handler() 等待引擎输出，再调用 OutputProcessor 更新 detokenizer 和 collector。",
+          "output": "generate() 获得 RequestOutput；最终输出后移除前端请求状态。",
+          "resume": "collector 唤醒 generate()，ServingChat 继续消费增量。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/async_llm.py",
+              "line": 435,
+              "end": 463,
+              "label": "异步输出消费与处理调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/output_processor.py",
+              "line": 380,
+              "label": "处理器定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/output_processor.py",
+              "line": 423,
+              "end": 467,
+              "label": "增量解码与结束清理"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 11 步 · 前端增量解码",
+              "action": {
+                "mode": "v1",
+                "step": 11
+              }
+            },
+            {
+              "label": "跳到第 19 步 · 最终输出",
+              "action": {
+                "mode": "v1",
+                "step": 19
+              }
+            }
+          ],
+          "note": "这是独立输出任务，不能画成 Scheduler 同步调用前端 detokenizer。"
+        },
+        {
+          "id": "stream",
+          "parent": "chat",
+          "number": "1.1.3",
+          "kind": "调用",
+          "title": "OpenAIServingChat.chat_completion_stream_generator()",
+          "summary": "把增量输出封装成 SSE。",
+          "input": "AsyncLLM.generate() 提供的 RequestOutput。",
+          "changes": "先发送角色信息，再发送内容增量；最终结果带 finish_reason，按配置输出 usage 后发送 DONE。",
+          "output": "客户端消费流式文本并结束连接；token 与文本片段不保证一一对应。",
+          "resume": "生成器完成后 StreamingResponse 结束。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/openai/serving_chat.py",
+              "line": 331,
+              "end": 336,
+              "label": "生成器创建"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/openai/serving_chat.py",
+              "line": 478,
+              "label": "生成器定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/openai/serving_chat.py",
+              "line": 574,
+              "end": 620,
+              "label": "消费结果与首段 SSE"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/entrypoints/openai/serving_chat.py",
+              "line": 1091,
+              "end": 1149,
+              "label": "结束流与 DONE"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 12 步 · 首段 SSE",
+              "action": {
+                "mode": "v1",
+                "step": 12
+              }
+            },
+            {
+              "label": "跳到第 19 步 · DONE",
+              "action": {
+                "mode": "v1",
+                "step": 19
+              }
+            }
+          ]
+        },
+        {
+          "id": "cleanup",
+          "parent": null,
+          "number": "5",
+          "kind": "边界",
+          "title": "后续轮次 GPUModelRunner._update_states()",
+          "summary": "按完成 ID 清理 Worker 持久状态。",
+          "input": "后续 SchedulerOutput 携带 finished_req_ids={R1}。",
+          "changes": "execute_model() 在检查零计算量之前先调用 _update_states()，移除请求及 batch 槽。",
+          "output": "R1 的 Worker 状态清理；启动时的模型和 GPU KV 池继续驻留。",
+          "resume": "若该轮没有其他输入则返回空模型输出。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 594,
+              "label": "打包完成 ID"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2236,
+              "end": 2245,
+              "label": "清理早于零输入返回"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 526,
+              "end": 546,
+              "label": "完成请求清理实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 20 步 · Worker 清理",
+              "action": {
+                "mode": "v1",
+                "step": 20
+              }
+            }
+          ],
+          "note": "这是后续调度消息的消费，与第 19 步最终 SSE 没有固定先后。"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1270 @@
+{
+  "title": "前缀 KV：从请求匹配到旧槽复用与新 KV 发布",
+  "defaultVariant": "vllm",
+  "variants": [
+    {
+      "id": "vllm",
+      "title": "vLLM · 完整块链式哈希",
+      "scope": "固定 V1 同步调度、一个 full-attention 缓存组，hash block size 与 KV block size 相同；图以每块2 token演示，不使用细粒度子块命中、PD 或投机。前置R1=ABCDEF已完成前向；跟踪R2=ABCXEF从请求哈希、等待准入到Worker及后续释放。逻辑哈希登记不等于设备KV写完。",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
+        }
+      },
+      "nodes": [
+        {
+          "id": "prior",
+          "parent": null,
+          "number": "P1",
+          "kind": "边界",
+          "title": "KVCacheManager.allocate_slots()：R1 的既有缓存",
+          "summary": "前置条件：R1=ABCDEF 已完成前向，完整块 KV 仍可复用。",
+          "input": "R1 的块哈希和设备块；图中每块 2 token。",
+          "changes": "allocate_slots() 经 coordinator.cache_blocks() 登记完整块哈希；设备前向另行填入真实 K/V。",
+          "output": "本例 AB/CD/EF 已有对应块；登记哈希本身不是计算 KV。",
+          "resume": "本条主线从后续 R2 入队开始；前向已完成是本例前提。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 595,
+              "end": 618,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 351,
+              "end": 370,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 654,
+              "end": 668,
+              "label": "调度与执行分离"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 1 步",
+              "action": {
+                "mode": "vllm",
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "request",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "Request.__init__() → update_block_hashes()",
+          "summary": "R2 入队前生成链式块哈希，尚未查 KV。",
+          "input": "R2=ABCXEF；hash_block_size=2；与 R1 相同的缓存隔离条件。",
+          "changes": "Request 持有 block_hasher；update_block_hashes() 追加当前完整块哈希。",
+          "output": "R2 的 h1(AB)、h4(CX)、h5(EF)；相同尾块 EF 因父哈希不同而不同。",
+          "resume": "请求进入 waiting；只有调度扫描且 computed=0 时执行前缀查找。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/request.py",
+              "line": 225,
+              "end": 230,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/request.py",
+              "line": 285,
+              "end": 288,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 2 步",
+              "action": {
+                "mode": "vllm",
+                "step": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "hash",
+          "parent": "request",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "get_request_block_hasher().request_block_hasher()",
+          "summary": "逐完整块串联父哈希、token 和额外隔离键。",
+          "input": "前一个块 hash；当前块 token IDs；LoRA/多模态等额外键。",
+          "changes": "只处理完整块；每次 hash_block_tokens() 后把当前 hash 作为下一块父 hash。",
+          "output": "完整块哈希列表；它不含设备 K/V 数值。",
+          "resume": "返回 update_block_hashes()，结果保存在 Request.block_hashes。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/request.py",
+              "line": 288,
+              "end": 288,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_utils.py",
+              "line": 942,
+              "end": 955,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_utils.py",
+              "line": 974,
+              "end": 1001,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 2 步",
+              "action": {
+                "mode": "vllm",
+                "step": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "schedule",
+          "parent": null,
+          "number": "2",
+          "kind": "调用",
+          "title": "Scheduler.schedule()",
+          "summary": "等待请求准入时查找可复用前缀。",
+          "input": "R2 在 waiting；num_computed_tokens=0；剩余预算至少 4。",
+          "changes": "先查本地前缀，之后从未命中的位置计算本轮新配额。",
+          "output": "命中长度 2；需新算 CXEF 共 4 token。",
+          "resume": "分配成功后打包块表和起点，交给执行器。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 948,
+              "end": 956,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1114,
+              "end": 1118,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1332,
+              "end": 1358,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 3 步",
+              "action": {
+                "mode": "vllm",
+                "step": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "prefix",
+          "parent": "schedule",
+          "number": "2.1",
+          "kind": "调用",
+          "title": "Scheduler._get_local_prefix_cache_hit()",
+          "summary": "把请求交给 KV 管理器，并保留单组命中信息。",
+          "input": "R2 和 Request.block_hashes。",
+          "changes": "本地 cache 查询返回命中块、token 长度、共享边界；无额外同步复制。",
+          "output": "本例 block #7、2 token；单 full-attention 组无稀疏分歧。",
+          "resume": "回到 schedule()，参与有效 computed 和剩余配额计算。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 951,
+              "end": 956,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 547,
+              "end": 557,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 3 步",
+              "action": {
+                "mode": "vllm",
+                "step": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "manager",
+          "parent": "prefix",
+          "number": "2.1.1",
+          "kind": "调用",
+          "title": "KVCacheManager.get_computed_blocks()",
+          "summary": "限制可复用长度，并调用单组协调器。",
+          "input": "R2 token 数 6；前缀查找开启。",
+          "changes": "max_cache_hit_length=num_tokens−1，保留末 token 重算 logits 的空间；本例在 CX 已提前未命中。",
+          "output": "KVCacheBlocks、num_new_computed_tokens、shared_prefix_boundary。",
+          "resume": "返回 Scheduler 的 helper；这里不改变 Worker 的物理缓存。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 547,
+              "end": 557,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 264,
+              "end": 321,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 5 步",
+              "action": {
+                "mode": "vllm",
+                "step": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "coordinator",
+          "parent": "manager",
+          "number": "2.1.1.1",
+          "kind": "调用",
+          "title": "UnitaryKVCacheCoordinator.find_longest_cache_hit()",
+          "summary": "将单缓存组 g0 的查找转交 FullAttentionManager。",
+          "input": "链式 block_hashes 和最大可命中长度。",
+          "changes": "指定 kv_cache_group_ids=[0] 与块大小对齐；保持单组语义。",
+          "output": "该组命中块和命中 token 数；第三个共享缺口返回 0。",
+          "resume": "返回 KVCacheManager.get_computed_blocks()。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 296,
+              "end": 300,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 587,
+              "end": 604,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 3 步",
+              "action": {
+                "mode": "vllm",
+                "step": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "scan",
+          "parent": "coordinator",
+          "number": "2.1.1.1.1",
+          "kind": "循环",
+          "title": "FullAttentionManager.find_longest_cache_hit()",
+          "summary": "从头逐完整块查找，首个未命中即停止。",
+          "input": "R2 的 h1、h4、h5；block_size=2。",
+          "changes": "h1 查到 #7，h4 查不到则 break；不会独立继续尝试尾部 EF。",
+          "output": "命中块 [7]，hit_length=1×2=2。",
+          "resume": "返回协调器，继续封装命中结果。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 592,
+              "end": 602,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 751,
+              "end": 808,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 4 步",
+              "action": {
+                "mode": "vllm",
+                "step": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "lookup",
+          "parent": "scan",
+          "number": "2.1.1.1.1.1",
+          "kind": "调用",
+          "title": "BlockPool.get_cached_block()",
+          "summary": "以块 hash 和缓存组组成键查元数据表。",
+          "input": "(h1,g0) 或 (h4,g0)。",
+          "changes": "get_one_block() 找到缓存块对象；任一组未命中返回 None。",
+          "output": "h1→#7，h4→None；不发生跨设备 K/V 拷贝。",
+          "resume": "返回 FullAttentionManager 的循环，决定继续还是停止。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 802,
+              "end": 805,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/block_pool.py",
+              "line": 198,
+              "end": 224,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 3 步",
+              "action": {
+                "mode": "vllm",
+                "step": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "allocate",
+          "parent": "schedule",
+          "number": "2.2",
+          "kind": "调用",
+          "title": "KVCacheManager.allocate_slots()",
+          "summary": "固定命中块引用，并分配未命中后缀。",
+          "input": "命中 [7]；本轮 CXEF 4 token；还需两块。",
+          "changes": "先接入命中块并增加引用，再分配 #24、#31；登记最终完整块哈希。",
+          "output": "R2 块链 [7,24,31]；本轮只计算 CXEF。",
+          "resume": "返回 schedule()，将原起点 2 和新配额 4 放进输出。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1245,
+              "end": 1262,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 581,
+              "end": 618,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/block_pool.py",
+              "line": 752,
+              "end": 766,
+              "label": "命中块引用语义"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 6 步",
+              "action": {
+                "mode": "vllm",
+                "step": 6
+              }
+            }
+          ]
+        },
+        {
+          "id": "new-blocks",
+          "parent": "allocate",
+          "number": "2.2.1",
+          "kind": "调用",
+          "title": "coordinator.allocate_new_blocks() → BlockPool.get_new_blocks()",
+          "summary": "经单组管理器取得新的物理块 ID。",
+          "input": "R2 需要的槽位总量和已有块链。",
+          "changes": "单组管理器计算差额后向空闲队列取块；旧哈希若被复用则驱逐。",
+          "output": "教学新块 #24、#31；引用计数归该请求占用。",
+          "resume": "返回 allocate_slots()；随后 cache_blocks 登记该请求完整块键。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 595,
+              "end": 600,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 311,
+              "end": 320,
+              "label": "逐组转调"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 372,
+              "end": 411,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/block_pool.py",
+              "line": 666,
+              "end": 700,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 6 步",
+              "action": {
+                "mode": "vllm",
+                "step": 6
+              }
+            }
+          ]
+        },
+        {
+          "id": "pack",
+          "parent": "schedule",
+          "number": "2.3",
+          "kind": "动作",
+          "title": "构造 SchedulerOutput 并推进调度游标",
+          "summary": "计划携带 Worker 所需的块 ID 和本轮原起点。",
+          "input": "R2 块链 [7,24,31]；原 computed=2；新配额=4。",
+          "changes": "构造 NewRequestData/CachedRequestData 后，_update_after_schedule() 才推进 computed 和 in_flight。",
+          "output": "计划起点仍为 2；调度器游标预记到 6，设备执行尚未完成。",
+          "resume": "返回 EngineCore.step()，执行器接收计划。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1429,
+              "end": 1446,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1554,
+              "end": 1556,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1616,
+              "end": 1636,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 7 步",
+              "action": {
+                "mode": "vllm",
+                "step": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "execute",
+          "parent": null,
+          "number": "3",
+          "kind": "边界",
+          "title": "EngineCore.step() → model_executor.execute_model()",
+          "summary": "Worker 消费块表，读取已有 AB，生成 CXEF 的新 KV。",
+          "input": "R2 起点 2、配额 4、块表 [7,24,31]。",
+          "changes": "执行器提交 Worker 前向；该后端的 attention 读取 #7，向新增块写新 K/V。",
+          "output": "设备上 R2 的完整历史 KV 和本轮模型结果；本页不固定 CUDA/NPU 内核路线。",
+          "resume": "future.result() 返回后，结果进入 Scheduler.update_from_output()。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 654,
+              "end": 670,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1440,
+              "end": 1473,
+              "label": "块表消费者"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 8 步",
+              "action": {
+                "mode": "vllm",
+                "step": 8
+              }
+            }
+          ]
+        },
+        {
+          "id": "consume",
+          "parent": null,
+          "number": "4",
+          "kind": "调用",
+          "title": "Scheduler.update_from_output()",
+          "summary": "消费本轮模型回报，完成调度计数闭环。",
+          "input": "本轮 SchedulerOutput 和 ModelRunnerOutput。",
+          "changes": "按本轮配额扣 in_flight；追加实际生成 token 或处理结束。",
+          "output": "下一轮可继续复用已生成 KV 的请求状态。",
+          "resume": "返回 EngineCore；后续 schedule() 从更新状态继续。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 668,
+              "end": 673,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2076,
+              "end": 2082,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2164,
+              "end": 2168,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 8 步",
+              "action": {
+                "mode": "vllm",
+                "step": 8
+              }
+            }
+          ]
+        },
+        {
+          "id": "free",
+          "parent": null,
+          "number": "5",
+          "kind": "返回",
+          "title": "KVCacheManager.free() → BlockPool.free_blocks()",
+          "summary": "请求结束时释放使用权，完整前缀仍可作为缓存留存。",
+          "input": "请求块链；每块 ref_cnt 与已登记 hash。",
+          "changes": "引用计数减 1；归零块进入可回收队列，但缓存键保留到实际复用/驱逐。",
+          "output": "后续请求仍可能命中完整块；它们也可能因容量压力被回收。",
+          "resume": "下一个请求从 Request 哈希与 schedule() 查找重新开始。该释放没有独立教学快照。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 620,
+              "end": 633,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/block_pool.py",
+              "line": 774,
+              "end": 808,
+              "label": "实际实现"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/block_pool.py",
+              "line": 687,
+              "end": 691,
+              "label": "复用时驱逐"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 vllm 第 8 步",
+              "action": {
+                "mode": "vllm",
+                "step": 8
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sglang",
+      "title": "SGLang · UnifiedRadixCache / Python tree core",
+      "scope": "独立固定 SGLang 提交；显式选择 Python UnifiedTreeCore（不把 Rust backend 当作同一实现），普通 full attention、page_size=1、无HiCache/session/PD/投机。R1=ABCDEF已计算；R2=ABCXEF命中ABC，随后extend计算XEF并checkpoint。槽位与节点编号是教学值。多个根区分准入、batch构造、Worker接口与结果处理。",
+      "repositories": {
+        "sglang": {
+          "url": "https://github.com/sgl-project/sglang",
+          "commit": "17e94c4677d7beb58a89b104fd61b3768994e45e",
+          "label": "SGLang"
+        }
+      },
+      "nodes": [
+        {
+          "id": "prior",
+          "parent": null,
+          "number": "P1",
+          "kind": "调用",
+          "title": "UnifiedRadixCache.checkpoint() → checkpoint_into_tree()",
+          "summary": "前置 R1 的已计算 KV 被登记进压缩前缀树。",
+          "input": "R1=ABCDEF；req_to_token 行中已有设备槽 40…45。",
+          "changes": "从请求槽表读取 KV indices，构造 RadixKey 与 InsertParams 后调用 insert()。",
+          "output": "树中 ABCDEF 节点持有设备槽引用；树不保存一份复制出的完整 KV 张量。",
+          "resume": "R1 前向完成并 checkpoint 后，R2 的匹配从树根开始。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/common.py",
+              "line": 303,
+              "end": 312,
+              "label": "调用入口"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 1196,
+              "end": 1208,
+              "label": "实际实现"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 1216,
+              "end": 1276,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 1 步",
+              "action": {
+                "mode": "sglang",
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "init",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "Req.init_next_round_input()",
+          "summary": "等待扫描给 R2 准备本轮输入和前缀查询。",
+          "input": "R2=ABCXEF；页大小 1；已有 R1 缓存。",
+          "changes": "刷新 fill IDs，限制最大可命中前缀，调用 match_kv_cache()。",
+          "output": "请求的 prefix_len、last_node 等字段随查询结果更新。",
+          "resume": "返回 Scheduler.get_new_batch_prefill()，准入后继续准备 extend batch。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/managers/scheduler.py",
+              "line": 4378,
+              "end": 4378,
+              "label": "调度调用位置"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/managers/schedule_batch.py",
+              "line": 1785,
+              "end": 1836,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 2 步",
+              "action": {
+                "mode": "sglang",
+                "step": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "match",
+          "parent": "init",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "match_kv_cache()",
+          "summary": "统一构造 RadixKey 并把匹配结果写回 Req。",
+          "input": "请求 token IDs、额外隔离键、max_prefix_len、tree_cache。",
+          "changes": "调用 tree_cache.match_prefix()，再更新 req.prefix_len/last_node 等字段。",
+          "output": "本例 prefix_len=3、ABC 节点 ID。",
+          "resume": "返回 Req.init_next_round_input()；此时仍未分配 XEF 的新槽位。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/managers/schedule_batch.py",
+              "line": 1824,
+              "end": 1833,
+              "label": "调用位置"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/common.py",
+              "line": 253,
+              "end": 300,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 4 步",
+              "action": {
+                "mode": "sglang",
+                "step": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "cache",
+          "parent": "match",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "UnifiedRadixCache.match_prefix() → _match_tree()",
+          "summary": "本例没有 session 命中，进入所选树核心。",
+          "input": "MatchPrefixParams；普通 full attention，无 HiCache/session。",
+          "changes": "先检查 session shortcut；随后调用 tree_core.match_prefix() 并处理 actions/finalizers。",
+          "output": "只返回匹配结果和节点标识，物理槽位在后续分配阶段取出。",
+          "resume": "结果回到 match_kv_cache()，再返回请求准备。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/common.py",
+              "line": 265,
+              "end": 271,
+              "label": "调用位置"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 639,
+              "end": 668,
+              "label": "实际实现"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 266,
+              "end": 285,
+              "label": "tree_core 实例来源"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 3 步",
+              "action": {
+                "mode": "sglang",
+                "step": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "tree",
+          "parent": "cache",
+          "number": "1.1.1.1",
+          "kind": "调用",
+          "title": "UnifiedTreeCore.match_prefix() → _match_prefix_helper()",
+          "summary": "固定 Python tree core：按 token 前缀沿压缩边行走。",
+          "input": "R2 的 RadixKey；页大小 1；旧边 ABCDEF。",
+          "changes": "按页对齐后比较压缩边；匹配 ABC，遇到 X 与 D 不同。",
+          "output": "长度 3 的匹配位置；必要时拆分旧节点。",
+          "resume": "拆分后结束本次路径扫描，构造 MatchResult。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 648,
+              "end": 652,
+              "label": "调用位置"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py",
+              "line": 892,
+              "end": 901,
+              "label": "实际实现"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py",
+              "line": 956,
+              "end": 990,
+              "label": "实际实现"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_cache/tree_core_registry.py",
+              "line": 177,
+              "end": 191,
+              "label": "配置选择树核心工厂"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 3 步",
+              "action": {
+                "mode": "sglang",
+                "step": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "split",
+          "parent": "tree",
+          "number": "1.1.1.1.1",
+          "kind": "调用",
+          "title": "UnifiedTreeCore._split_node()",
+          "summary": "把 ABCDEF 拆成公共 ABC 和剩余 DEF。",
+          "input": "child.key=ABCDEF；split_len=3。",
+          "changes": "建立 ABC 父节点，原 child 留下 DEF；component.redistribute_on_node_split() 分配槽引用视图。",
+          "output": "公共 ABC 节点与 DEF 子节点；本次拆分不是重新计算 ABC 的 KV。",
+          "resume": "返回匹配循环，在公共节点结束并构造命中结果。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py",
+              "line": 963,
+              "end": 970,
+              "label": "调用位置"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py",
+              "line": 1477,
+              "end": 1512,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 3 步",
+              "action": {
+                "mode": "sglang",
+                "step": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "matched",
+          "parent": "tree",
+          "number": "1.1.1.1.2",
+          "kind": "返回",
+          "title": "UnifiedTreeCore._match_post_processor()",
+          "summary": "把内部节点转成外部可保存的 NodeId。",
+          "input": "匹配的设备 value 片段和最佳节点。",
+          "changes": "计算 device_prefix_len；对外把 last_device_node 等转换为 .id。",
+          "output": "本例长度 3 与 ABC 的 NodeId；不会把完整旧槽表作为此接口唯一返回值。",
+          "resume": "回到 UnifiedRadixCache finalizers，再由 match_kv_cache 写入 Req。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py",
+              "line": 980,
+              "end": 990,
+              "label": "调用位置"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py",
+              "line": 1050,
+              "end": 1073,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 4 步",
+              "action": {
+                "mode": "sglang",
+                "step": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "batch",
+          "parent": null,
+          "number": "2",
+          "kind": "调用",
+          "title": "ScheduleBatch.prepare_for_extend()",
+          "summary": "准入后只把未命中的后缀放入本轮输入。",
+          "input": "R2 prefix_len=3，完整输入长 6。",
+          "changes": "input_ids 取 prefix_len 之后的 XEF；设置 prefix_lens、extend_lens 后 alloc_for_extend()。",
+          "output": "本轮新计算 3 token；总历史长度仍为 6。",
+          "resume": "返回 Scheduler，随后提交 Worker 前向。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/managers/scheduler.py",
+              "line": 4474,
+              "end": 4474,
+              "label": "调度调用位置"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/managers/schedule_batch.py",
+              "line": 2927,
+              "end": 2941,
+              "label": "实际实现"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/managers/schedule_batch.py",
+              "line": 2964,
+              "end": 2996,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 5 步",
+              "action": {
+                "mode": "sglang",
+                "step": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "alloc",
+          "parent": "batch",
+          "number": "2.1",
+          "kind": "调用",
+          "title": "alloc_for_extend()",
+          "summary": "先取旧前缀索引，再为新 token 申请槽。",
+          "input": "prefix_len=3、extend_len=3；Req 与 KV pool。",
+          "changes": "_prefix_kv_indices() 读取命中路径；page_size=1 时 alloc_token_slots() 申请新槽。",
+          "output": "旧槽 40…42 和新槽 70…72（教学编号）。",
+          "resume": "写入 req_to_token 行，将 out_cache_loc 与请求行编号返回 batch。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/managers/schedule_batch.py",
+              "line": 2994,
+              "end": 2996,
+              "label": "调用位置"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/allocation.py",
+              "line": 331,
+              "end": 345,
+              "label": "实际实现"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/allocation.py",
+              "line": 397,
+              "end": 405,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 5 步",
+              "action": {
+                "mode": "sglang",
+                "step": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "indices",
+          "parent": "alloc",
+          "number": "2.1.1",
+          "kind": "调用",
+          "title": "_prefix_kv_indices() → UnifiedRadixCache.prefix_device_indices()",
+          "summary": "通过命中 NodeId 取出真正的旧设备槽位。",
+          "input": "新请求 R2 尚不持有请求行；last_node 指向 ABC；prefix_len=3。",
+          "changes": "tree_core.collect_full_device_indices() 沿路径收集槽位，再切到 prefix_len。",
+          "output": "[40,41,42]，这些索引指向原有 K/V。",
+          "resume": "返回 alloc_for_extend() 的 prefix_tensors，与新槽一起构建完整行。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/allocation.py",
+              "line": 320,
+              "end": 345,
+              "label": "调用位置"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 4095,
+              "end": 4103,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 5 步",
+              "action": {
+                "mode": "sglang",
+                "step": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "row",
+          "parent": "alloc",
+          "number": "2.1.2",
+          "kind": "动作",
+          "title": "构造 req_to_token 行并返回 out_cache_loc",
+          "summary": "把历史读位置与本轮写位置放到各自字段。",
+          "input": "前缀槽 [40,41,42]；新槽 [70,71,72]。",
+          "changes": "写请求槽表，并把请求拥有的行长更新到 6。",
+          "output": "req_to_token=[40,41,42,70,71,72]；out_cache_loc 只含新槽。",
+          "resume": "返回 prepare_for_extend()；Worker 用前者读取历史，用后者写入 XEF。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/allocation.py",
+              "line": 497,
+              "end": 509,
+              "label": "实际实现"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/allocation.py",
+              "line": 530,
+              "end": 534,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 6 步",
+              "action": {
+                "mode": "sglang",
+                "step": 6
+              }
+            }
+          ]
+        },
+        {
+          "id": "execute",
+          "parent": null,
+          "number": "3",
+          "kind": "边界",
+          "title": "Scheduler.run_batch() → model_worker.forward_batch_generation()",
+          "summary": "执行器消费 extend batch，复用 ABC 并计算 XEF。",
+          "input": "本轮 XEF token、总长度 6、前缀长度 3、请求槽表与 out_cache_loc。",
+          "changes": "将输入整理后交给模型 Worker；attention 后端细节止于此接口边界。",
+          "output": "新槽中的 XEF K/V，以及生成结果；本页没有执行真实模型。",
+          "resume": "模型回报进入 Scheduler.process_batch_result()；KV 发布发生在完成处理阶段。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/managers/scheduler.py",
+              "line": 4738,
+              "end": 4750,
+              "label": "实际实现"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/managers/scheduler.py",
+              "line": 4997,
+              "end": 5008,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 7 步",
+              "action": {
+                "mode": "sglang",
+                "step": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "result",
+          "parent": null,
+          "number": "4",
+          "kind": "调用",
+          "title": "Scheduler.process_batch_result()",
+          "summary": "在实际模型回报后进入 prefill 结果处理。",
+          "input": "GenerationBatchResult 与该 extend batch。",
+          "changes": "普通非 PD、非 diffusion 路径调用 batch_result_processor.process_batch_result_prefill()。",
+          "output": "更新后的请求输出/结束状态；未结束的普通 prefill 会 checkpoint。",
+          "resume": "checkpoint 把已计算后缀插入树；完成请求则走 release_kv_cache。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/managers/scheduler.py",
+              "line": 5205,
+              "end": 5232,
+              "label": "实际实现"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/managers/scheduler_components/batch_result_processor.py",
+              "line": 418,
+              "end": 447,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 8 步",
+              "action": {
+                "mode": "sglang",
+                "step": 8
+              }
+            }
+          ]
+        },
+        {
+          "id": "checkpoint",
+          "parent": "result",
+          "number": "4.1",
+          "kind": "调用",
+          "title": "checkpoint_kv_cache() → UnifiedRadixCache.checkpoint()",
+          "summary": "将 R2 已计算的 XEF 作为新分支发布。",
+          "input": "R2 已完成的 KV 到 extend_end=6；请求仍未结束。",
+          "changes": "checkpoint_into_tree() 读取请求行，将 ABCXEF 的 key/value 交给 insert()。",
+          "output": "共享 ABC，下接 XEF 新叶；相关请求锁和树所有权随 checkpoint 更新。",
+          "resume": "返回结果处理，再进入下一轮调度；Req.prefix_len 更新到 extend_end。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/managers/scheduler_components/batch_result_processor.py",
+              "line": 446,
+              "end": 447,
+              "label": "调用位置"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/common.py",
+              "line": 303,
+              "end": 312,
+              "label": "实际实现"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 1196,
+              "end": 1204,
+              "label": "实际实现"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 1268,
+              "end": 1276,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 8 步",
+              "action": {
+                "mode": "sglang",
+                "step": 8
+              }
+            }
+          ]
+        },
+        {
+          "id": "insert",
+          "parent": "checkpoint",
+          "number": "4.1.1",
+          "kind": "调用",
+          "title": "UnifiedRadixCache.insert()",
+          "summary": "通过树核心插入步进器完成结构与所有权动作。",
+          "input": "RadixKey=ABCXEF；对应槽位值；先前已保护的公共前缀长度。",
+          "changes": "begin_insert() 后循环应用 cache actions，必要时 resume_insert()；finally 执行 end_insert() 清理。",
+          "output": "InsertResult；树里新增 XEF 分支而公共 ABC 继续共享。",
+          "resume": "返回 checkpoint_into_tree()，完成请求记录和保护范围更新。",
+          "evidence": [
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 1274,
+              "end": 1276,
+              "label": "调用位置"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 687,
+              "end": 713,
+              "label": "实际实现"
+            },
+            {
+              "repo": "sglang",
+              "path": "python/sglang/srt/mem_cache/unified_radix_cache.py",
+              "line": 1293,
+              "end": 1293,
+              "label": "结果消费者"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到 sglang 第 8 步",
+              "action": {
+                "mode": "sglang",
+                "step": 8
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

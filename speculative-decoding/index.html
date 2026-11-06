@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-lesson-topic="speculative-decoding" data-lesson-palette="mcp">
 <head>
   <meta charset="utf-8">
 <!-- learning-scope-style:start -->
@@ -58,6 +58,74 @@
     :focus-visible { outline: 2px solid var(--viz-series-1); outline-offset: 3px; }
     @media (pointer: coarse) { .btn, .form-select { min-height: 44px; } }
   </style>
+<!-- lesson-theme:start -->
+<style>
+/* Scheduler palette. Inlined into each document by scripts/build_learning_ui.py. */
+:root {
+  color-scheme:light !important;
+  --lesson-bg:#f5f5ef; --lesson-panel:#fffefa; --lesson-ink:#192923;
+  --lesson-muted:#52655b; --lesson-line:#d5ddd2; --lesson-grid:#e4e8e0;
+  --lesson-green:#12634b; --lesson-mint:#e7f3e8; --lesson-amber:#8a4a18;
+  --lesson-sand:#fcf0dc; --lesson-shade:#f0f3eb;
+}
+@media(prefers-color-scheme:dark) {
+  :root:not([data-theme=light]) {
+    color-scheme:dark !important;
+    --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+    --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+    --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+    --lesson-sand:#473625; --lesson-shade:#212f27;
+  }
+}
+:root[data-theme=dark] {
+  color-scheme:dark !important;
+  --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+  --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+  --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+  --lesson-sand:#473625; --lesson-shade:#212f27;
+}
+:root {
+  --bg:var(--lesson-bg) !important; --background:var(--lesson-bg) !important;
+  --panel:var(--lesson-panel) !important; --surface:var(--lesson-panel) !important;
+  --card:var(--lesson-panel) !important; --popover:var(--lesson-panel) !important;
+  --ink:var(--lesson-ink) !important; --fg:var(--lesson-ink) !important;
+  --text:var(--lesson-ink) !important; --foreground:var(--lesson-ink) !important;
+  --card-foreground:var(--lesson-ink) !important; --popover-foreground:var(--lesson-ink) !important;
+  --muted-foreground:var(--lesson-muted) !important; --sub:var(--lesson-muted) !important;
+  --line:var(--lesson-line) !important; --border:var(--lesson-line) !important;
+  --grid:var(--lesson-grid) !important; --shade:var(--lesson-shade) !important;
+  --muted:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+  --accent-foreground:var(--lesson-ink) !important;
+  --primary:var(--lesson-green) !important; --primary-foreground:var(--lesson-panel) !important;
+  --accent-soft:var(--lesson-mint) !important; --hover:var(--lesson-shade) !important;
+  --mint:var(--lesson-mint) !important; --sand:var(--lesson-sand) !important;
+  --color-background-primary:var(--lesson-bg) !important;
+  --color-background-secondary:var(--lesson-panel) !important;
+  --color-background-tertiary:var(--lesson-shade) !important;
+  --color-text-primary:var(--lesson-ink) !important;
+  --color-text-secondary:var(--lesson-muted) !important;
+  --color-border-secondary:var(--lesson-line) !important;
+  --viz-panel:var(--lesson-panel) !important;
+  --viz-border:var(--lesson-line) !important;
+  --viz-muted:var(--lesson-muted) !important;
+  background:var(--lesson-bg) !important;
+}
+:root[data-lesson-palette=text] {
+  --muted:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+}
+:root[data-lesson-topic=model-architecture] {
+  --soft:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+}
+:root[data-lesson-palette=matrix] {
+  --soft:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+  --wash:var(--lesson-mint) !important;
+}
+body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !important; }
+.learning-scope-shell { color:var(--lesson-muted) !important; }
+.learning-scope { background:var(--lesson-shade) !important; border-color:var(--lesson-line) !important; }
+.learning-scope-kind { color:var(--lesson-green) !important; }
+</style>
+<!-- lesson-theme:end -->
 </head>
 <body>
 <!-- learning-scope:start -->
@@ -818,5 +886,422 @@ methods.dflash = {
 <!-- END FLOW -->
   <footer class="page-footer"><span>vLLM-Ascend · 教学词例 · 未运行 NPU 推理</span><a href="README.md">源码定位与示例条件 ↗</a></footer>
 </main>
+<!-- call-adapter:start -->
+<script>
+(() => {
+  const settle = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  window.openLessonTarget = async action => {
+    const scenario = action.scenario || 'middle';
+    if (!['middle','all','first'].includes(scenario)) throw new Error('未知验证情形');
+    const compare = document.getElementById('draft-compare');
+    if (compare) {
+      if (action.mode !== 'comparison') throw new Error('该目标属于算法详解页，请先跨页导航');
+      if (![4,5].includes(Number(action.step))) throw new Error('对照页仅有验证情形控制，目标应为验证或有效输出区域');
+      const select = compare.querySelector('#scenario'); select.value = scenario; select.dispatchEvent(new Event('change', {bubbles:true})); await settle();
+      if (select.value !== scenario || !compare.querySelector('#new-output').textContent.trim()) throw new Error('验证对照状态未生效');
+      return {label: '串行 / 并行算法对照 · ' + select.selectedOptions[0].textContent + ' · 新增 ' + compare.querySelector('#new-output').textContent};
+    }
+    const root = document.getElementById('spec-method-guide'), method = action.mode, step = Number(action.step ?? 0);
+    if (!root || !['eagle','eagle3','mtp','draft','medusa','dflash','ngram'].includes(method)) throw new Error('投机算法目标不存在');
+    if (!Number.isInteger(step) || step < 0) throw new Error('投机算法步骤无效');
+    const select = root.querySelector('#method'); select.value = method; select.dispatchEvent(new Event('change', {bubbles:true}));
+    const situation = root.querySelector('#scenario'); situation.value = scenario; situation.dispatchEvent(new Event('change', {bubbles:true}));
+    root.querySelector('#global').click();
+    for (let i = 0; i < step; i++) { const next = root.querySelector('#next'); if (next.disabled) throw new Error('投机算法步骤越界'); next.click(); }
+    await settle();
+    if (select.value !== method || situation.value !== scenario || Number(root.querySelector('#position').dataset.step) !== step) throw new Error('投机算法状态未切换成功');
+    return {label: select.selectedOptions[0].textContent + ' · ' + root.querySelector('#position').textContent + ' · ' + root.querySelector('#current-title').textContent};
+  };
+})();
+// Runs in the visualization document, including sandboxed srcdoc frames.
+(() => {
+  const pending = new Map();
+  let queue = Promise.resolve();
+  const ready = document.readyState === 'loading'
+    ? new Promise(resolve => document.addEventListener('DOMContentLoaded',resolve,{once:true}))
+    : Promise.resolve();
+  const pause = () => document.querySelectorAll('button').forEach(button => {
+    if (/^(暂停(?:流程|播放|动画)?|停止播放)$/.test(button.textContent.trim())) button.click();
+  });
+  window.addEventListener('lesson-pause-visual',pause);
+  if (parent === window) return;
+  const post = data => parent.postMessage(data,'*');
+  window.addEventListener('message',async event => {
+    if (event.source !== parent || !event.data || typeof event.data !== 'object') return;
+    const {type,id,action} = event.data;
+    if (type === 'lesson-call-ping') {
+      await ready; post({type:'lesson-call-ready'}); return;
+    }
+    if (type === 'lesson-call-pause') { pause(); return; }
+    if (type !== 'lesson-call-open' || typeof id !== 'string') return;
+    if (!pending.has(id)) {
+      const work = queue.then(() => ready).then(() => {
+        if (typeof window.openLessonTarget !== 'function') throw new Error('可视化步骤入口尚未就绪');
+        return window.openLessonTarget(action);
+      });
+      pending.set(id,work);
+      queue = work.catch(() => {});
+      if (pending.size > 16) pending.delete(pending.keys().next().value);
+    }
+    try { post({type:'lesson-call-result',id,ok:true,result:await pending.get(id)}); }
+    catch (error) { post({type:'lesson-call-result',id,ok:false,error:error.message}); }
+  });
+  for (const name of ['click','change']) document.addEventListener(name,event => {
+    if (event.isTrusted && event.target.closest('button,select,input')) post({type:'lesson-call-edited'});
+  },true);
+  ready.then(() => post({type:'lesson-call-ready'}));
+})();
+</script>
+<!-- call-adapter:end -->
+<!-- call-ui:start -->
+<style>
+/* Scope every rule: the visualizations keep their original layout and semantics. */
+.code-walkthrough { width:100%; max-width:960px; margin:18px auto 24px; color:var(--lesson-ink); font:14px/1.6 system-ui,"Microsoft YaHei",sans-serif; text-align:left; }
+.code-walkthrough * { box-sizing:border-box; }
+.code-walkthrough [hidden],.lesson-original.lesson-hidden { display:none !important; }
+html[data-call-chain-ready=true],html[data-call-chain-ready=true] body { overflow-anchor:none; }
+.code-walkthrough[data-cw-screen=visual] { padding-top:55px; }
+.code-walkthrough[data-cw-screen=visual] .cw-nav { position:fixed; z-index:100; top:8px; left:50%; transform:translateX(-50%); width:calc(100% - 32px); max-width:960px; margin:0; padding:7px 9px; border:1px solid var(--lesson-line); border-radius:9px; background:var(--lesson-bg); box-shadow:0 3px 12px #0000000b; }
+.code-walkthrough h1,.code-walkthrough h2,.code-walkthrough h3,.code-walkthrough p,.code-walkthrough dl,.code-walkthrough dd { margin:0; }
+.code-walkthrough button,.code-walkthrough select { font:inherit; color:inherit; cursor:pointer; }
+.code-walkthrough button:disabled { cursor:wait; opacity:.6; }
+.code-walkthrough a { color:var(--lesson-green); text-underline-offset:3px; }
+.code-walkthrough :is(button,select,a,summary):focus-visible { outline:3px solid var(--lesson-amber); outline-offset:3px; }
+.code-walkthrough code { font-family:ui-monospace,Consolas,"Microsoft YaHei",monospace; overflow-wrap:anywhere; }
+.cw-header { padding:8px 0 16px; }
+.cw-header>a { font-size:12px; text-decoration:none; }
+.cw-header h1 { font-size:clamp(24px,4vw,34px); line-height:1.35; margin:13px 0 8px; font-weight:700; letter-spacing:-.025em; }
+.cw-header p { color:var(--lesson-muted); font-size:13px; }
+.cw-nav { display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin:12px 0; }
+.code-walkthrough .cw-nav button,.cw-tools button,.cw-jump { border:1px solid var(--lesson-line); border-radius:7px; padding:7px 12px; background:var(--lesson-panel); font-size:13px; font-weight:650; }
+.code-walkthrough .cw-nav button[aria-pressed=true],.cw-jump { background:var(--lesson-mint); color:var(--lesson-green); border-color:var(--lesson-green); }
+.cw-variant { display:grid; grid-template-columns:minmax(0,1fr); gap:7px; padding:13px 15px; margin:12px 0; border:1px solid var(--lesson-line); border-radius:10px; background:var(--lesson-panel); }
+.cw-variant label { display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-size:13px; font-weight:650; }
+.cw-variant select { padding:5px 9px; max-width:100%; min-width:0; border:1px solid var(--lesson-line); border-radius:6px; background:var(--lesson-panel); font-size:13px; }
+.cw-variant p,.cw-scope { font-size:12px; color:var(--lesson-muted); overflow-wrap:anywhere; }
+.cw-scope summary { cursor:pointer; color:var(--lesson-green); font-weight:650; }
+.cw-scope a { display:block; margin-top:4px; overflow-wrap:anywhere; }
+.cw-guide { color:var(--lesson-muted); font-size:12px; margin:12px 0 !important; }
+.cw-layout { display:grid; grid-template-columns:minmax(0,1.12fr) minmax(0,1fr); gap:14px; align-items:start; }
+.cw-tree-panel,.cw-detail { min-width:0; background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:12px; }
+.cw-tree-panel { overflow:hidden; }
+.cw-tools { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:5px; padding:10px 12px; border-bottom:1px solid var(--lesson-line); }
+.cw-tools strong { font-size:13px; }
+.cw-tools button { padding:3px 7px; font-size:11px; }
+.cw-tree-scroll { max-height:680px; overflow:auto; padding:12px 9px; scrollbar-gutter:stable; }
+.code-walkthrough .cw-tree { padding:0; margin:0; list-style:none; min-width:0; }
+.code-walkthrough .cw-tree li { padding:0; margin:0; }
+.code-walkthrough .cw-tree .cw-tree { margin-left:12px; border-left:1px solid var(--lesson-line); }
+.cw-row { display:flex; align-items:flex-start; min-width:0; margin:2px 0; }
+.code-walkthrough .cw-toggle,.cw-branch { flex:0 0 22px; width:22px; padding:7px 0; border:0; background:transparent; text-align:center; color:var(--lesson-green); font:13px/1.5 ui-monospace,Consolas,monospace; }
+.code-walkthrough .cw-node { min-width:0; flex:1; display:grid; grid-template-columns:auto minmax(0,1fr); align-items:start; gap:5px; padding:7px; text-align:left; border:1px solid transparent; border-radius:6px; background:transparent; line-height:1.45; }
+.code-walkthrough .cw-node:hover { background:var(--lesson-shade); }
+.code-walkthrough .cw-node[aria-current=true] { background:var(--lesson-mint); border-color:var(--lesson-green); }
+.cw-number { padding-top:1px; color:var(--lesson-green); font:600 11px/1.6 ui-monospace,Consolas,monospace; }
+.cw-node code { display:block; font-size:13px; font-weight:650; }
+.cw-node small { display:block; margin-top:2px; color:var(--lesson-muted); font-size:12px; }
+.cw-detail { padding:17px; scroll-margin-top:14px; }
+.cw-kicker { color:var(--lesson-green); font:700 11px/1.5 ui-monospace,Consolas,monospace; }
+.cw-detail h2 { margin:5px 0 7px; font-size:19px; line-height:1.4; overflow-wrap:anywhere; }
+.cw-summary { font-size:14px; }
+.cw-data { margin-top:12px !important; font-size:13px; }
+.cw-data dt { margin-top:12px; color:var(--lesson-green); font-weight:700; }
+.cw-data dd { margin-top:3px; overflow-wrap:anywhere; }
+.code-walkthrough .cw-note { padding:9px 10px; margin-top:12px; border-left:3px solid var(--lesson-amber); background:var(--lesson-sand); color:var(--lesson-amber); font-size:12px; }
+.cw-evidence,.cw-targets { margin-top:14px; padding-top:10px; border-top:1px solid var(--lesson-line); }
+.cw-evidence h3,.cw-targets h3 { margin:0 0 5px; font-size:13px; }
+.cw-evidence a { display:block; margin-top:6px; font-size:11px; overflow-wrap:anywhere; }
+.cw-evidence a small { display:block; color:var(--lesson-muted); font:10px/1.5 ui-monospace,Consolas,monospace; }
+.cw-targets p { color:var(--lesson-muted); font-size:12px; margin-bottom:7px; }
+.cw-jump { display:block; margin:7px 0 0; max-width:100%; text-align:left; white-space:normal; }
+.cw-context { padding:9px 12px; border:1px solid var(--lesson-line); background:var(--lesson-shade); border-radius:8px; font-size:12px; color:var(--lesson-muted); overflow-wrap:anywhere; }
+.cw-error { margin:10px 0 !important; border:1px solid var(--lesson-amber); padding:10px; background:var(--lesson-sand); color:var(--lesson-amber); border-radius:7px; }
+@media(max-width:760px) { .cw-layout { grid-template-columns:minmax(0,1fr); } .cw-tree-scroll { max-height:420px; } .cw-detail { padding:14px; } }
+@media(max-width:400px) { .code-walkthrough .cw-tree .cw-tree { margin-left:7px; } .code-walkthrough .cw-toggle,.cw-branch { flex-basis:18px; width:18px; } .code-walkthrough .cw-node { padding:6px 4px; gap:4px; } }
+</style>
+<script type="application/json" id="lesson-call-chain-data">{"title":"投机解码：提议、跨轮验证与返回","defaultVariant":"eagle","variants":[{"id":"eagle","title":"EAGLE · Llama 草稿","scope":"MRV1、greedy 验证、K=3 教学流程；候选具体词为教学值。初始化与每轮调用分开，target 验证属于下一调度轮。","entry":"select","repositories":{"ascend":{"url":"https://github.com/vllm-project/vllm-ascend","commit":"94e3e25f836d79b5ee5c1aed257999ee61d10875","label":"vLLM-Ascend"},"vllm":{"url":"https://github.com/vllm-project/vllm","commit":"295c062db8a48ea73bbd05d1174cb37d24bf86f9","label":"vLLM"}},"nodes":[{"id":"select","parent":null,"number":"P1","kind":"分支","title":"get_spec_decode_method() [初始化一次]","summary":"配置决定 proposer 类型，不是每轮都加载草稿。","input":"SpeculativeConfig.method 与模型配置。","changes":"EAGLE/EAGLE3/普通 MTP 选 AscendEagleProposer；其他方法选各自 proposer。","output":"已加载的 drafter 对象。","resume":"后续 Runner.propose_draft_token_ids 调用该对象。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/__init__.py","line":41,"label":"实际实现","end":70}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"runner","parent":null,"number":"1","kind":"调用","title":"NPUModelRunner.propose_draft_token_ids()","summary":"上轮 target 采样/验证后开始准备下一轮候选。","input":"有效 sampled IDs、positions、target hidden、metadata。","changes":"按 self.drafter 实际类型选提议路径；清空旧 draft_probs。","output":"本轮候选 IDs。","resume":"返回 sample_tokens 保存，随后调度下一轮 target 验证。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":1983,"label":"实际实现","end":2013}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"propose","parent":"runner","number":"1.1","kind":"调用","title":"AscendSpecDecodeBaseProposer._propose()","summary":"LLM proposer 的公共执行入口。","input":"target IDs/positions/hidden、已确认 next IDs、K。","changes":"K=0 可返回空；其余准备输入、metadata 和 forward context。","output":"供草稿 runnable 消费的 buffer。","resume":"在 with 块内调用 _runnable，退出后返回 draft_token_ids。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2183,"label":"调用位置","end":2203},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1010,"label":"实际实现","end":1080}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"inputs","parent":"propose","number":"1.1.2","kind":"调用","title":"AscendSpecDecodeBaseProposer.set_inputs_first_pass()","summary":"对齐首轮 token、positions 与 hidden。","input":"已确认 anchor ID、target 前缀与 metadata。","changes":"token 左移并在请求末位补 next ID，hidden 保持对应源位置。","output":"草稿 input_ids/positions、采样索引、metadata。","resume":"返回 _propose，建立草稿 forward context。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1779,"label":"实际实现","end":1941}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"draftloop","parent":"propose","number":"1.1.3","kind":"调用","title":"AscendSpecDecodeBaseProposer._run_merged_draft()","summary":"_runnable 的实际内容；FULL 模式外有 ACLGraphWrapper。","input":"预填好的 input buffer、采样索引、metadata。","changes":"首次 self.model(**model_kwargs)，分离用于采样与递推的 hidden。","output":"第一步草稿 hidden。","resume":"随后 compute_logits/采样；串行方法继续迭代。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":300,"label":"初始化绑定","end":300},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1384,"label":"调用与返回","end":1395},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1451,"label":"实际实现","end":1492}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle","step":3,"scenario":"middle","page":"index.html"}}]},{"id":"model","parent":"draftloop","number":"1.1.3.2","kind":"调用","title":"EagleLlamaForCausalLM.forward()","summary":"Llama 草稿融合词嵌入与 target/递推 hidden。","input":"当前草稿 IDs/positions及递推 hidden。","changes":"进入已加载的草稿模型主体。","output":"草稿输出 hidden。","resume":"返回 _run_merged_draft 的 _split_draft_outputs。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1491,"label":"调用位置","end":1492},{"repo":"vllm","path":"vllm/model_executor/models/llama_eagle.py","line":174,"label":"实际实现","end":185}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle","step":2,"scenario":"middle","page":"index.html"}}]},{"id":"draftsample","parent":"draftloop","number":"1.1.3.3","kind":"调用","title":"compute_draft_token_ids() / _sample_draft_from_logits()","summary":"将草稿 hidden 投影并选择候选 ID。","input":"草稿采样 hidden 与 sampling_metadata。","changes":"compute_logits 后按 greedy 或 configured probabilistic draft 采样。","output":"draft_token_ids 与可选 draft_probs。","resume":"DFlash parallel_drafting 直接返回 K 个；串行方法进入后续循环。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1423,"label":"实际实现","end":1449},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1616,"label":"实际实现","end":1643}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle","step":4,"scenario":"middle","page":"index.html"}}]},{"id":"return","parent":"draftloop","number":"1.1.3.4","kind":"循环","title":"for draft_index in range(K−1)","summary":"每次把前一个候选及草稿递推 hidden 喂回，位置前移。","input":"第一步候选与草稿状态。","changes":"self.model → compute_logits → sample；写入 draft_token_ids_tensor。","output":"候选矩阵 [B,K]。","resume":"经 _propose 返回 Runner；候选尚未确认。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1653,"label":"实际实现","end":1777}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle","step":4,"scenario":"middle","page":"index.html"}}]},{"id":"target","parent":null,"number":"2","kind":"边界","title":"NPUModelRunner.execute_model() [下一轮 target]","summary":"调度器把草稿加入 target 本轮输入，跨轮交给 Runner。","input":"SchedulerOutput 的已确认 anchor 与候选序列；target KV。","changes":"准备 target metadata，调用 _model_forward；选择 logits rows。","output":"target hidden/logits 与 execute_model_state。","resume":"Worker 随后调用 sample_tokens；proposer 不直接调用 target forward。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2669,"label":"实际实现","end":2740}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle","step":5,"scenario":"middle","page":"index.html"}}]},{"id":"sample","parent":null,"number":"3","kind":"调用","title":"NPUModelRunner.sample_tokens() → _sample()","summary":"消费 target forward 保存的输出状态。","input":"target logits、SpecDecodeMetadata、可选 draft_probs。","changes":"_sample 在存在 spec metadata 时调用 rejection_sampler。","output":"SamplerOutput。","resume":"回到 sample_tokens 的 bookkeeping 与下轮提议。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2849,"label":"实际实现","end":2907},{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":3058,"label":"实际实现","end":3079}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle","step":6,"scenario":"middle","page":"index.html"}}]},{"id":"verify","parent":"sample","number":"3.1","kind":"调用","title":"AscendRejectionSampler.forward()","summary":"对齐候选、target logits 与 bonus 位置。","input":"draft IDs、num_draft_tokens、target/bonus logits indices。","changes":"选 bonus token、处理 target logits，调用 rejection_sample。","output":"有效接受前缀 + correction / bonus，其他槽位是占位。","resume":"返回 _sample，再回 sample_tokens。","evidence":[{"repo":"ascend","path":"vllm_ascend/sample/rejection_sampler.py","line":146,"label":"实际实现","end":254}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle","step":6,"scenario":"middle","page":"index.html"}},{"label":"打开串行 / 并行验证对照","action":{"page":"comparison.html","mode":"comparison","step":4,"scenario":"middle"}}]},{"id":"commit","parent":"sample","number":"3.2","kind":"返回","title":"sample_tokens 的 bookkeeping / ModelRunnerOutput","summary":"只有有效输出追加到请求状态。","input":"SamplerOutput、有效长度、原请求 IDs。","changes":"更新本地历史与输出对象，保留下一轮 drafter 输入。","output":"ModelRunnerOutput 或异步拷贝包装。","resume":"返回 Engine；Scheduler 按接受长度更新计算进度。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2950,"label":"实际实现","end":3055}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle","step":7,"scenario":"middle","page":"index.html"}},{"label":"打开串行 / 并行验证对照","action":{"page":"comparison.html","mode":"comparison","step":5,"scenario":"middle"}}]}]},{"id":"eagle3","title":"EAGLE-3 · Llama 多层特征","scope":"MRV1、greedy 验证、K=3 教学流程；候选具体词为教学值。初始化与每轮调用分开，target 验证属于下一调度轮。 启用辅助层的链式 Llama EAGLE-3。","entry":"select","repositories":{"ascend":{"url":"https://github.com/vllm-project/vllm-ascend","commit":"94e3e25f836d79b5ee5c1aed257999ee61d10875","label":"vLLM-Ascend"},"vllm":{"url":"https://github.com/vllm-project/vllm","commit":"295c062db8a48ea73bbd05d1174cb37d24bf86f9","label":"vLLM"}},"nodes":[{"id":"select","parent":null,"number":"P1","kind":"分支","title":"get_spec_decode_method() [初始化一次]","summary":"配置决定 proposer 类型，不是每轮都加载草稿。","input":"SpeculativeConfig.method 与模型配置。","changes":"EAGLE/EAGLE3/普通 MTP 选 AscendEagleProposer；其他方法选各自 proposer。","output":"已加载的 drafter 对象。","resume":"后续 Runner.propose_draft_token_ids 调用该对象。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/__init__.py","line":41,"label":"实际实现","end":70}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle3","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"runner","parent":null,"number":"1","kind":"调用","title":"NPUModelRunner.propose_draft_token_ids()","summary":"上轮 target 采样/验证后开始准备下一轮候选。","input":"有效 sampled IDs、positions、target hidden、metadata。","changes":"按 self.drafter 实际类型选提议路径；清空旧 draft_probs。","output":"本轮候选 IDs。","resume":"返回 sample_tokens 保存，随后调度下一轮 target 验证。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":1983,"label":"实际实现","end":2013}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle3","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"propose","parent":"runner","number":"1.1","kind":"调用","title":"AscendSpecDecodeBaseProposer._propose()","summary":"LLM proposer 的公共执行入口。","input":"target IDs/positions/hidden、已确认 next IDs、K。","changes":"K=0 可返回空；其余准备输入、metadata 和 forward context。","output":"供草稿 runnable 消费的 buffer。","resume":"在 with 块内调用 _runnable，退出后返回 draft_token_ids。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2183,"label":"调用位置","end":2203},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1010,"label":"实际实现","end":1080}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle3","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"combine","parent":"propose","number":"1.1.1","kind":"调用","title":"Eagle3LlamaForCausalLM.combine_hidden_states()","summary":"合并 target 配置要求的辅助隐藏层。","input":"按 feature 维拼接的 target aux hidden。","changes":"使用 checkpoint 的融合投影，输出草稿 hidden 宽度。","output":"融合后的上下文特征。","resume":"返回 _propose，再准备 token/位置。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1060,"label":"调用位置","end":1066},{"repo":"vllm","path":"vllm/model_executor/models/llama_eagle3.py","line":397,"label":"实际实现","end":418}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle3","step":2,"scenario":"middle","page":"index.html"}}]},{"id":"inputs","parent":"propose","number":"1.1.2","kind":"调用","title":"AscendSpecDecodeBaseProposer.set_inputs_first_pass()","summary":"对齐首轮 token、positions 与 hidden。","input":"已确认 anchor ID、target 前缀与 metadata。","changes":"token 左移并在请求末位补 next ID，hidden 保持对应源位置。","output":"草稿 input_ids/positions、采样索引、metadata。","resume":"返回 _propose，建立草稿 forward context。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1779,"label":"实际实现","end":1941}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle3","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"draftloop","parent":"propose","number":"1.1.3","kind":"调用","title":"AscendSpecDecodeBaseProposer._run_merged_draft()","summary":"_runnable 的实际内容；FULL 模式外有 ACLGraphWrapper。","input":"预填好的 input buffer、采样索引、metadata。","changes":"首次 self.model(**model_kwargs)，分离用于采样与递推的 hidden。","output":"第一步草稿 hidden。","resume":"随后 compute_logits/采样；串行方法继续迭代。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":300,"label":"初始化绑定","end":300},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1384,"label":"调用与返回","end":1395},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1451,"label":"实际实现","end":1492}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle3","step":3,"scenario":"middle","page":"index.html"}}]},{"id":"model","parent":"draftloop","number":"1.1.3.2","kind":"调用","title":"Eagle3LlamaForCausalLM.forward()","summary":"EAGLE-3 草稿返回采样 hidden 与递推 hidden。","input":"当前草稿 IDs/positions及递推 hidden。","changes":"进入已加载的草稿模型主体。","output":"草稿输出 hidden。","resume":"返回 _run_merged_draft 的 _split_draft_outputs。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1491,"label":"调用位置","end":1492},{"repo":"vllm","path":"vllm/model_executor/models/llama_eagle3.py","line":364,"label":"实际实现","end":371}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle3","step":3,"scenario":"middle","page":"index.html"}}]},{"id":"draftsample","parent":"draftloop","number":"1.1.3.3","kind":"调用","title":"compute_draft_token_ids() / _sample_draft_from_logits()","summary":"将草稿 hidden 投影并选择候选 ID。","input":"草稿采样 hidden 与 sampling_metadata。","changes":"compute_logits 后按 greedy 或 configured probabilistic draft 采样。","output":"draft_token_ids 与可选 draft_probs。","resume":"DFlash parallel_drafting 直接返回 K 个；串行方法进入后续循环。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1423,"label":"实际实现","end":1449},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1616,"label":"实际实现","end":1643}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle3","step":5,"scenario":"middle","page":"index.html"}}]},{"id":"return","parent":"draftloop","number":"1.1.3.4","kind":"循环","title":"for draft_index in range(K−1)","summary":"每次把前一个候选及草稿递推 hidden 喂回，位置前移。","input":"第一步候选与草稿状态。","changes":"self.model → compute_logits → sample；写入 draft_token_ids_tensor。","output":"候选矩阵 [B,K]。","resume":"经 _propose 返回 Runner；候选尚未确认。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1653,"label":"实际实现","end":1777}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle3","step":5,"scenario":"middle","page":"index.html"}}]},{"id":"target","parent":null,"number":"2","kind":"边界","title":"NPUModelRunner.execute_model() [下一轮 target]","summary":"调度器把草稿加入 target 本轮输入，跨轮交给 Runner。","input":"SchedulerOutput 的已确认 anchor 与候选序列；target KV。","changes":"准备 target metadata，调用 _model_forward；选择 logits rows。","output":"target hidden/logits 与 execute_model_state。","resume":"Worker 随后调用 sample_tokens；proposer 不直接调用 target forward。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2669,"label":"实际实现","end":2740}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle3","step":6,"scenario":"middle","page":"index.html"}}]},{"id":"sample","parent":null,"number":"3","kind":"调用","title":"NPUModelRunner.sample_tokens() → _sample()","summary":"消费 target forward 保存的输出状态。","input":"target logits、SpecDecodeMetadata、可选 draft_probs。","changes":"_sample 在存在 spec metadata 时调用 rejection_sampler。","output":"SamplerOutput。","resume":"回到 sample_tokens 的 bookkeeping 与下轮提议。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2849,"label":"实际实现","end":2907},{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":3058,"label":"实际实现","end":3079}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle3","step":7,"scenario":"middle","page":"index.html"}}]},{"id":"verify","parent":"sample","number":"3.1","kind":"调用","title":"AscendRejectionSampler.forward()","summary":"对齐候选、target logits 与 bonus 位置。","input":"draft IDs、num_draft_tokens、target/bonus logits indices。","changes":"选 bonus token、处理 target logits，调用 rejection_sample。","output":"有效接受前缀 + correction / bonus，其他槽位是占位。","resume":"返回 _sample，再回 sample_tokens。","evidence":[{"repo":"ascend","path":"vllm_ascend/sample/rejection_sampler.py","line":146,"label":"实际实现","end":254}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle3","step":7,"scenario":"middle","page":"index.html"}},{"label":"打开串行 / 并行验证对照","action":{"page":"comparison.html","mode":"comparison","step":4,"scenario":"middle"}}]},{"id":"commit","parent":"sample","number":"3.2","kind":"返回","title":"sample_tokens 的 bookkeeping / ModelRunnerOutput","summary":"只有有效输出追加到请求状态。","input":"SamplerOutput、有效长度、原请求 IDs。","changes":"更新本地历史与输出对象，保留下一轮 drafter 输入。","output":"ModelRunnerOutput 或异步拷贝包装。","resume":"返回 Engine；Scheduler 按接受长度更新计算进度。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2950,"label":"实际实现","end":3055}],"targets":[{"label":"查看对应流程","action":{"mode":"eagle3","step":8,"scenario":"middle","page":"index.html"}},{"label":"打开串行 / 并行验证对照","action":{"page":"comparison.html","mode":"comparison","step":5,"scenario":"middle"}}]}]},{"id":"mtp","title":"DeepSeek MTP · 普通单 KV 组","scope":"MRV1、greedy 验证、K=3 教学流程；候选具体词为教学值。初始化与每轮调用分开，target 验证属于下一调度轮。 普通 DeepSeek MTP 的通用单 KV 组路径；Gemma4、Step3.5、多 KV 组 MTP 的 proposer 另有分支。","entry":"select","repositories":{"ascend":{"url":"https://github.com/vllm-project/vllm-ascend","commit":"94e3e25f836d79b5ee5c1aed257999ee61d10875","label":"vLLM-Ascend"},"vllm":{"url":"https://github.com/vllm-project/vllm","commit":"295c062db8a48ea73bbd05d1174cb37d24bf86f9","label":"vLLM"}},"nodes":[{"id":"select","parent":null,"number":"P1","kind":"分支","title":"get_spec_decode_method() [初始化一次]","summary":"配置决定 proposer 类型，不是每轮都加载草稿。","input":"SpeculativeConfig.method 与模型配置。","changes":"EAGLE/EAGLE3/普通 MTP 选 AscendEagleProposer；其他方法选各自 proposer。","output":"已加载的 drafter 对象。","resume":"后续 Runner.propose_draft_token_ids 调用该对象。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/__init__.py","line":41,"label":"实际实现","end":70}],"targets":[{"label":"查看对应流程","action":{"mode":"mtp","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"runner","parent":null,"number":"1","kind":"调用","title":"NPUModelRunner.propose_draft_token_ids()","summary":"上轮 target 采样/验证后开始准备下一轮候选。","input":"有效 sampled IDs、positions、target hidden、metadata。","changes":"按 self.drafter 实际类型选提议路径；清空旧 draft_probs。","output":"本轮候选 IDs。","resume":"返回 sample_tokens 保存，随后调度下一轮 target 验证。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":1983,"label":"实际实现","end":2013}],"targets":[{"label":"查看对应流程","action":{"mode":"mtp","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"propose","parent":"runner","number":"1.1","kind":"调用","title":"AscendSpecDecodeBaseProposer._propose()","summary":"LLM proposer 的公共执行入口。","input":"target IDs/positions/hidden、已确认 next IDs、K。","changes":"K=0 可返回空；其余准备输入、metadata 和 forward context。","output":"供草稿 runnable 消费的 buffer。","resume":"在 with 块内调用 _runnable，退出后返回 draft_token_ids。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2183,"label":"调用位置","end":2203},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1010,"label":"实际实现","end":1080}],"targets":[{"label":"查看对应流程","action":{"mode":"mtp","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"inputs","parent":"propose","number":"1.1.2","kind":"调用","title":"AscendSpecDecodeBaseProposer.set_inputs_first_pass()","summary":"对齐首轮 token、positions 与 hidden。","input":"已确认 anchor ID、target 前缀与 metadata。","changes":"token 左移并在请求末位补 next ID，hidden 保持对应源位置。","output":"草稿 input_ids/positions、采样索引、metadata。","resume":"返回 _propose，建立草稿 forward context。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1779,"label":"实际实现","end":1941}],"targets":[{"label":"查看对应流程","action":{"mode":"mtp","step":2,"scenario":"middle","page":"index.html"}}]},{"id":"draftloop","parent":"propose","number":"1.1.3","kind":"调用","title":"AscendSpecDecodeBaseProposer._run_merged_draft()","summary":"_runnable 的实际内容；FULL 模式外有 ACLGraphWrapper。","input":"预填好的 input buffer、采样索引、metadata。","changes":"首次 self.model(**model_kwargs)，分离用于采样与递推的 hidden。","output":"第一步草稿 hidden。","resume":"随后 compute_logits/采样；串行方法继续迭代。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":300,"label":"初始化绑定","end":300},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1384,"label":"调用与返回","end":1395},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1451,"label":"实际实现","end":1492}],"targets":[{"label":"查看对应流程","action":{"mode":"mtp","step":3,"scenario":"middle","page":"index.html"}}]},{"id":"model","parent":"draftloop","number":"1.1.3.2","kind":"调用","title":"DeepSeekMTP.forward()","summary":"MTP 由位置选择预测层，将 token embedding 与 hidden 融合。","input":"当前草稿 IDs/positions及递推 hidden。","changes":"进入已加载的草稿模型主体。","output":"草稿输出 hidden。","resume":"返回 _run_merged_draft 的 _split_draft_outputs。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1491,"label":"调用位置","end":1492},{"repo":"vllm","path":"vllm/model_executor/models/deepseek_mtp.py","line":279,"label":"实际实现","end":295}],"targets":[{"label":"查看对应流程","action":{"mode":"mtp","step":3,"scenario":"middle","page":"index.html"}}]},{"id":"draftsample","parent":"draftloop","number":"1.1.3.3","kind":"调用","title":"compute_draft_token_ids() / _sample_draft_from_logits()","summary":"将草稿 hidden 投影并选择候选 ID。","input":"草稿采样 hidden 与 sampling_metadata。","changes":"compute_logits 后按 greedy 或 configured probabilistic draft 采样。","output":"draft_token_ids 与可选 draft_probs。","resume":"DFlash parallel_drafting 直接返回 K 个；串行方法进入后续循环。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1423,"label":"实际实现","end":1449},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1616,"label":"实际实现","end":1643}],"targets":[{"label":"查看对应流程","action":{"mode":"mtp","step":5,"scenario":"middle","page":"index.html"}}]},{"id":"return","parent":"draftloop","number":"1.1.3.4","kind":"循环","title":"for draft_index in range(K−1)","summary":"每次把前一个候选及草稿递推 hidden 喂回，位置前移。","input":"第一步候选与草稿状态。","changes":"self.model → compute_logits → sample；写入 draft_token_ids_tensor。","output":"候选矩阵 [B,K]。","resume":"经 _propose 返回 Runner；候选尚未确认。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1653,"label":"实际实现","end":1777}],"targets":[{"label":"查看对应流程","action":{"mode":"mtp","step":5,"scenario":"middle","page":"index.html"}}]},{"id":"target","parent":null,"number":"2","kind":"边界","title":"NPUModelRunner.execute_model() [下一轮 target]","summary":"调度器把草稿加入 target 本轮输入，跨轮交给 Runner。","input":"SchedulerOutput 的已确认 anchor 与候选序列；target KV。","changes":"准备 target metadata，调用 _model_forward；选择 logits rows。","output":"target hidden/logits 与 execute_model_state。","resume":"Worker 随后调用 sample_tokens；proposer 不直接调用 target forward。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2669,"label":"实际实现","end":2740}],"targets":[{"label":"查看对应流程","action":{"mode":"mtp","step":6,"scenario":"middle","page":"index.html"}}]},{"id":"sample","parent":null,"number":"3","kind":"调用","title":"NPUModelRunner.sample_tokens() → _sample()","summary":"消费 target forward 保存的输出状态。","input":"target logits、SpecDecodeMetadata、可选 draft_probs。","changes":"_sample 在存在 spec metadata 时调用 rejection_sampler。","output":"SamplerOutput。","resume":"回到 sample_tokens 的 bookkeeping 与下轮提议。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2849,"label":"实际实现","end":2907},{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":3058,"label":"实际实现","end":3079}],"targets":[{"label":"查看对应流程","action":{"mode":"mtp","step":7,"scenario":"middle","page":"index.html"}}]},{"id":"verify","parent":"sample","number":"3.1","kind":"调用","title":"AscendRejectionSampler.forward()","summary":"对齐候选、target logits 与 bonus 位置。","input":"draft IDs、num_draft_tokens、target/bonus logits indices。","changes":"选 bonus token、处理 target logits，调用 rejection_sample。","output":"有效接受前缀 + correction / bonus，其他槽位是占位。","resume":"返回 _sample，再回 sample_tokens。","evidence":[{"repo":"ascend","path":"vllm_ascend/sample/rejection_sampler.py","line":146,"label":"实际实现","end":254}],"targets":[{"label":"查看对应流程","action":{"mode":"mtp","step":7,"scenario":"middle","page":"index.html"}},{"label":"打开串行 / 并行验证对照","action":{"page":"comparison.html","mode":"comparison","step":4,"scenario":"middle"}}]},{"id":"commit","parent":"sample","number":"3.2","kind":"返回","title":"sample_tokens 的 bookkeeping / ModelRunnerOutput","summary":"只有有效输出追加到请求状态。","input":"SamplerOutput、有效长度、原请求 IDs。","changes":"更新本地历史与输出对象，保留下一轮 drafter 输入。","output":"ModelRunnerOutput 或异步拷贝包装。","resume":"返回 Engine；Scheduler 按接受长度更新计算进度。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2950,"label":"实际实现","end":3055}],"targets":[{"label":"查看对应流程","action":{"mode":"mtp","step":8,"scenario":"middle","page":"index.html"}},{"label":"打开串行 / 并行验证对照","action":{"page":"comparison.html","mode":"comparison","step":5,"scenario":"middle"}}]}]},{"id":"dflash","title":"DFlash · Qwen3 并行草稿","scope":"MRV1、greedy 验证、K=3 教学流程；候选具体词为教学值。初始化与每轮调用分开，target 验证属于下一调度轮。 Qwen3 DFlash-b16 的 head-free parallel_drafting；不是 DSpark/DFlash2。","entry":"select","repositories":{"ascend":{"url":"https://github.com/vllm-project/vllm-ascend","commit":"94e3e25f836d79b5ee5c1aed257999ee61d10875","label":"vLLM-Ascend"},"vllm":{"url":"https://github.com/vllm-project/vllm","commit":"295c062db8a48ea73bbd05d1174cb37d24bf86f9","label":"vLLM"}},"nodes":[{"id":"select","parent":null,"number":"P1","kind":"分支","title":"get_spec_decode_method() [初始化一次]","summary":"配置决定 proposer 类型，不是每轮都加载草稿。","input":"SpeculativeConfig.method 与模型配置。","changes":"EAGLE/EAGLE3/普通 MTP 选 AscendEagleProposer；其他方法选各自 proposer。","output":"已加载的 drafter 对象。","resume":"后续 Runner.propose_draft_token_ids 调用该对象。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/__init__.py","line":41,"label":"实际实现","end":70}],"targets":[{"label":"查看对应流程","action":{"mode":"dflash","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"runner","parent":null,"number":"1","kind":"调用","title":"NPUModelRunner.propose_draft_token_ids()","summary":"上轮 target 采样/验证后开始准备下一轮候选。","input":"有效 sampled IDs、positions、target hidden、metadata。","changes":"按 self.drafter 实际类型选提议路径；清空旧 draft_probs。","output":"本轮候选 IDs。","resume":"返回 sample_tokens 保存，随后调度下一轮 target 验证。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":1983,"label":"实际实现","end":2013}],"targets":[{"label":"查看对应流程","action":{"mode":"dflash","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"propose","parent":"runner","number":"1.1","kind":"调用","title":"AscendSpecDecodeBaseProposer._propose()","summary":"LLM proposer 的公共执行入口。","input":"target IDs/positions/hidden、已确认 next IDs、K。","changes":"K=0 可返回空；其余准备输入、metadata 和 forward context。","output":"供草稿 runnable 消费的 buffer。","resume":"在 with 块内调用 _runnable，退出后返回 draft_token_ids。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2183,"label":"调用位置","end":2203},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1010,"label":"实际实现","end":1080}],"targets":[{"label":"查看对应流程","action":{"mode":"dflash","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"combine","parent":"propose","number":"1.1.1","kind":"调用","title":"DFlashQwen3ForCausalLM.combine_hidden_states()","summary":"合并 target 配置要求的辅助隐藏层。","input":"按 feature 维拼接的 target aux hidden。","changes":"使用 checkpoint 的融合投影与 Norm。","output":"融合后的上下文特征。","resume":"返回 _propose，再准备 token/位置。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1060,"label":"调用位置","end":1066},{"repo":"vllm","path":"vllm/model_executor/models/qwen3_dflash.py","line":864,"label":"实际实现","end":884}],"targets":[{"label":"查看对应流程","action":{"mode":"dflash","step":2,"scenario":"middle","page":"index.html"}}]},{"id":"inputs","parent":"propose","number":"1.1.2","kind":"调用","title":"AscendDflashProposer.set_inputs_first_pass()","summary":"DFlash 查询块和 target 上下文分开准备。","input":"已确认 anchor ID、target 前缀与 metadata。","changes":"DFlash 写 anchor + MASK 查询块。","output":"草稿 input_ids/positions、采样索引、metadata。","resume":"返回 _propose，建立草稿 forward context。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/dflash_proposer.py","line":105,"label":"实际实现","end":192}],"targets":[{"label":"查看对应流程","action":{"mode":"dflash","step":3,"scenario":"middle","page":"index.html"}}]},{"id":"draftloop","parent":"propose","number":"1.1.3","kind":"调用","title":"AscendSpecDecodeBaseProposer._run_merged_draft()","summary":"_runnable 的实际内容；FULL 模式外有 ACLGraphWrapper。","input":"预填好的 input buffer、采样索引、metadata。","changes":"首次 self.model(**model_kwargs)，分离用于采样与递推的 hidden。","output":"第一步草稿 hidden。","resume":"随后 compute_logits/采样；串行方法继续迭代。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":300,"label":"初始化绑定","end":300},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1384,"label":"调用与返回","end":1395},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1451,"label":"实际实现","end":1492}],"targets":[{"label":"查看对应流程","action":{"mode":"dflash","step":3,"scenario":"middle","page":"index.html"}}]},{"id":"contextkv","parent":"draftloop","number":"1.1.3.1","kind":"调用","title":"AscendDflashProposer.build_model_inputs_first_pass()","summary":"草稿查询前把上下文特征写成草稿侧 K/V。","input":"融合 target hidden、context positions、slot mappings。","changes":"调用 draft model.precompute_and_store_context_kv。","output":"草稿 Attention 可读取的上下文 K/V。","resume":"回到 _run_merged_draft 首次 self.model 调用。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/dflash_proposer.py","line":306,"label":"实际实现","end":324}],"targets":[{"label":"查看对应流程","action":{"mode":"dflash","step":4,"scenario":"middle","page":"index.html"}}]},{"id":"model","parent":"draftloop","number":"1.1.3.2","kind":"调用","title":"DFlashQwen3ForCausalLM.forward()","summary":"一次草稿前向处理 anchor 与多个 MASK 查询位置。","input":"当前草稿 IDs/positions；上下文 K/V 已准备。","changes":"进入已加载的草稿模型主体。","output":"草稿输出 hidden。","resume":"返回 _run_merged_draft 的 _split_draft_outputs。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1491,"label":"调用位置","end":1492},{"repo":"vllm","path":"vllm/model_executor/models/qwen3_dflash.py","line":820,"label":"实际实现","end":826}],"targets":[{"label":"查看对应流程","action":{"mode":"dflash","step":5,"scenario":"middle","page":"index.html"}}]},{"id":"draftsample","parent":"draftloop","number":"1.1.3.3","kind":"调用","title":"compute_draft_token_ids() / _sample_draft_from_logits()","summary":"将草稿 hidden 投影并选择候选 ID。","input":"草稿采样 hidden 与 sampling_metadata。","changes":"compute_logits 后按 greedy 或 configured probabilistic draft 采样。","output":"draft_token_ids 与可选 draft_probs。","resume":"DFlash parallel_drafting 直接返回 K 个；串行方法进入后续循环。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1423,"label":"实际实现","end":1449},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1616,"label":"实际实现","end":1643}],"targets":[{"label":"查看对应流程","action":{"mode":"dflash","step":5,"scenario":"middle","page":"index.html"}}]},{"id":"return","parent":"draftloop","number":"1.1.3.4","kind":"返回","title":"并行返回 [B,K]","summary":"DFlash 不把上一个预测 token 喂回下一次前向。","input":"第一步候选与草稿状态。","changes":"parallel_drafting 返回整块结果。","output":"候选矩阵 [B,K]。","resume":"经 _propose 返回 Runner；候选尚未确认。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1633,"label":"实际实现","end":1643}],"targets":[{"label":"查看对应流程","action":{"mode":"dflash","step":5,"scenario":"middle","page":"index.html"}}]},{"id":"target","parent":null,"number":"2","kind":"边界","title":"NPUModelRunner.execute_model() [下一轮 target]","summary":"调度器把草稿加入 target 本轮输入，跨轮交给 Runner。","input":"SchedulerOutput 的已确认 anchor 与候选序列；target KV。","changes":"准备 target metadata，调用 _model_forward；选择 logits rows。","output":"target hidden/logits 与 execute_model_state。","resume":"Worker 随后调用 sample_tokens；proposer 不直接调用 target forward。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2669,"label":"实际实现","end":2740}],"targets":[{"label":"查看对应流程","action":{"mode":"dflash","step":6,"scenario":"middle","page":"index.html"}}]},{"id":"sample","parent":null,"number":"3","kind":"调用","title":"NPUModelRunner.sample_tokens() → _sample()","summary":"消费 target forward 保存的输出状态。","input":"target logits、SpecDecodeMetadata、可选 draft_probs。","changes":"_sample 在存在 spec metadata 时调用 rejection_sampler。","output":"SamplerOutput。","resume":"回到 sample_tokens 的 bookkeeping 与下轮提议。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2849,"label":"实际实现","end":2907},{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":3058,"label":"实际实现","end":3079}],"targets":[{"label":"查看对应流程","action":{"mode":"dflash","step":7,"scenario":"middle","page":"index.html"}}]},{"id":"verify","parent":"sample","number":"3.1","kind":"调用","title":"AscendRejectionSampler.forward()","summary":"对齐候选、target logits 与 bonus 位置。","input":"draft IDs、num_draft_tokens、target/bonus logits indices。","changes":"选 bonus token、处理 target logits，调用 rejection_sample。","output":"有效接受前缀 + correction / bonus，其他槽位是占位。","resume":"返回 _sample，再回 sample_tokens。","evidence":[{"repo":"ascend","path":"vllm_ascend/sample/rejection_sampler.py","line":146,"label":"实际实现","end":254}],"targets":[{"label":"查看对应流程","action":{"mode":"dflash","step":7,"scenario":"middle","page":"index.html"}},{"label":"打开串行 / 并行验证对照","action":{"page":"comparison.html","mode":"comparison","step":4,"scenario":"middle"}}]},{"id":"commit","parent":"sample","number":"3.2","kind":"返回","title":"sample_tokens 的 bookkeeping / ModelRunnerOutput","summary":"只有有效输出追加到请求状态。","input":"SamplerOutput、有效长度、原请求 IDs。","changes":"更新本地历史与输出对象，保留下一轮 drafter 输入。","output":"ModelRunnerOutput 或异步拷贝包装。","resume":"返回 Engine；Scheduler 按接受长度更新计算进度。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2950,"label":"实际实现","end":3055}],"targets":[{"label":"查看对应流程","action":{"mode":"dflash","step":8,"scenario":"middle","page":"index.html"}},{"label":"打开串行 / 并行验证对照","action":{"page":"comparison.html","mode":"comparison","step":5,"scenario":"middle"}}]}]},{"id":"draft","title":"独立 draft model","scope":"MRV1、greedy 验证、K=3 教学流程；候选具体词为教学值。初始化与每轮调用分开，target 验证属于下一调度轮。 checkpoint 未固定，因此草稿模型主体明确留作动态分派边界。","entry":"select","repositories":{"ascend":{"url":"https://github.com/vllm-project/vllm-ascend","commit":"94e3e25f836d79b5ee5c1aed257999ee61d10875","label":"vLLM-Ascend"}},"nodes":[{"id":"select","parent":null,"number":"P1","kind":"分支","title":"get_spec_decode_method() [初始化一次]","summary":"配置决定 proposer 类型，不是每轮都加载草稿。","input":"SpeculativeConfig.method 与模型配置。","changes":"EAGLE/EAGLE3/普通 MTP 选 AscendEagleProposer；其他方法选各自 proposer。","output":"已加载的 drafter 对象。","resume":"后续 Runner.propose_draft_token_ids 调用该对象。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/__init__.py","line":41,"label":"实际实现","end":70}],"targets":[{"label":"查看对应流程","action":{"mode":"draft","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"runner","parent":null,"number":"1","kind":"调用","title":"NPUModelRunner.propose_draft_token_ids()","summary":"上轮 target 采样/验证后开始准备下一轮候选。","input":"有效 sampled IDs、positions、target hidden、metadata。","changes":"按 self.drafter 实际类型选提议路径；清空旧 draft_probs。","output":"本轮候选 IDs。","resume":"返回 sample_tokens 保存，随后调度下一轮 target 验证。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":1983,"label":"实际实现","end":2013}],"targets":[{"label":"查看对应流程","action":{"mode":"draft","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"propose","parent":"runner","number":"1.1","kind":"调用","title":"AscendSpecDecodeBaseProposer._propose()","summary":"LLM proposer 的公共执行入口。","input":"target IDs/positions/hidden、已确认 next IDs、K。","changes":"K=0 可返回空；其余准备输入、metadata 和 forward context。","output":"供草稿 runnable 消费的 buffer。","resume":"在 with 块内调用 _runnable，退出后返回 draft_token_ids。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2183,"label":"调用位置","end":2203},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1010,"label":"实际实现","end":1080}],"targets":[{"label":"查看对应流程","action":{"mode":"draft","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"inputs","parent":"propose","number":"1.1.2","kind":"调用","title":"AscendSpecDecodeBaseProposer.set_inputs_first_pass()","summary":"对齐首轮 token、positions 与 hidden。","input":"已确认 anchor ID、target 前缀与 metadata。","changes":"独立草稿保留/扩展输入 ID，不传 target hidden。","output":"草稿 input_ids/positions、采样索引、metadata。","resume":"返回 _propose，建立草稿 forward context。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1779,"label":"实际实现","end":1941}],"targets":[{"label":"查看对应流程","action":{"mode":"draft","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"draftloop","parent":"propose","number":"1.1.3","kind":"调用","title":"AscendSpecDecodeBaseProposer._run_merged_draft()","summary":"_runnable 的实际内容；FULL 模式外有 ACLGraphWrapper。","input":"预填好的 input buffer、采样索引、metadata。","changes":"首次 self.model(**model_kwargs)，分离用于采样与递推的 hidden。","output":"第一步草稿 hidden。","resume":"随后 compute_logits/采样；串行方法继续迭代。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":300,"label":"初始化绑定","end":300},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1384,"label":"调用与返回","end":1395},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1451,"label":"实际实现","end":1492}],"targets":[{"label":"查看对应流程","action":{"mode":"draft","step":3,"scenario":"middle","page":"index.html"}}]},{"id":"model","parent":"draftloop","number":"1.1.3.2","kind":"边界","title":"self.model(**model_kwargs) [配置的独立草稿]","summary":"实际类由独立 draft checkpoint 的 architectures 决定。","input":"草稿自己的 token IDs/positions 和 KV；不接收 target hidden。","changes":"用草稿模型自身权重做自回归 forward。","output":"草稿 hidden。","resume":"返回 _run_merged_draft；此边界不虚构固定模型类。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/draft_proposer.py","line":8,"label":"实际实现","end":17},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1473,"label":"实际实现","end":1492}],"targets":[{"label":"查看对应流程","action":{"mode":"draft","step":2,"scenario":"middle","page":"index.html"}}]},{"id":"draftsample","parent":"draftloop","number":"1.1.3.3","kind":"调用","title":"compute_draft_token_ids() / _sample_draft_from_logits()","summary":"将草稿 hidden 投影并选择候选 ID。","input":"草稿采样 hidden 与 sampling_metadata。","changes":"compute_logits 后按 greedy 或 configured probabilistic draft 采样。","output":"draft_token_ids 与可选 draft_probs。","resume":"DFlash parallel_drafting 直接返回 K 个；串行方法进入后续循环。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1423,"label":"实际实现","end":1449},{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1616,"label":"实际实现","end":1643}],"targets":[{"label":"查看对应流程","action":{"mode":"draft","step":4,"scenario":"middle","page":"index.html"}}]},{"id":"return","parent":"draftloop","number":"1.1.3.4","kind":"循环","title":"for draft_index in range(K−1)","summary":"每次把前一个候选及草稿递推 hidden 喂回，位置前移。","input":"第一步候选与草稿状态。","changes":"self.model → compute_logits → sample；写入 draft_token_ids_tensor。","output":"候选矩阵 [B,K]。","resume":"经 _propose 返回 Runner；候选尚未确认。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/llm_base_proposer.py","line":1653,"label":"实际实现","end":1777}],"targets":[{"label":"查看对应流程","action":{"mode":"draft","step":4,"scenario":"middle","page":"index.html"}}]},{"id":"target","parent":null,"number":"2","kind":"边界","title":"NPUModelRunner.execute_model() [下一轮 target]","summary":"调度器把草稿加入 target 本轮输入，跨轮交给 Runner。","input":"SchedulerOutput 的已确认 anchor 与候选序列；target KV。","changes":"准备 target metadata，调用 _model_forward；选择 logits rows。","output":"target hidden/logits 与 execute_model_state。","resume":"Worker 随后调用 sample_tokens；proposer 不直接调用 target forward。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2669,"label":"实际实现","end":2740}],"targets":[{"label":"查看对应流程","action":{"mode":"draft","step":5,"scenario":"middle","page":"index.html"}}]},{"id":"sample","parent":null,"number":"3","kind":"调用","title":"NPUModelRunner.sample_tokens() → _sample()","summary":"消费 target forward 保存的输出状态。","input":"target logits、SpecDecodeMetadata、可选 draft_probs。","changes":"_sample 在存在 spec metadata 时调用 rejection_sampler。","output":"SamplerOutput。","resume":"回到 sample_tokens 的 bookkeeping 与下轮提议。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2849,"label":"实际实现","end":2907},{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":3058,"label":"实际实现","end":3079}],"targets":[{"label":"查看对应流程","action":{"mode":"draft","step":6,"scenario":"middle","page":"index.html"}}]},{"id":"verify","parent":"sample","number":"3.1","kind":"调用","title":"AscendRejectionSampler.forward()","summary":"对齐候选、target logits 与 bonus 位置。","input":"draft IDs、num_draft_tokens、target/bonus logits indices。","changes":"选 bonus token、处理 target logits，调用 rejection_sample。","output":"有效接受前缀 + correction / bonus，其他槽位是占位。","resume":"返回 _sample，再回 sample_tokens。","evidence":[{"repo":"ascend","path":"vllm_ascend/sample/rejection_sampler.py","line":146,"label":"实际实现","end":254}],"targets":[{"label":"查看对应流程","action":{"mode":"draft","step":6,"scenario":"middle","page":"index.html"}},{"label":"打开串行 / 并行验证对照","action":{"page":"comparison.html","mode":"comparison","step":4,"scenario":"middle"}}]},{"id":"commit","parent":"sample","number":"3.2","kind":"返回","title":"sample_tokens 的 bookkeeping / ModelRunnerOutput","summary":"只有有效输出追加到请求状态。","input":"SamplerOutput、有效长度、原请求 IDs。","changes":"更新本地历史与输出对象，保留下一轮 drafter 输入。","output":"ModelRunnerOutput 或异步拷贝包装。","resume":"返回 Engine；Scheduler 按接受长度更新计算进度。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2950,"label":"实际实现","end":3055}],"targets":[{"label":"查看对应流程","action":{"mode":"draft","step":7,"scenario":"middle","page":"index.html"}},{"label":"打开串行 / 并行验证对照","action":{"page":"comparison.html","mode":"comparison","step":5,"scenario":"middle"}}]}]},{"id":"medusa","title":"Medusa · 并行预测头","scope":"MRV1、greedy 验证、K=3 教学流程；候选具体词为教学值。初始化与每轮调用分开，target 验证属于下一调度轮。","entry":"select","repositories":{"ascend":{"url":"https://github.com/vllm-project/vllm-ascend","commit":"94e3e25f836d79b5ee5c1aed257999ee61d10875","label":"vLLM-Ascend"},"vllm":{"url":"https://github.com/vllm-project/vllm","commit":"295c062db8a48ea73bbd05d1174cb37d24bf86f9","label":"vLLM"}},"nodes":[{"id":"select","parent":null,"number":"P1","kind":"分支","title":"get_spec_decode_method() [初始化一次]","summary":"配置决定 proposer 类型，不是每轮都加载草稿。","input":"SpeculativeConfig.method 与模型配置。","changes":"EAGLE/EAGLE3/普通 MTP 选 AscendEagleProposer；其他方法选各自 proposer。","output":"已加载的 drafter 对象。","resume":"后续 Runner.propose_draft_token_ids 调用该对象。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/__init__.py","line":41,"label":"实际实现","end":70}],"targets":[{"label":"查看对应流程","action":{"mode":"medusa","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"runner","parent":null,"number":"1","kind":"调用","title":"NPUModelRunner.propose_draft_token_ids()","summary":"上轮 target 采样/验证后开始准备下一轮候选。","input":"有效 sampled IDs、positions、target hidden、metadata。","changes":"按 self.drafter 实际类型选提议路径；清空旧 draft_probs。","output":"本轮候选 IDs。","resume":"返回 sample_tokens 保存，随后调度下一轮 target 验证。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":1983,"label":"实际实现","end":2013}],"targets":[{"label":"查看对应流程","action":{"mode":"medusa","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"propose","parent":"runner","number":"1.1","kind":"调用","title":"AscendMedusaProposer.propose()","summary":"按有效输出数选择最后已确认位置的 target hidden。","input":"sample_hidden_states 与每请求输出长度。","changes":"indices=offsets+num_accepted_tokens−1。","output":"每请求一行 hidden。","resume":"调用上游 MedusaProposer.propose。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/medusa_proposer.py","line":46,"label":"实际实现","end":72}],"targets":[{"label":"查看对应流程","action":{"mode":"medusa","step":2,"scenario":"middle","page":"index.html"}}]},{"id":"base","parent":"propose","number":"1.1.1","kind":"调用","title":"MedusaProposer.propose()","summary":"同一 target hidden 进入多个预测头。","input":"target_hidden_states[B,H]。","changes":"model(hidden) → model.compute_logits(blocks)。","output":"每个头的 logits。","resume":"逐头 argmax 后 stack。","evidence":[{"repo":"vllm","path":"vllm/v1/spec_decode/medusa.py","line":38,"label":"实际实现","end":56}],"targets":[{"label":"查看对应流程","action":{"mode":"medusa","step":3,"scenario":"middle","page":"index.html"}}]},{"id":"heads","parent":"base","number":"1.1.1.1","kind":"调用","title":"Medusa.forward() → Medusa.compute_logits()","summary":"各 residual block/head 读取同一输入行。","input":"同一 target hidden。","changes":"各头独立计算本位置词表 logits。","output":"按未来位置排列的 logits 列表。","resume":"返回 MedusaProposer。","evidence":[{"repo":"vllm","path":"vllm/model_executor/models/medusa.py","line":107,"label":"实际实现","end":108},{"repo":"vllm","path":"vllm/model_executor/models/medusa.py","line":110,"label":"实际实现","end":139}],"targets":[{"label":"查看对应流程","action":{"mode":"medusa","step":3,"scenario":"middle","page":"index.html"}}]},{"id":"out","parent":"base","number":"1.1.1.2","kind":"动作","title":"torch.stack([logit.argmax(...)], dim=1)","summary":"各头独立 greedy 选择，未进行串行反馈。","input":"多个头的 logits。","changes":"argmax 并拼为 [B,num_heads]。","output":"草稿 IDs。","resume":"返回 AscendMedusaProposer，再返回 Runner。","evidence":[{"repo":"vllm","path":"vllm/v1/spec_decode/medusa.py","line":52,"label":"实际实现","end":56}],"targets":[{"label":"查看对应流程","action":{"mode":"medusa","step":3,"scenario":"middle","page":"index.html"}}]},{"id":"target","parent":null,"number":"2","kind":"边界","title":"NPUModelRunner.execute_model() [下一轮 target]","summary":"调度器把草稿加入 target 本轮输入，跨轮交给 Runner。","input":"SchedulerOutput 的已确认 anchor 与候选序列；target KV。","changes":"准备 target metadata，调用 _model_forward；选择 logits rows。","output":"target hidden/logits 与 execute_model_state。","resume":"Worker 随后调用 sample_tokens；proposer 不直接调用 target forward。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2669,"label":"实际实现","end":2740}],"targets":[{"label":"查看对应流程","action":{"mode":"medusa","step":4,"scenario":"middle","page":"index.html"}}]},{"id":"sample","parent":null,"number":"3","kind":"调用","title":"NPUModelRunner.sample_tokens() → _sample()","summary":"消费 target forward 保存的输出状态。","input":"target logits、SpecDecodeMetadata、可选 draft_probs。","changes":"_sample 在存在 spec metadata 时调用 rejection_sampler。","output":"SamplerOutput。","resume":"回到 sample_tokens 的 bookkeeping 与下轮提议。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2849,"label":"实际实现","end":2907},{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":3058,"label":"实际实现","end":3079}],"targets":[{"label":"查看对应流程","action":{"mode":"medusa","step":5,"scenario":"middle","page":"index.html"}}]},{"id":"verify","parent":"sample","number":"3.1","kind":"调用","title":"AscendRejectionSampler.forward()","summary":"对齐候选、target logits 与 bonus 位置。","input":"draft IDs、num_draft_tokens、target/bonus logits indices。","changes":"选 bonus token、处理 target logits，调用 rejection_sample。","output":"有效接受前缀 + correction / bonus，其他槽位是占位。","resume":"返回 _sample，再回 sample_tokens。","evidence":[{"repo":"ascend","path":"vllm_ascend/sample/rejection_sampler.py","line":146,"label":"实际实现","end":254}],"targets":[{"label":"查看对应流程","action":{"mode":"medusa","step":5,"scenario":"middle","page":"index.html"}},{"label":"打开串行 / 并行验证对照","action":{"page":"comparison.html","mode":"comparison","step":4,"scenario":"middle"}}]},{"id":"commit","parent":"sample","number":"3.2","kind":"返回","title":"sample_tokens 的 bookkeeping / ModelRunnerOutput","summary":"只有有效输出追加到请求状态。","input":"SamplerOutput、有效长度、原请求 IDs。","changes":"更新本地历史与输出对象，保留下一轮 drafter 输入。","output":"ModelRunnerOutput 或异步拷贝包装。","resume":"返回 Engine；Scheduler 按接受长度更新计算进度。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2950,"label":"实际实现","end":3055}],"targets":[{"label":"查看对应流程","action":{"mode":"medusa","step":6,"scenario":"middle","page":"index.html"}},{"label":"打开串行 / 并行验证对照","action":{"page":"comparison.html","mode":"comparison","step":5,"scenario":"middle"}}]}]},{"id":"ngram","title":"n-gram · CPU 历史查找","scope":"MRV1、greedy 验证、K=3 教学流程；候选具体词为教学值。初始化与每轮调用分开，target 验证属于下一调度轮。","entry":"select","repositories":{"ascend":{"url":"https://github.com/vllm-project/vllm-ascend","commit":"94e3e25f836d79b5ee5c1aed257999ee61d10875","label":"vLLM-Ascend"},"vllm":{"url":"https://github.com/vllm-project/vllm","commit":"295c062db8a48ea73bbd05d1174cb37d24bf86f9","label":"vLLM"}},"nodes":[{"id":"select","parent":null,"number":"P1","kind":"分支","title":"get_spec_decode_method() [初始化一次]","summary":"配置决定 proposer 类型，不是每轮都加载草稿。","input":"SpeculativeConfig.method 与模型配置。","changes":"EAGLE/EAGLE3/普通 MTP 选 AscendEagleProposer；其他方法选各自 proposer。","output":"已加载的 drafter 对象。","resume":"后续 Runner.propose_draft_token_ids 调用该对象。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/__init__.py","line":41,"label":"实际实现","end":70}],"targets":[{"label":"查看对应流程","action":{"mode":"ngram","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"runner","parent":null,"number":"1","kind":"调用","title":"NPUModelRunner.propose_draft_token_ids()","summary":"上轮 target 采样/验证后开始准备下一轮候选。","input":"有效 sampled IDs、positions、target hidden、metadata。","changes":"按 self.drafter 实际类型选提议路径；清空旧 draft_probs。","output":"本轮候选 IDs。","resume":"返回 sample_tokens 保存，随后调度下一轮 target 验证。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":1983,"label":"实际实现","end":2013}],"targets":[{"label":"查看对应流程","action":{"mode":"ngram","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"propose","parent":"runner","number":"1.1","kind":"调用","title":"AscendNgramProposer.propose()","summary":"过滤无有效输出或达到最大长度的请求。","input":"CPU token_ids_cpu、num_tokens_no_spec、K。","changes":"构造 valid_ngram_requests。","output":"请求索引列表与有效历史。","resume":"调用继承的 batch_propose。","evidence":[{"repo":"ascend","path":"vllm_ascend/spec_decode/ngram_proposer.py","line":29,"label":"实际实现","end":60}],"targets":[{"label":"查看对应流程","action":{"mode":"ngram","step":1,"scenario":"middle","page":"index.html"}}]},{"id":"batch","parent":"propose","number":"1.1.1","kind":"调用","title":"NgramProposer.batch_propose()","summary":"批量调用 numba 查找。","input":"各请求 CPU 历史、有效长度、min_n/max_n。","changes":"batch_propose_numba；按实际候选长度转回 list。","output":"每请求候选或空列表。","resume":"返回 Ascend proposer。","evidence":[{"repo":"vllm","path":"vllm/v1/spec_decode/ngram_proposer.py","line":64,"label":"实际实现","end":136}],"targets":[{"label":"查看对应流程","action":{"mode":"ngram","step":2,"scenario":"middle","page":"index.html"}}]},{"id":"numba","parent":"batch","number":"1.1.1.1","kind":"调用","title":"batch_propose_numba()","summary":"只读取每请求有效历史，不跨请求搜索。","input":"token_ids_cpu[idx,:num_tokens]。","changes":"调用最长后缀匹配函数。","output":"匹配后的候选 slice。","resume":"写入 valid_ngram_draft / counts。","evidence":[{"repo":"vllm","path":"vllm/v1/spec_decode/ngram_proposer.py","line":181,"label":"实际实现","end":206}],"targets":[{"label":"查看对应流程","action":{"mode":"ngram","step":2,"scenario":"middle","page":"index.html"}}]},{"id":"match","parent":"numba","number":"1.1.1.1.1","kind":"调用","title":"_find_longest_matched_ngram_and_propose_tokens()","summary":"匹配历史后缀并复制其后的 token。","input":"origin_tokens、min/max n、K。","changes":"寻找可用匹配；限制 K 不超长度；无匹配返回空。","output":"最多 K 个历史 token ID。","resume":"返回 numba，再返回 Runner；不用草稿模型/hidden。","evidence":[{"repo":"vllm","path":"vllm/v1/spec_decode/ngram_proposer.py","line":210,"label":"实际实现","end":295}],"targets":[{"label":"查看对应流程","action":{"mode":"ngram","step":3,"scenario":"middle","page":"index.html"}}]},{"id":"target","parent":null,"number":"2","kind":"边界","title":"NPUModelRunner.execute_model() [下一轮 target]","summary":"调度器把草稿加入 target 本轮输入，跨轮交给 Runner。","input":"SchedulerOutput 的已确认 anchor 与候选序列；target KV。","changes":"准备 target metadata，调用 _model_forward；选择 logits rows。","output":"target hidden/logits 与 execute_model_state。","resume":"Worker 随后调用 sample_tokens；proposer 不直接调用 target forward。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2669,"label":"实际实现","end":2740}],"targets":[{"label":"查看对应流程","action":{"mode":"ngram","step":4,"scenario":"middle","page":"index.html"}}]},{"id":"sample","parent":null,"number":"3","kind":"调用","title":"NPUModelRunner.sample_tokens() → _sample()","summary":"消费 target forward 保存的输出状态。","input":"target logits、SpecDecodeMetadata、可选 draft_probs。","changes":"_sample 在存在 spec metadata 时调用 rejection_sampler。","output":"SamplerOutput。","resume":"回到 sample_tokens 的 bookkeeping 与下轮提议。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2849,"label":"实际实现","end":2907},{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":3058,"label":"实际实现","end":3079}],"targets":[{"label":"查看对应流程","action":{"mode":"ngram","step":5,"scenario":"middle","page":"index.html"}}]},{"id":"verify","parent":"sample","number":"3.1","kind":"调用","title":"AscendRejectionSampler.forward()","summary":"对齐候选、target logits 与 bonus 位置。","input":"draft IDs、num_draft_tokens、target/bonus logits indices。","changes":"选 bonus token、处理 target logits，调用 rejection_sample。","output":"有效接受前缀 + correction / bonus，其他槽位是占位。","resume":"返回 _sample，再回 sample_tokens。","evidence":[{"repo":"ascend","path":"vllm_ascend/sample/rejection_sampler.py","line":146,"label":"实际实现","end":254}],"targets":[{"label":"查看对应流程","action":{"mode":"ngram","step":5,"scenario":"middle","page":"index.html"}},{"label":"打开串行 / 并行验证对照","action":{"page":"comparison.html","mode":"comparison","step":4,"scenario":"middle"}}]},{"id":"commit","parent":"sample","number":"3.2","kind":"返回","title":"sample_tokens 的 bookkeeping / ModelRunnerOutput","summary":"只有有效输出追加到请求状态。","input":"SamplerOutput、有效长度、原请求 IDs。","changes":"更新本地历史与输出对象，保留下一轮 drafter 输入。","output":"ModelRunnerOutput 或异步拷贝包装。","resume":"返回 Engine；Scheduler 按接受长度更新计算进度。","evidence":[{"repo":"ascend","path":"vllm_ascend/worker/model_runner_v1.py","line":2950,"label":"实际实现","end":3055}],"targets":[{"label":"查看对应流程","action":{"mode":"ngram","step":6,"scenario":"middle","page":"index.html"}},{"label":"打开串行 / 并行验证对照","action":{"page":"comparison.html","mode":"comparison","step":5,"scenario":"middle"}}]}]}],"topic":"speculative-decoding"}</script>
+<script>
+/* Common entry: verified call tree -> existing visualization, preserving native DOM. */
+(() => {
+  function mount() {
+    const dataElement = document.getElementById('lesson-call-chain-data');
+    if (!dataElement || document.getElementById('lesson-call-chain')) return;
+    const data = JSON.parse(dataElement.textContent);
+    const variants = new Map(data.variants.map(variant => [variant.id,variant]));
+    const fallback = variants.get(data.defaultVariant) || data.variants[0];
+    const topic = data.topic;
+    const original = [...document.body.children].filter(node =>
+      !['SCRIPT','STYLE','LINK','META','NOSCRIPT'].includes(node.tagName) && !node.classList.contains('learning-scope-shell'));
+    original.forEach(node => node.classList.add('lesson-original'));
+    const frame = document.getElementById('codex-visualization');
+    const storageKey = 'lesson-call-chain:' + topic + ':' + location.pathname.split('/').at(-1);
+    let variant = fallback, selected = variant.entry || variant.nodes[0].id, screen = 'chain', targetIndex = null;
+    let collapsed = new Set(), busy = false, revision = 0, frameReady = false, requestId = 0;
+    const replies = new Map();
+    let nativeQueue = Promise.resolve();
+    const nodeById = id => variant.nodes.find(node => node.id === id);
+    const make = (tag,text,className) => {
+      const node = document.createElement(tag);
+      if (text !== undefined) node.textContent = text;
+      if (className) node.className = className;
+      return node;
+    };
+    const root = make('section',undefined,'code-walkthrough');
+    root.id = 'lesson-call-chain';
+    root.innerHTML = `<header class="cw-header"><a href="../index.html">← vLLM 学习笔记</a><h1></h1><p>先沿源码调用链定位接口，再进入对应的可视化步骤。</p></header>
+      <nav class="cw-nav" aria-label="阅读方式"><button type="button" data-cw-view="chain">01 整体调用链</button><button type="button" data-cw-view="visual">02 可视化执行</button></nav>
+      <p class="cw-error" role="alert" hidden></p>
+      <section class="cw-chain"><div class="cw-variant"><label>实现与场景 <select aria-label="选择调用链实现"></select></label><p class="cw-scope-text"></p><details class="cw-scope"><summary>源码仓库与固定 commit</summary><div class="cw-repositories"></div></details></div>
+      <p class="cw-guide">点 ＋ 展开子调用，点名称查看输入、状态变化与返回续点。「动作」「分支」「循环」表示控制块；异步提交与完成回报分开标记。</p>
+      <div class="cw-layout"><section class="cw-tree-panel" aria-label="源码调用树"><div class="cw-tools"><strong></strong><div><button type="button" data-cw-expand>全部展开</button> <button type="button" data-cw-fold>只看主链</button></div></div><div class="cw-tree-scroll"><ol class="cw-tree"></ol></div></section>
+      <article class="cw-detail" tabindex="-1" aria-labelledby="cw-node-title"><div class="cw-kicker"></div><h2 id="cw-node-title"></h2><p class="cw-summary"></p><dl class="cw-data"></dl><p class="cw-note" hidden></p>
+      <section class="cw-evidence"><h3>源码依据 · 行号属于所示 commit</h3><div></div></section><section class="cw-targets"><h3>进入可视化执行</h3><p>按下列入口定位现有图中的对应步骤。</p><div></div></section></article></div></section>
+      <div class="cw-context" tabindex="-1" hidden></div>`;
+    document.body.insertBefore(root,original[0] || dataElement);
+    const $ = selector => root.querySelector(selector);
+    $('.cw-header h1').textContent = data.title;
+    for (const item of data.variants) {
+      const option = make('option',item.title); option.value = item.id; $('.cw-variant select').append(option);
+    }
+    function validState(value) {
+      const nextVariant = variants.get(value?.variant);
+      const node = nextVariant?.nodes.find(item => item.id === value.node);
+      if (!node || !['chain','visual'].includes(value.screen)) return null;
+      const target = value.target === null ? null : Number(value.target);
+      if (target !== null && (!Number.isInteger(target) || target < 0 || target >= node.targets.length)) return null;
+      return {variant:nextVariant.id,node:node.id,screen:value.screen,target};
+    }
+    const state = () => ({variant:variant.id,node:selected,screen,target:targetIndex});
+    function parseRoute() {
+      const query = new URLSearchParams(location.search);
+      if (!query.has('cw-view')) return null;
+      return validState({variant:query.get('cw-variant'),node:query.get('cw-node'),screen:query.get('cw-view'),target:query.has('cw-target') ? query.get('cw-target') : null});
+    }
+    function applyState(next) {
+      variant = variants.get(next.variant); selected = next.node; screen = next.screen; targetIndex = next.target;
+    }
+    try {
+      const saved = validState(JSON.parse(localStorage.getItem(storageKey)));
+      if (saved) applyState({...saved,screen:'chain'});
+    } catch {}
+    const requested = parseRoute();
+    if (requested) applyState(requested);
+    function routeKey() {
+      const query = new URLSearchParams(location.search);
+      return ['cw-view','cw-variant','cw-node','cw-target'].map(key => query.get(key)).join('|');
+    }
+    let lastRoute = routeKey();
+    function urlFor(next = state(),url = new URL(location.href)) {
+      url.searchParams.set('cw-view',next.screen); url.searchParams.set('cw-variant',next.variant); url.searchParams.set('cw-node',next.node);
+      if (next.target === null) url.searchParams.delete('cw-target'); else url.searchParams.set('cw-target',String(next.target));
+      return url;
+    }
+    function remember(method = 'replace') {
+      try { localStorage.setItem(storageKey,JSON.stringify(state())); } catch {}
+      const url = urlFor();
+      if (url.href !== location.href) {
+        try { history[method + 'State']({...history.state,lessonCallChain:state()},'',url); } catch {}
+      }
+      lastRoute = routeKey();
+    }
+    function resetTree() {
+      collapsed = new Set(variant.nodes.filter(node => node.parent !== null).map(node => node.id));
+      revealSelected();
+    }
+    function revealSelected() {
+      let node = nodeById(selected);
+      while (node?.parent) { collapsed.delete(node.parent); node = nodeById(node.parent); }
+    }
+    function buildTree() {
+      const top = $('.cw-tree'); top.replaceChildren();
+      const append = (list,parent) => {
+        const children = variant.nodes.filter(node => node.parent === parent);
+        children.forEach((node,index) => {
+          const item = make('li'), row = make('div',undefined,'cw-row');
+          const hasChildren = variant.nodes.some(child => child.parent === node.id);
+          const branch = make(hasChildren ? 'button' : 'span',hasChildren ? (collapsed.has(node.id) ? '+' : '−') : (index === children.length - 1 ? '└─' : '├─'),hasChildren ? 'cw-toggle' : 'cw-branch');
+          if (hasChildren) {
+            branch.type = 'button'; branch.dataset.cwToggle = node.id;
+            branch.setAttribute('aria-expanded',!collapsed.has(node.id)); branch.setAttribute('aria-label',(collapsed.has(node.id) ? '展开 ' : '收起 ') + node.title);
+          } else branch.setAttribute('aria-hidden','true');
+          const button = make('button',undefined,'cw-node'); button.type = 'button'; button.dataset.cwNode = node.id;
+          const label = make('span'); label.append(make('code',node.title),make('small','[' + node.kind + '] ' + node.summary));
+          button.append(make('span',node.number,'cw-number'),label); row.append(branch,button); item.append(row);
+          if (hasChildren) { const nested = make('ol',undefined,'cw-tree'); nested.hidden = collapsed.has(node.id); append(nested,node.id); item.append(nested); }
+          list.append(item);
+        });
+      };
+      append(top,null); $('.cw-tools strong').textContent = '调用与返回 · ' + variant.nodes.length + ' 个节点';
+    }
+    function detail() {
+      const node = nodeById(selected);
+      root.querySelectorAll('[data-cw-node]').forEach(button => {
+        if (button.dataset.cwNode === selected) button.setAttribute('aria-current','true'); else button.removeAttribute('aria-current');
+      });
+      $('.cw-kicker').textContent = '节点 ' + node.number + ' / ' + node.kind;
+      $('#cw-node-title').textContent = node.title; $('.cw-summary').textContent = node.summary;
+      $('.cw-data').replaceChildren();
+      for (const [label,key] of [['输入从哪来','input'],['内部动作与持久状态','changes'],['输出交给谁','output'],['返回后在哪里继续','resume']]) $('.cw-data').append(make('dt',label),make('dd',node[key]));
+      $('.cw-note').hidden = !node.note; $('.cw-note').textContent = node.note || '';
+      $('.cw-evidence>div').replaceChildren();
+      $('.cw-evidence h3').textContent = variant.provenance === 'teaching' ? '算法教学对照 · 不绑定源码' : '源码依据 · 行号属于所示 commit';
+      if (variant.provenance === 'teaching') $('.cw-evidence>div').append(make('p','此分支说明教学算法，不表示 vLLM 内存在同名函数。','cw-guide'));
+      for (const evidence of node.evidence) {
+        const repo = variant.repositories[evidence.repo];
+        const link = make('a',evidence.label + ' · ' + evidence.path + ':' + evidence.line + (evidence.end ? '–' + evidence.end : ''));
+        link.href = repo.url + '/blob/' + repo.commit + '/' + evidence.path + '#L' + evidence.line + (evidence.end ? '-L' + evidence.end : '');
+        link.target = '_blank'; link.rel = 'noopener noreferrer'; link.title = repo.commit;
+        link.append(make('small',(repo.label || evidence.repo) + ' @ ' + repo.commit.slice(0,10)));
+        $('.cw-evidence>div').append(link);
+      }
+      $('.cw-targets>div').replaceChildren();
+      node.targets.forEach((target,index) => {
+        const button = make('button',target.label + ' →','cw-jump'); button.type = 'button'; button.dataset.cwTarget = index; button.disabled = busy;
+        $('.cw-targets>div').append(button);
+      });
+    }
+    function render() {
+      const visual = screen === 'visual';
+      root.dataset.cwBusy = String(busy);
+      root.dataset.cwScreen = screen;
+      original.forEach(node => node.classList.toggle('lesson-hidden',!visual));
+      $('.cw-header').hidden = visual; $('.cw-chain').hidden = visual; $('.cw-context').hidden = !visual;
+      root.querySelectorAll('[data-cw-view]').forEach(button => button.setAttribute('aria-pressed',button.dataset.cwView === screen));
+      $('[data-cw-view=chain]').textContent = visual ? '← 返回调用链' : '01 整体调用链';
+      $('.cw-variant select').value = variant.id; $('.cw-scope-text').textContent = variant.scope;
+      const repos = $('.cw-repositories'); repos.replaceChildren();
+      $('.cw-scope summary').textContent = variant.provenance === 'teaching' ? '算法教学对照 · 无源码仓库' : '源码仓库与固定 commit';
+      for (const [key,repo] of Object.entries(variant.repositories)) {
+        const link = make('a',(repo.label || key) + ' · ' + repo.url.replace('https://github.com/','') + ' @ ' + repo.commit);
+        link.href = repo.url + '/tree/' + repo.commit; link.target = '_blank'; link.rel = 'noopener noreferrer'; repos.append(link);
+      }
+      $('.cw-context').textContent = targetIndex === null
+        ? '当前展示原交互流程。从调用链的具体节点跳转，可定位对应模式和步骤。'
+        : '来自节点 ' + nodeById(selected).number + ' · ' + nodeById(selected).title + '。可继续使用图中的模式与步进控件。';
+      detail();
+      if (visual) window.dispatchEvent(new Event('resize'));
+    }
+    function scrollSelected() {
+      const button = root.querySelector('[data-cw-node="' + selected + '"]'), box = $('.cw-tree-scroll');
+      const a = button.getBoundingClientRect(), b = box.getBoundingClientRect();
+      if (a.top < b.top) box.scrollTop += a.top - b.top - 8;
+      else if (a.bottom > b.bottom) box.scrollTop += a.bottom - b.bottom + 8;
+    }
+    function clearError() { $('.cw-error').hidden = true; $('.cw-error').textContent = ''; }
+    function errorMessage(error) { $('.cw-error').textContent = '无法定位该步骤：' + error.message; $('.cw-error').hidden = false; }
+    window.addEventListener('message',event => {
+      if (!frame || event.source !== frame.contentWindow || !event.data) return;
+      if (event.data.type === 'lesson-call-ready') frameReady = true;
+      if (event.data.type === 'lesson-call-result') {
+        const pending = replies.get(event.data.id);
+        if (pending) { replies.delete(event.data.id); clearTimeout(pending.timer); event.data.ok ? pending.resolve(event.data.result) : pending.reject(new Error(event.data.error)); }
+      }
+      if (event.data.type === 'lesson-call-edited' && !busy && screen === 'visual') markEdited();
+    });
+    function markEdited() {
+      targetIndex = null;
+      $('.cw-context').textContent = '图中的模式或步骤已手动调整，当前状态不再绑定调用链节点。返回调用链可重新定位源码对应步骤。';
+      remember();
+    }
+    async function invoke(action) {
+      if (!frame) {
+        if (typeof window.openLessonTarget !== 'function') throw new Error('当前页面缺少步骤入口');
+        const work = nativeQueue.then(() => window.openLessonTarget(action));
+        nativeQueue = work.catch(() => {});
+        return work;
+      }
+      const deadline = Date.now() + 5000;
+      while (!frameReady && Date.now() < deadline) {
+        frame.contentWindow?.postMessage({type:'lesson-call-ping'},'*');
+        await new Promise(resolve => setTimeout(resolve,80));
+      }
+      if (!frameReady) throw new Error('内嵌可视化尚未就绪，请稍后重试');
+      const id = topic + ':' + ++requestId;
+      return new Promise((resolve,reject) => {
+        const timer = setTimeout(() => { replies.delete(id); reject(new Error('步骤定位超时')); },8000);
+        replies.set(id,{resolve,reject,timer});
+        frame.contentWindow.postMessage({type:'lesson-call-open',id,action},'*');
+      });
+    }
+    async function openTarget(index,method = 'push',scroll = true) {
+      const target = nodeById(selected).targets[index];
+      if (!target) return;
+      const currentPage = location.pathname.split('/').at(-1);
+      if (target.action.page && target.action.page !== currentPage) {
+        if (!['index.html','comparison.html'].includes(target.action.page)) throw new Error('不支持的页面目标');
+        const url = new URL(target.action.page,location.href); url.hash = '';
+        location.assign(urlFor({...state(),screen:'visual',target:index},url)); return;
+      }
+      const job = ++revision; busy = true; screen = 'visual'; targetIndex = index; clearError(); render();
+      $('.cw-context').textContent = '正在定位：' + target.label;
+      try {
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const result = await invoke(target.action);
+        if (job !== revision) return;
+        $('.cw-context').textContent = '来自节点 ' + nodeById(selected).number + ' · ' + nodeById(selected).title + ' → ' + (result?.label || target.label);
+        if (method) remember(method);
+        if (scroll) { $('.cw-context').scrollIntoView({block:'start'}); $('.cw-context').focus({preventScroll:true}); }
+      } catch (error) {
+        if (job === revision) { screen = 'chain'; render(); errorMessage(error); }
+      } finally { if (job === revision) { busy = false; root.dataset.cwBusy = 'false'; detail(); } }
+    }
+    function pauseVisual() {
+      if (frame) frame.contentWindow?.postMessage({type:'lesson-call-pause'},'*');
+      else window.dispatchEvent(new Event('lesson-pause-visual'));
+    }
+    function openChain() {
+      revision++; busy = false; screen = 'chain'; clearError();
+      pauseVisual();
+      revealSelected(); buildTree(); render(); remember('push'); scrollSelected();
+      root.scrollIntoView({block:'start'});
+    }
+    root.addEventListener('click',event => {
+      const target = event.target.closest('[data-cw-target]');
+      if (target) { openTarget(Number(target.dataset.cwTarget)); return; }
+      const layer = event.target.closest('[data-cw-view]');
+      if (layer) {
+        if (layer.dataset.cwView === 'chain') openChain();
+        else if (targetIndex !== null) openTarget(targetIndex);
+        else { screen = 'visual'; clearError(); render(); remember('push'); }
+        return;
+      }
+      const toggle = event.target.closest('[data-cw-toggle]');
+      if (toggle) {
+        const id = toggle.dataset.cwToggle;
+        if (collapsed.has(id)) collapsed.delete(id); else collapsed.add(id);
+        buildTree(); detail(); root.querySelector('[data-cw-toggle="' + id + '"]').focus({preventScroll:true}); return;
+      }
+      const button = event.target.closest('[data-cw-node]');
+      if (button) {
+        selected = button.dataset.cwNode; targetIndex = null; clearError(); detail(); remember('push');
+        if (matchMedia('(max-width:760px)').matches) { $('.cw-detail').scrollIntoView({block:'start'}); $('.cw-detail').focus({preventScroll:true}); }
+      }
+    });
+    $('[data-cw-expand]').addEventListener('click',() => { collapsed.clear(); buildTree(); detail(); });
+    $('[data-cw-fold]').addEventListener('click',() => { collapsed = new Set(variant.nodes.filter(node => node.parent !== null).map(node => node.id)); buildTree(); detail(); });
+    $('.cw-variant select').addEventListener('change',event => {
+      variant = variants.get(event.target.value); selected = variant.entry || variant.nodes[0].id; targetIndex = null;
+      resetTree(); buildTree(); clearError(); render(); remember('push');
+    });
+    for (const name of ['click','change']) document.addEventListener(name,event => {
+      if (event.isTrusted && !busy && screen === 'visual' && event.target.closest('.lesson-original') && event.target.closest('button,select,input')) markEdited();
+    },true);
+    window.addEventListener('popstate',() => {
+      if (routeKey() === lastRoute) return;
+      lastRoute = routeKey(); revision++; busy = false;
+      const next = parseRoute() || {variant:fallback.id,node:fallback.entry || fallback.nodes[0].id,screen:'chain',target:null};
+      applyState(next); resetTree(); buildTree(); render(); clearError();
+      if (screen === 'visual' && targetIndex !== null) openTarget(targetIndex,null,false);
+      else if (screen === 'chain') { pauseVisual(); scrollSelected(); }
+    });
+    resetTree(); buildTree(); render();
+    if (screen === 'visual' && targetIndex !== null) openTarget(targetIndex,null,false);
+    else if (screen === 'chain') scrollSelected();
+    document.documentElement.dataset.callChainReady = 'true';
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded',mount,{once:true}); else mount();
+})();
+</script>
+<!-- call-ui:end -->
 </body>
 </html>

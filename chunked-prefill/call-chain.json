@@ -1,0 +1,897 @@
+{
+  "title": "Prefill：分块与历史整段路径",
+  "defaultVariant": "chunked-v1",
+  "variants": [
+    {
+      "id": "chunked-v1",
+      "title": "分块 Prefill · V1 v0.11.0",
+      "scope": "预算8；A prompt=18；B/C 运行中；RUNNING 顺序 B→C→A；无缓存压力、无投机解码。前三轮配额1+1+6，第四轮1+1+1。",
+      "entry": "loop",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "b8b302cde434df8c9289a2b465406b47ebab1c2d",
+          "label": "vLLM v0.11.0"
+        }
+      },
+      "nodes": [
+        {
+          "id": "loop",
+          "parent": null,
+          "number": "1",
+          "kind": "循环",
+          "title": "EngineCore.step()",
+          "summary": "分块 Prefill 与 Decode 共享同一轮执行。",
+          "input": "A 的 prompt 长 18；B/C 已运行，最新输出 b0/c0 尚未作为输入。",
+          "changes": "每轮重新调度，预算为 8，运行扫描顺序为 B→C→A。",
+          "output": "前三轮 A 每次输入 6；B/C 每轮各输入 1。",
+          "resume": "回写后进入下一轮，沿同一请求缓存继续。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 272,
+              "end": 291,
+              "label": "同步轮次"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 1 步 · 首轮预算",
+              "action": {
+                "mode": "chunked",
+                "step": 1
+              }
+            },
+            {
+              "label": "跳到第 7 步 · 最后一块",
+              "action": {
+                "mode": "chunked",
+                "step": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "schedule",
+          "parent": "loop",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "Scheduler.schedule()",
+          "summary": "按欠算位置分配有限 token 预算。",
+          "input": "第一轮 B/C 各欠 1，A 还欠 18。",
+          "changes": "先续算运行请求；A 作为等待请求首次准入，后两轮从运行队列继续。",
+          "output": "B=1、C=1、A=6，输入合计 8。",
+          "resume": "打包本轮混合执行计划给执行器。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 283,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 179,
+              "label": "方法定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 210,
+              "end": 226,
+              "label": "运行需求与预算"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 419,
+              "end": 438,
+              "label": "等待需求与裁剪"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 1 步 · 1+1+6",
+              "action": {
+                "mode": "chunked",
+                "step": 1
+              }
+            },
+            {
+              "label": "跳到第 4 步 · A 继续下一块",
+              "action": {
+                "mode": "chunked",
+                "step": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "budget",
+          "parent": "schedule",
+          "number": "1.1.1",
+          "kind": "动作",
+          "title": "为 A 截取本轮 chunk",
+          "summary": "预算裁剪发生在调度器内部。",
+          "input": "B/C 消耗 2 个位置后剩余 6。",
+          "changes": "将 A 剩余需求与余额取最小值；三轮分别选择 p1–p6、p7–p12、p13–p18。",
+          "output": "A 计算起点依次为 0、6、12。",
+          "resume": "把裁剪后的计算量传入缓存分配器。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 213,
+              "end": 226,
+              "label": "运行请求裁剪"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 423,
+              "end": 438,
+              "label": "首次准入裁剪"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 4 步 · 第二个 chunk",
+              "action": {
+                "mode": "chunked",
+                "step": 4
+              }
+            },
+            {
+              "label": "跳到第 7 步 · 第三个 chunk",
+              "action": {
+                "mode": "chunked",
+                "step": 7
+              }
+            }
+          ],
+          "note": "这是控制和数值动作，没有单独的 chunk_prefill() 调用。"
+        },
+        {
+          "id": "allocate",
+          "parent": "schedule",
+          "number": "1.1.2",
+          "kind": "调用",
+          "title": "KVCacheManager.allocate_slots()",
+          "summary": "为本轮 chunk 保留缓存位置。",
+          "input": "A 的当前计算游标和 6-token 配额，及 B/C 的一个新输入位置。",
+          "changes": "按照累计位置需求分配或复用块；后续 chunk 沿同一请求的块表追加。",
+          "output": "得到本轮逻辑缓存安排，尚未写入物理 K/V。",
+          "resume": "返回 schedule() 后构造计划并预记计算游标。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 255,
+              "end": 258,
+              "label": "运行请求调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 471,
+              "end": 479,
+              "label": "首次准入调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 193,
+              "label": "方法定义"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 1 步 · chunk 缓存安排",
+              "action": {
+                "mode": "chunked",
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "advance",
+          "parent": "schedule",
+          "number": "1.1.3",
+          "kind": "动作",
+          "title": "打包计划并推进 num_computed_tokens",
+          "summary": "计划保留起点，持久请求预记终点。",
+          "input": "本轮各请求配额与块信息。",
+          "changes": "构造 SchedulerOutput，随后 _update_after_schedule() 增加已安排计算量。",
+          "output": "A 的调度游标三轮到达 6、12、18；这时仍需设备真正完成计算。",
+          "resume": "返回 EngineCore.step() 并调用执行器。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 582,
+              "end": 599,
+              "label": "计划构造"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 626,
+              "end": 645,
+              "label": "预记与返回"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 1 步 · 派发前状态",
+              "action": {
+                "mode": "chunked",
+                "step": 1
+              }
+            },
+            {
+              "label": "跳到第 7 步 · 最后一块计划",
+              "action": {
+                "mode": "chunked",
+                "step": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "execute",
+          "parent": "loop",
+          "number": "1.2",
+          "kind": "边界",
+          "title": "Executor → Worker → GPUModelRunner.execute_model()",
+          "summary": "模型侧消费混合输入计划。",
+          "input": "本轮 A 的 chunk 和 B/C 的 Decode 输入。",
+          "changes": "Runner 准备输入元数据，再调用模型，读取历史 KV 并写入本轮输入的 KV。",
+          "output": "A 的实际 KV 逐轮累积到 6、12、18；B/C 同步前进。",
+          "resume": "进入采样与同步结果整理，返回本轮模型输出。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 284,
+              "end": 286,
+              "label": "执行入口"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 254,
+              "end": 261,
+              "label": "错误日志包装实际调用 model_fn"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_worker.py",
+              "line": 447,
+              "end": 448,
+              "label": "Worker 转调"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2231,
+              "end": 2257,
+              "label": "Runner 输入准备"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2298,
+              "end": 2304,
+              "label": "模型前向"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 2 步 · 写入首块",
+              "action": {
+                "mode": "chunked",
+                "step": 2
+              }
+            },
+            {
+              "label": "跳到第 8 步 · 写完 prompt",
+              "action": {
+                "mode": "chunked",
+                "step": 8
+              }
+            }
+          ],
+          "note": "执行器与具体注意力后端未固定，通信及设备内核作为边界。 EngineCore 经 execute_model_with_error_logging() 包装转调执行器；包装只记录失败详情。"
+        },
+        {
+          "id": "sample",
+          "parent": "execute",
+          "number": "1.2.1",
+          "kind": "动作",
+          "title": "采样并丢弃未完成 Prefill 的输出",
+          "summary": "中间 chunk 不产生有效生成 token。",
+          "input": "前向 hidden states 和各请求是否完成 prompt 的状态。",
+          "changes": "计算 logits、采样并在同步结果整理时过滤未完成 Prefill 请求的采样结果。",
+          "output": "前两轮 A 返回空列表；第三轮 A 产生 y1，B/C 每轮各产生一个输出。",
+          "resume": "模型输出沿调用栈返回 Scheduler.update_from_output()。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2331,
+              "label": "logits 调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2367,
+              "label": "采样调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1074,
+              "end": 1082,
+              "label": "未到已知长度时标记丢弃采样"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2094,
+              "end": 2153,
+              "label": "同步整理与无效采样处理"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2413,
+              "end": 2438,
+              "label": "结果整理调用及返回"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 3 步 · A 尚无输出",
+              "action": {
+                "mode": "chunked",
+                "step": 3
+              }
+            },
+            {
+              "label": "跳到第 9 步 · A 首 token y1",
+              "action": {
+                "mode": "chunked",
+                "step": 9
+              }
+            }
+          ]
+        },
+        {
+          "id": "update",
+          "parent": "loop",
+          "number": "1.3",
+          "kind": "调用",
+          "title": "Scheduler.update_from_output()",
+          "summary": "回写有效 token，保留未完成的 A。",
+          "input": "B/C 的新 token 与 A 的空列表或 y1。",
+          "changes": "只对有效新 token 追加请求输出并检查停止。",
+          "output": "前三轮 A 的已知 prompt 保持 18，最后得到 y1 后长度为 19。",
+          "resume": "下一轮 schedule() 根据已知长度与计算游标继续。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 287,
+              "end": 288,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 861,
+              "label": "方法定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 921,
+              "end": 923,
+              "label": "有效输出调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1024,
+              "end": 1042,
+              "label": "追加与判停"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 6 步 · 中间块回报",
+              "action": {
+                "mode": "chunked",
+                "step": 6
+              }
+            },
+            {
+              "label": "跳到第 9 步 · y1 回报",
+              "action": {
+                "mode": "chunked",
+                "step": 9
+              }
+            }
+          ]
+        },
+        {
+          "id": "decode",
+          "parent": "loop",
+          "number": "1.4",
+          "kind": "循环",
+          "title": "下一轮 schedule()：A 进入 Decode",
+          "summary": "首个输出成为下一轮的输入。",
+          "input": "A 已知 19、计算游标 18；B/C 也各有一个欠算位置。",
+          "changes": "第四轮为 A 的 y1、B 的 b3、C 的 c3 各安排 1。",
+          "output": "有效输入合计 3，预算剩余 5；生成 y2、b4、c4。",
+          "resume": "继续同一调度—执行—回写循环。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 210,
+              "end": 226,
+              "label": "下一轮欠算需求"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 283,
+              "end": 291,
+              "label": "轮次循环"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 10 步 · 三条 Decode",
+              "action": {
+                "mode": "chunked",
+                "step": 10
+              }
+            },
+            {
+              "label": "跳到第 12 步 · y2 回报",
+              "action": {
+                "mode": "chunked",
+                "step": 12
+              }
+            }
+          ],
+          "note": "新输出尚无自身 KV，只有下轮作为输入执行后才写入。"
+        }
+      ]
+    },
+    {
+      "id": "whole-v0",
+      "title": "整段 Prefill 优先 · V0 v0.6.6",
+      "scope": "关闭分块；单步同步输出；预算32、max_model_len=32。三个观察点共享同次Prefill；与V1示例不是同配置开关对照。",
+      "entry": "engine",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "f49777ba62b4926d0f8c100ab06edb03c5c10098",
+          "label": "vLLM v0.6.6"
+        }
+      },
+      "nodes": [
+        {
+          "id": "engine",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "LLMEngine.step()",
+          "summary": "历史 V0 整段 Prefill 优先路径。",
+          "input": "A 有 18-token prompt；B/C 在运行中；预算与 max_model_len 均为 32。",
+          "changes": "同步调用 Scheduler，执行本轮计划，再处理结果。",
+          "output": "调度 1 只执行 A 的完整 Prefill；调度 2 才续算三条 Decode。",
+          "resume": "未结束请求保留在引擎中等待下一次 step()。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/engine/llm_engine.py",
+              "line": 1261,
+              "label": "入口定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/engine/llm_engine.py",
+              "line": 1336,
+              "end": 1343,
+              "label": "调度调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/engine/llm_engine.py",
+              "line": 1390,
+              "end": 1391,
+              "label": "执行器调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/engine/llm_engine.py",
+              "line": 1438,
+              "end": 1439,
+              "label": "同步结果处理"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 1 步 · 调度 1",
+              "action": {
+                "mode": "whole",
+                "step": 1
+              }
+            },
+            {
+              "label": "跳到第 10 步 · 调度 2",
+              "action": {
+                "mode": "whole",
+                "step": 10
+              }
+            }
+          ],
+          "note": "三个 Prefill 观察点属于同一次调度和模型执行，不是三轮 chunked prefill。"
+        },
+        {
+          "id": "schedule",
+          "parent": "engine",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "Scheduler.schedule() → _schedule()",
+          "summary": "根据分块开关选择历史调度策略。",
+          "input": "未启用 chunked_prefill 的 V0 配置。",
+          "changes": "schedule() 调用 _schedule()；后者走 _schedule_default() 分支。",
+          "output": "选择整段 Prefill 优先算法。",
+          "resume": "算法返回后，schedule() 构造请求元数据交回引擎。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/engine/llm_engine.py",
+              "line": 1340,
+              "label": "上游调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/core/scheduler.py",
+              "line": 1284,
+              "end": 1292,
+              "label": "公开入口"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/core/scheduler.py",
+              "line": 1246,
+              "end": 1251,
+              "label": "配置分派"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 1 步 · V0 整段模式",
+              "action": {
+                "mode": "whole",
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "default",
+          "parent": "schedule",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "Scheduler._schedule_default()",
+          "summary": "先尝试完整 Prefill，再决定是否 Decode。",
+          "input": "等待 A、运行 B/C，token 预算 32。",
+          "changes": "建立预算后，先调用 _schedule_prefills(enable_chunking=False)。",
+          "output": "只要本轮安排了 Prefill，就不调用本轮的运行 Decode 调度。",
+          "resume": "返回选中的完整 Prefill 计划。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/core/scheduler.py",
+              "line": 1251,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/core/scheduler.py",
+              "line": 1046,
+              "end": 1076,
+              "label": "方法定义与 Prefill 调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/core/scheduler.py",
+              "line": 1085,
+              "end": 1088,
+              "label": "Decode 条件"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 1 步 · 只提交 A",
+              "action": {
+                "mode": "whole",
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "prefills",
+          "parent": "default",
+          "number": "1.1.1.1",
+          "kind": "调用",
+          "title": "Scheduler._schedule_prefills()",
+          "summary": "A 的 18 个 prompt token 一次准入。",
+          "input": "完整 prompt 长 18，预算 32，缓存块足够。",
+          "changes": "不分块分支要求本轮需求等于 prompt 长度，检查预算后分配并转运行。",
+          "output": "A 的计算量为 18，B/C 本轮配额为零。",
+          "resume": "返回 Prefill 计划，调用方据此跳过 Decode。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/core/scheduler.py",
+              "line": 1074,
+              "end": 1076,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/core/scheduler.py",
+              "line": 890,
+              "end": 895,
+              "label": "方法定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/core/scheduler.py",
+              "line": 933,
+              "end": 940,
+              "label": "整段需求"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/core/scheduler.py",
+              "line": 995,
+              "end": 1006,
+              "label": "预算与分配"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 1 步 · A 的 18 个输入",
+              "action": {
+                "mode": "whole",
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "allocate",
+          "parent": "prefills",
+          "number": "1.1.1.1.1",
+          "kind": "调用",
+          "title": "Scheduler._allocate_and_set_running()",
+          "summary": "分配块并推进序列状态。",
+          "input": "已通过预算检查的 A 序列组。",
+          "changes": "调用 block_manager.allocate()，将等待序列状态设为 RUNNING。",
+          "output": "A 获得其缓存块映射；GPU 仍需执行完整输入。",
+          "resume": "返回 _schedule_prefills()，继续构造本轮调度结果。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/core/scheduler.py",
+              "line": 1006,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/core/scheduler.py",
+              "line": 1488,
+              "end": 1491,
+              "label": "实际实现"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 1 步 · 分配并提交",
+              "action": {
+                "mode": "whole",
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "skip-decode",
+          "parent": "default",
+          "number": "1.1.1.2",
+          "kind": "分支",
+          "title": "有 Prefill 时跳过 _schedule_running()",
+          "summary": "本轮剩余预算不用于 B/C Decode。",
+          "input": "本轮 prefills.seq_groups 非空。",
+          "changes": "_schedule_running() 只在 Prefill 列表为空时调用，因此此轮跳过。",
+          "output": "B/C 保持 b0/c0 等待，已有 KV 不新增。",
+          "resume": "同一次模型执行持续完成 A，直到结果返回。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/core/scheduler.py",
+              "line": 1085,
+              "end": 1088,
+              "label": "真实条件与调用"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 4 步 · 同次执行中的等待",
+              "action": {
+                "mode": "whole",
+                "step": 4
+              }
+            },
+            {
+              "label": "跳到第 7 步 · Prefill 完成前",
+              "action": {
+                "mode": "whole",
+                "step": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "execute",
+          "parent": "engine",
+          "number": "1.2",
+          "kind": "边界",
+          "title": "model_executor.execute_model()",
+          "summary": "一次提交 A 的完整 18-token Prefill。",
+          "input": "ExecuteModelRequest 中仅 A 的完整 Prefill 元数据。",
+          "changes": "执行器与 Worker 将完整输入交给模型 Runner；三个观察点不重新提交输入。",
+          "output": "A 完成后得到 y1；B/C 没有执行，不产生新输出。",
+          "resume": "执行器返回后，LLMEngine 处理本轮模型结果。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/engine/llm_engine.py",
+              "line": 1374,
+              "end": 1391,
+              "label": "构造与提交执行请求"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/worker/model_runner.py",
+              "line": 1619,
+              "label": "历史 Runner 入口"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/worker/model_runner.py",
+              "line": 1737,
+              "end": 1750,
+              "label": "logits 与采样"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 2 步 · Prefill 执行中",
+              "action": {
+                "mode": "whole",
+                "step": 2
+              }
+            },
+            {
+              "label": "跳到第 8 步 · Prefill 完成",
+              "action": {
+                "mode": "whole",
+                "step": 8
+              }
+            }
+          ],
+          "note": "具体执行器、模型和注意力后端为边界；内部观察点不代表可测的执行进度比例。"
+        },
+        {
+          "id": "update",
+          "parent": "engine",
+          "number": "1.3",
+          "kind": "调用",
+          "title": "LLMEngine._process_model_outputs()",
+          "summary": "处理完整 Prefill 的采样结果。",
+          "input": "一次完整执行返回的 A:y1。",
+          "changes": "同步输出路径处理模型结果，更新请求输出及停止状态。",
+          "output": "A 取得首 token y1；B/C 仍保留原来的欠算 b0/c0。",
+          "resume": "返回本轮输出；下一次 step() 重新调度。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/engine/llm_engine.py",
+              "line": 1438,
+              "end": 1439,
+              "label": "同步调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/engine/llm_engine.py",
+              "line": 1001,
+              "label": "方法定义"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 9 步 · y1 返回",
+              "action": {
+                "mode": "whole",
+                "step": 9
+              }
+            }
+          ]
+        },
+        {
+          "id": "next",
+          "parent": "engine",
+          "number": "1.4",
+          "kind": "循环",
+          "title": "下一次 _schedule_default() → _schedule_running()",
+          "summary": "没有新 Prefill 时才续算 Decode。",
+          "input": "A 的 y1、B 的 b0、C 的 c0 都尚未计算自身 KV。",
+          "changes": "下一轮 Prefill 列表为空，调用 _schedule_running(enable_chunking=False)。",
+          "output": "三条请求各输入 1，生成 y2/b1/c1。",
+          "resume": "继续同一引擎循环；持续到来的 Prefill 可能延长 Decode 等待。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/core/scheduler.py",
+              "line": 1085,
+              "end": 1088,
+              "label": "下一轮 Decode 调用"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/core/scheduler.py",
+              "line": 516,
+              "label": "运行调度定义"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/engine/llm_engine.py",
+              "line": 1336,
+              "end": 1340,
+              "label": "引擎下一次调度"
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第 10 步 · Decode 准入",
+              "action": {
+                "mode": "whole",
+                "step": 10
+              }
+            },
+            {
+              "label": "跳到第 12 步 · 三条输出",
+              "action": {
+                "mode": "whole",
+                "step": 12
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

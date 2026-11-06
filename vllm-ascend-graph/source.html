@@ -528,3 +528,133 @@ return: output[0], output[3], output[2]
  drawCallLayers();drawUpdateCalls();update();updateStages();drawStorage();drawFusion();restore(window.openai?.widgetState);
 })();
 </script>
+<!-- lesson-theme:start -->
+<style>
+/* Scheduler palette. Inlined into each document by scripts/build_learning_ui.py. */
+:root {
+  color-scheme:light !important;
+  --lesson-bg:#f5f5ef; --lesson-panel:#fffefa; --lesson-ink:#192923;
+  --lesson-muted:#52655b; --lesson-line:#d5ddd2; --lesson-grid:#e4e8e0;
+  --lesson-green:#12634b; --lesson-mint:#e7f3e8; --lesson-amber:#8a4a18;
+  --lesson-sand:#fcf0dc; --lesson-shade:#f0f3eb;
+}
+@media(prefers-color-scheme:dark) {
+  :root:not([data-theme=light]) {
+    color-scheme:dark !important;
+    --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+    --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+    --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+    --lesson-sand:#473625; --lesson-shade:#212f27;
+  }
+}
+:root[data-theme=dark] {
+  color-scheme:dark !important;
+  --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+  --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+  --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+  --lesson-sand:#473625; --lesson-shade:#212f27;
+}
+:root {
+  --bg:var(--lesson-bg) !important; --background:var(--lesson-bg) !important;
+  --panel:var(--lesson-panel) !important; --surface:var(--lesson-panel) !important;
+  --card:var(--lesson-panel) !important; --popover:var(--lesson-panel) !important;
+  --ink:var(--lesson-ink) !important; --fg:var(--lesson-ink) !important;
+  --text:var(--lesson-ink) !important; --foreground:var(--lesson-ink) !important;
+  --card-foreground:var(--lesson-ink) !important; --popover-foreground:var(--lesson-ink) !important;
+  --muted-foreground:var(--lesson-muted) !important; --sub:var(--lesson-muted) !important;
+  --line:var(--lesson-line) !important; --border:var(--lesson-line) !important;
+  --grid:var(--lesson-grid) !important; --shade:var(--lesson-shade) !important;
+  --muted:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+  --accent-foreground:var(--lesson-ink) !important;
+  --primary:var(--lesson-green) !important; --primary-foreground:var(--lesson-panel) !important;
+  --accent-soft:var(--lesson-mint) !important; --hover:var(--lesson-shade) !important;
+  --mint:var(--lesson-mint) !important; --sand:var(--lesson-sand) !important;
+  --color-background-primary:var(--lesson-bg) !important;
+  --color-background-secondary:var(--lesson-panel) !important;
+  --color-background-tertiary:var(--lesson-shade) !important;
+  --color-text-primary:var(--lesson-ink) !important;
+  --color-text-secondary:var(--lesson-muted) !important;
+  --color-border-secondary:var(--lesson-line) !important;
+  --viz-panel:var(--lesson-panel) !important;
+  --viz-border:var(--lesson-line) !important;
+  --viz-muted:var(--lesson-muted) !important;
+  background:var(--lesson-bg) !important;
+}
+:root[data-lesson-palette=text] {
+  --muted:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+}
+:root[data-lesson-topic=model-architecture] {
+  --soft:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+}
+:root[data-lesson-palette=matrix] {
+  --soft:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+  --wash:var(--lesson-mint) !important;
+}
+body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !important; }
+.learning-scope-shell { color:var(--lesson-muted) !important; }
+.learning-scope { background:var(--lesson-shade) !important; border-color:var(--lesson-line) !important; }
+.learning-scope-kind { color:var(--lesson-green) !important; }
+</style>
+<!-- lesson-theme:end -->
+<!-- call-adapter:start -->
+<script>
+(() => {
+  const settle = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  window.openLessonTarget = async action => {
+    const root = document.getElementById('ascend-op-detail');
+    if (!root) throw new Error('未找到图捕获可视化 document');
+    const get = id => { const el = root.querySelector('#' + id); if (!el) throw new Error('缺少控件：' + id); return el; };
+    if (!['capture', 'replay'].includes(action.mode)) throw new Error('未知捕获模式');
+    const step = Number(action.step ?? 0), operator = Number(action.operator ?? 0);
+    if (!Number.isInteger(step) || step < 0 || step > 7 || !Number.isInteger(operator) || operator < 0 || operator > 12) throw new Error('图步骤越界');
+    get('od-mode').value = action.mode; get('od-mode').dispatchEvent(new Event('change', {bubbles:true}));
+    get('od-both').click();
+    for (let i = 0; i < step; i++) get('od-stage-next').click();
+    get('od-all').click();
+    if (operator) { get('od-expanded').open = true; for (let i = 0; i < operator; i++) get('od-next').click(); }
+    await settle();
+    if (get('od-mode').value !== action.mode || (step && !get('od-stage-count').textContent.startsWith(step + ' /'))) throw new Error('图状态未切换成功');
+    if (operator && !get('od-count').textContent.startsWith(operator + ' /')) throw new Error('算子状态未切换成功');
+    return {label: `${get('od-mode').selectedOptions[0].textContent} · ${get('od-stage-count').textContent}${operator ? ' · ' + get('od-count').textContent : ''}`};
+  };
+})();
+// Runs in the visualization document, including sandboxed srcdoc frames.
+(() => {
+  const pending = new Map();
+  let queue = Promise.resolve();
+  const ready = document.readyState === 'loading'
+    ? new Promise(resolve => document.addEventListener('DOMContentLoaded',resolve,{once:true}))
+    : Promise.resolve();
+  const pause = () => document.querySelectorAll('button').forEach(button => {
+    if (/^(暂停(?:流程|播放|动画)?|停止播放)$/.test(button.textContent.trim())) button.click();
+  });
+  window.addEventListener('lesson-pause-visual',pause);
+  if (parent === window) return;
+  const post = data => parent.postMessage(data,'*');
+  window.addEventListener('message',async event => {
+    if (event.source !== parent || !event.data || typeof event.data !== 'object') return;
+    const {type,id,action} = event.data;
+    if (type === 'lesson-call-ping') {
+      await ready; post({type:'lesson-call-ready'}); return;
+    }
+    if (type === 'lesson-call-pause') { pause(); return; }
+    if (type !== 'lesson-call-open' || typeof id !== 'string') return;
+    if (!pending.has(id)) {
+      const work = queue.then(() => ready).then(() => {
+        if (typeof window.openLessonTarget !== 'function') throw new Error('可视化步骤入口尚未就绪');
+        return window.openLessonTarget(action);
+      });
+      pending.set(id,work);
+      queue = work.catch(() => {});
+      if (pending.size > 16) pending.delete(pending.keys().next().value);
+    }
+    try { post({type:'lesson-call-result',id,ok:true,result:await pending.get(id)}); }
+    catch (error) { post({type:'lesson-call-result',id,ok:false,error:error.message}); }
+  });
+  for (const name of ['click','change']) document.addEventListener(name,event => {
+    if (event.isTrusted && event.target.closest('button,select,input')) post({type:'lesson-call-edited'});
+  },true);
+  ready.then(() => post({type:'lesson-call-ready'}));
+})();
+</script>
+<!-- call-adapter:end -->

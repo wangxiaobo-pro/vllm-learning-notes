@@ -40,4 +40,12 @@ Medusa 原论文让不同位置的多个预测组合成若干候选续写，再�
 
 EAGLE 用前移一位的 token 配合目标特征预测后续特征，原论文在多条分支上起草和验证。EAGLE-3 融合多层特征，训练时直接预测 token，并沿用 EAGLE-2 根据上下文构造草稿树的做法。本图跟踪 Ascend Model Runner V1 的普通链式起草路径，后续候选依赖前一步选出的词。[EAGLE 原论文](https://arxiv.org/html/2401.15077v3) · [EAGLE-3 原论文](https://arxiv.org/html/2503.01840v2) · [首步特征对齐](https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/spec_decode/llm_base_proposer.py#L1793-L1838) · [EAGLE-3 特征融合](https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/models/llama_eagle3.py#L397-L418) · [下一位使用前一候选](https://github.com/vllm-project/vllm-ascend/blob/94e3e25f836d79b5ee5c1aed257999ee61d10875/vllm_ascend/spec_decode/llm_base_proposer.py#L1672-L1683)
 
+## 真实调用链与双页定位
+
+[call-chain.json](call-chain.json) 包含 EAGLE、EAGLE-3、普通 DeepSeek MTP、DFlash、独立草稿、Medusa、CPU N-gram 七条路径，共 83 个节点。主线固定 Ascend Model Runner V1、贪心验证和三个候选；初始化工厂、草稿提议、本轮返回及下一轮 target 验证分别标明，不把 target forward 画成 proposer 的同步子调用。
+
+源码基线为 vLLM `295c062db8a48ea73bbd05d1174cb37d24bf86f9` 与 vLLM-Ascend `94e3e25f836d79b5ee5c1aed257999ee61d10875`。普通 MTP 不混入 Gemma / Step3.5 等专用分支，DFlash 不混入 DSpark / DFlash2。独立草稿模型保留动态模型接口边界，不能从通用 proposer 推断具体 checkpoint 的网络结构。
+
+[call-chain-adapter.js](call-chain-adapter.js) 兼容两个页面：主页面实际选择方法、接受场景与步骤；对照页面实际选择验证场景，展示串行/并行关系。带 `action.page` 的目标由共享导航切换页面后重放；对照图是算法比较，没有伪造独立的 Python 调用实现或不存在的逐步控件。两页使用同一份调用链数据，源码证据中的 commit 与行号随数据一起维护。
+
 返回[项目导航](../index.html)。

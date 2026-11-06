@@ -77,3 +77,13 @@ V4.1 总览单独标出 DSpark 的已确认 anchor、positions 和有效长度�
 在仓库根目录运行 `node model-architecture/validate.mjs`，检查七个模型的组件跳转、面包屑、节点说明、数据依赖、步骤及来源引用。它不加载模型权重，也不验证硬件推理。
 
 浏览器检查应包括各 Sheet 切换、组件深入与返回、叶子算子输入输出、播放 / 暂停、验证示例两种结果，以及 320px 至 1920px 下的明暗主题。直接通过本地 `file://` 打开时也应能完整使用。
+
+## 各模型的真实调用链
+
+[call-chain.json](call-chain.json) 为七个模型 Sheet 提供匹配的主干路径，并另列 MiniMax DSpark，共 8 条路径、84 个节点。每个节点包含输入、状态变化、输出与返回续点，以及固定 commit 的源码证据。模型 `forward` 与 Runner 后续调用 `compute_logits` 分开；Dense/MoE、KDA/MLA 等互斥分支不拼成一次必经执行。
+
+- Llama、DeepSeek V2 使用 vLLM 模型实现；GLM-5.3 使用 NVIDIA DSA 实现，Kimi K3 使用 NVIDIA KDA/MLA 实现。
+- DeepSeek V4.1、V4 Pro、MiniMax 主干使用 Ascend 实现；V4.1 延后消费的 HC pre 系数与 V4 的同子层 HC 处理分别追踪。
+- MiniMax DSpark 使用 SGLang `17e94c4677d7beb58a89b104fd61b3768994e45e`，独立记录上下文 KV 注入、查询块、logits/confidence 头及 target 验证边界。多个根由外部服务分阶段调用；不据此宣称 Ascend 主干自动执行或支持这条草稿链。
+
+vLLM / Ascend commit 沿用上方基线。[call-chain-adapter.js](call-chain-adapter.js) 实际选择模型、组件和步骤，用 `history.replaceState` 更新模型 hash，同时保留共享导航的 `cw-*` 查询参数。调用链只覆盖所声明的主干/草稿范围；视觉编码器、后端 kernel、通信及服务编排未展开的部分均不能从逻辑组件图推断为已经执行。
