@@ -31,6 +31,17 @@
 #residual-comparison[data-focus="residual"] .scene [data-kind="conv"] .wire { opacity:.3; }
 #residual-comparison[data-focus="add"] .scene .plus { fill:color-mix(in srgb,var(--viz-series-3) 32%,var(--background)); stroke-width:3; }
 #residual-comparison .status { min-height:22px; margin-top:calc(var(--font-size-base)*.5); }
+#residual-comparison .numeric-example{margin:18px 0 24px;border-block:1px solid var(--border);padding:16px 0;display:grid;gap:10px;min-width:0}
+#residual-comparison .numeric-example p{margin:0;overflow-wrap:anywhere}
+#residual-comparison .numeric-controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#residual-comparison .numeric-controls label{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+#residual-comparison .numeric-flow{display:grid;gap:8px;min-width:0}
+#residual-comparison .numeric-step{padding:10px 12px;border:1px solid var(--border);border-radius:6px;min-width:0}
+#residual-comparison .numeric-step.is-current{border-color:var(--viz-series-1);background:color-mix(in srgb,var(--viz-series-1) 10%,var(--background))}
+#residual-comparison .numeric-step code{display:block;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.65;margin:5px 0}
+#residual-comparison .numeric-step small{display:block;color:var(--muted-foreground)}
+#residual-comparison .numeric-arrow{font-size:12px;text-align:center;color:var(--muted-foreground)}
+#residual-comparison .numeric-sources{font-size:12px;overflow-wrap:anywhere}
 @media(max-width:900px) {
   #residual-comparison .panels { grid-template-columns:1fr; gap:calc(var(--font-size-base)*2); }
   #residual-comparison .panel { width:100%; max-width:460px; justify-self:center; }
@@ -55,6 +66,19 @@
     <span>● 分叉连接点</span>
   </div>
   <div class="status text-small" aria-live="polite">全部路径 · 每层先 Attention 后 FFN，各自完成一次残差更新。</div>
+  <section class="numeric-example" aria-labelledby="numeric-title">
+    <h3 id="numeric-title">展开一个子层：同一 token 的两路值怎样更新</h3>
+    <p class="text-small">以下是主图中任意中间子层的独立教学算例。两路值已可不同；由当前 H 与固定参数生成系数，再完成读入、一次 F 计算和写回。切换输入可观察系数随 H 改变。</p>
+    <div class="numeric-controls">
+      <label>映射 <select data-numeric="mode" class="form-select"><option value="mhc">mHC · Sinkhorn 约束</option><option value="hc">HC · 无双随机约束示意</option></select></label>
+      <label>当前 H <select data-numeric="input" class="form-select"><option value="0">x¹=[2,0]，x²=[0,2]</option><option value="1">x¹=[1,3]，x²=[2,0]</option></select></label>
+      <button type="button" class="btn" data-numeric="all">全局关系</button><button type="button" class="btn" data-numeric="prev">上一步</button><button type="button" class="btn" data-numeric="next">下一步</button>
+    </div>
+    <p class="text-small" data-numeric="status" role="status" aria-live="polite"></p>
+    <div class="numeric-flow" data-numeric="flow"></div>
+    <p class="text-small">Hpre / Hpost 的门控与 F 权重均是本页明确选定的教学参数，数值由 JavaScript 计算。HC 分支只比较无双随机约束的混合效果，不声称复现某个 HC checkpoint。mHC 的 Hres 由 20 轮行列归一化得到；教学 ε=0、γ=1，显示 4 位小数，后续使用未舍入值。</p>
+    <p class="numeric-sources">系数来源依据：<a href="https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/kernels/mhc/torch.py#L103-L127" target="_blank" rel="noopener noreferrer">当前 H → 归一化投影 → pre/post/Sinkhorn</a>；<a href="https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/model_executor/kernels/mhc/torch.py#L135-L147" target="_blank" rel="noopener noreferrer">按输入流 i、输出流 j 混合并写回</a>。此处是同子层生成并消费 Hpre 的常规/V4 示意；<a href="../model-architecture/index.html#deepseek_v41/mhc">V4.1 delayed-pre</a> 消费上一子层传来的 pre，需按其专属图阅读。</p>
+  </section>
   <div class="panels">
     <section class="panel" data-model="resnet">
       <div class="panel-head"><h3>普通残差 Decoder</h3><span class="text-small">单流 · Attention / FFN 各一次相加</span></div>
@@ -73,6 +97,44 @@
 <script>
 (() => {
   const root = document.getElementById('residual-comparison');
+  const numeric=key=>root.querySelector('[data-numeric="'+key+'"]');
+  let numericStep=-1,numericSteps=[];
+  const numericFormat=value=>Number(value.toFixed(4)).toString();
+  const numericVector=values=>'['+values.map(numericFormat).join(', ')+']';
+  const numericMatrix=values=>'['+values.map(numericVector).join(', ')+']';
+  const rms=values=>Math.sqrt(values.reduce((sum,value)=>sum+value*value,0)/values.length);
+  const sigmoid=value=>1/(1+Math.exp(-value));
+  function calculateNumeric(){
+    const H=Number(numeric('input').value)===0?[[2,0],[0,2]]:[[1,3],[2,0]],flat=H.flat(),z=flat.map(value=>value/rms(flat));
+    const preLogits=[.2*(z[0]-z[3]),.1*(z[1]-z[2])],postLogits=[.1*z[0],-.1*z[3]],pre=preLogits.map(sigmoid),post=postLogits.map(value=>2*sigmoid(value));
+    const a=.4*z[0],b=.4*z[3],logits=[[a,0],[0,b]],mhc=numeric('mode').value==='mhc';
+    let mix=mhc?logits.map(row=>row.map(Math.exp)):[[1.2+.1*a,-.1],[.3,.9+.1*b]];
+    if(mhc)for(let iteration=0;iteration<20;iteration++){
+      mix=mix.map(row=>{const sum=row[0]+row[1];return row.map(value=>value/sum);});
+      const sums=[mix[0][0]+mix[1][0],mix[0][1]+mix[1][1]];mix=mix.map(row=>row.map((value,j)=>value/sums[j]));
+    }
+    const u=[0,1].map(d=>pre.reduce((sum,value,i)=>sum+value*H[i][d],0)),normalized=u.map(value=>value/rms(u));
+    const y=[normalized[0]+2*normalized[1],normalized[0]-normalized[1]];
+    const residual=[0,1].map(j=>[0,1].map(d=>H.reduce((sum,row,i)=>sum+mix[i][j]*row[d],0)));
+    const write=post.map(value=>y.map(channel=>value*channel)),next=residual.map((row,j)=>row.map((value,d)=>value+write[j][d]));
+    const rows=mix.map(row=>row[0]+row[1]),columns=[0,1].map(j=>mix[0][j]+mix[1][j]);
+    numericSteps=[
+      {title:'① 读取当前 residual 与参数',value:'H = '+numericMatrix(H)+'；形状 [streams=2, hidden=2]\n固定门控投影见下一步；子层 W_F = [[1,1],[2,−1]]',note:'H 来自上一子层；参数来自模型加载。本例是中间状态，不是初始化复制。',edge:'当前 H + 已加载参数 → 系数生成'},
+      {title:'② 从当前 H 生成三组系数',value:'z = flatten(H) / RMS(flatten(H)) = '+numericVector(z)+'\npre_logits = [0.2(z₀−z₃), 0.1(z₁−z₂)] = '+numericVector(preLogits)+'\nHpre = sigmoid(pre_logits) = '+numericVector(pre)+'\npost_logits = [0.1z₀, −0.1z₃] = '+numericVector(postLogits)+'\nHpost = 2 sigmoid(post_logits) = '+numericVector(post)+'\n'+(mhc?'Hres = Sinkhorn(exp([[0.4z₀,0],[0,0.4z₃]]))':'Hres = [[1.2+0.04z₀,−0.1],[0.3,0.9+0.04z₃]]')+' = '+numericMatrix(mix)+'\nHres 行和 '+numericVector(rows)+'；列和 '+numericVector(columns),note:'三组系数是当前 H 的函数；Hpre/Hpost 不要求行列和为 1。'+(mhc?'这里仅 Hres 施加双随机约束。':'当前 Hres 没有双随机约束，可含负项。'),edge:'Hpre + 原 H → 聚合；Hres/Hpost 留给写回'},
+      {title:'③ 聚合两路并归一化',value:'u = Hpre₁ x¹ + Hpre₂ x² = '+numericVector(u)+'\nRMSNorm(u) = u / RMS(u) = '+numericVector(normalized),note:'聚合成一个 hidden 向量；原 H 仍沿残差旁路保留。',edge:'单路 normalized u → 同一个子层 F'},
+      {title:'④ 只执行一次 F',value:'y = normalized(u) × W_F\ny = [n₀ + 2n₁, n₀ − n₁] = '+numericVector(y),note:'为方便手算，用固定线性 F 代替 Attention/FFN 内部计算；两条 residual 不代表执行两次 F。',edge:'单路输出 y + Hpost → 两路写入量'},
+      {title:'⑤ 分别计算 residual 混合与写入量',value:'Rⱼ = Σᵢ Hres[i,j] × xⁱ；R = '+numericMatrix(residual)+'\nBⱼ = Hpostⱼ × y；B = '+numericMatrix(write),note:'行 i 是输入流，列 j 是输出流。Hres 混合旧 residual；Hpost 把同一个 y 按系数写到两路。',edge:'R 与 B 的同位置同通道 → 相加'},
+      {title:'⑥ 相加并交给下一子层',value:'Hnew = R + B = '+numericMatrix(next),note:'下一 Attention/FFN 子层读取这两路新 residual，用自己的独立参数重新生成系数。',edge:''}
+    ];
+    numeric('flow').replaceChildren();
+    numericSteps.forEach((step,i)=>{const article=document.createElement('div');article.className='numeric-step';article.dataset.numericStep=i;const title=document.createElement('strong'),values=document.createElement('code'),note=document.createElement('small');title.textContent=step.title;values.textContent=step.value;note.textContent=step.note;article.append(title,values,note);numeric('flow').append(article);if(step.edge){const arrow=document.createElement('p');arrow.className='numeric-arrow';arrow.textContent='↓ '+step.edge;numeric('flow').append(arrow);}});
+    root.numericExample={H,z,pre,post,mix,u,normalized,y,residual,write,next};
+    updateNumeric();
+  }
+  function updateNumeric(){numeric('status').textContent=numericStep<0?'全局关系 · 六步沿同一个 token 的两路 residual 计算':numericSteps[numericStep].title;numeric('prev').disabled=numericStep<0;numeric('next').disabled=numericStep===numericSteps.length-1;root.querySelectorAll('[data-numeric-step]').forEach(node=>node.classList.toggle('is-current',Number(node.dataset.numericStep)===numericStep));}
+  ['mode','input'].forEach(key=>numeric(key).addEventListener('change',()=>{numericStep=-1;calculateNumeric();}));
+  numeric('all').addEventListener('click',()=>{numericStep=-1;updateNumeric();});numeric('prev').addEventListener('click',()=>{numericStep--;updateNumeric();});numeric('next').addEventListener('click',()=>{numericStep++;updateNumeric();root.querySelector('[data-numeric-step="'+numericStep+'"]').scrollIntoView({block:'nearest'});});
+  calculateNumeric();
   const NS = 'http://www.w3.org/2000/svg';
   const validFocus = new Set(['all','conv','residual','add']);
   const labels = {

@@ -13,7 +13,7 @@
   <div class="page">
     <header class="page-header">
       <a class="brand" href="index.html" aria-label="vLLM 学习笔记首页"><span class="brand-mark" aria-hidden="true">v</span> vLLM / 学习笔记</a>
-      <span class="header-note">源码流程 · 交互演示</span>
+      <span class="header-note">源码快照 · 历史对照 · 算法教学</span>
     </header>
     <div class="workspace">
       <aside class="sidebar" hidden>
@@ -25,7 +25,7 @@
         <header class="catalog-header">
           <div>
             <h1>学习流程目录</h1>
-            <p class="intro">从 Transformer 的逐步计算，到 vLLM 的调度、缓存与执行。</p>
+            <p class="intro">从 Transformer 的逐步计算，到 vLLM 的调度、缓存与执行。入口标明内容类型，页面顶部可展开源码版本与示例条件。</p>
           </div>
           <span class="catalog-count" id="catalog-count" hidden></span>
         </header>
@@ -44,23 +44,23 @@
             <summary><span class="module-number" aria-hidden="true">01</span><h2>模型基础</h2><span class="module-description">理解模型内部的计算</span><span class="module-count"></span></summary>
             <ul class="flow-list">
               <li><a class="flow" href="transform/index.html" data-keywords="Transformer RMSNorm QKV Attention 注意力 残差 MLP LM Head 模型结构">
-                <span class="flow-copy"><span class="flow-title">Transformer 结构讲解</span><span class="flow-description">逐层查看归一化、注意力、残差、MLP 与输出层。</span></span>
+                <span class="flow-copy"><span class="flow-title">Transformer 结构讲解</span><span class="scope-badge" title="固定参数的 mini decoder；不绑定预训练模型版本">算法教学</span><span class="flow-description">逐层查看归一化、注意力、残差、MLP 与输出层。</span></span>
                 <span class="flow-tag">结构解析</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
               <li><a class="flow" href="transform/transformer-structure-explorer-matrices.html" data-keywords="Transformer 矩阵 计算 RMSNorm QKV Attention MLP LM Head">
-                <span class="flow-copy"><span class="flow-title">Transformer 矩阵计算</span><span class="flow-description">展开教学模型的真实矩阵，逐步追踪数值变化。</span></span>
+                <span class="flow-copy"><span class="flow-title">Transformer 矩阵计算</span><span class="scope-badge" title="固定参数的 mini decoder；不绑定预训练模型版本">算法教学</span><span class="flow-description">展开教学模型的真实矩阵，逐步追踪数值变化。</span></span>
                 <span class="flow-tag">数值演示</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
               <li><a class="flow" href="hyper-connections/index.html" data-keywords="Decoder 残差连接 HC mHC Hyper-Connections 多流 双随机 RMSNorm Attention FFN Pre-Norm Sinkhorn">
-                <span class="flow-copy"><span class="flow-title">Decoder 残差连接：HC 与 mHC</span><span class="flow-description">对照三层 Decoder，追踪 Attention、FFN 与多条残差流的读出、混合和相加。</span></span>
+                <span class="flow-copy"><span class="flow-title">Decoder 残差连接：HC 与 mHC</span><span class="scope-badge" title="HC / mHC 论文语义；动态系数说明参考 vLLM 295c062db8">算法教学</span><span class="flow-description">对照三层 Decoder，追踪 Attention、FFN 与多条残差流的读出、混合和相加。</span></span>
                 <span class="flow-tag">结构对比</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
               <li><a class="flow" href="attention-mechanisms/index.html" data-keywords="注意力 attention MHA MQA GQA SWA StreamingLLM Block-Sparse FlashAttention PagedAttention SSM KDA MLA DSA DeepSeek V4 V4.1 CSA CSA2 HCA Full Reindex Reuse RoPE KV">
-                <span class="flow-copy"><span class="flow-title">注意力机制逐步演算</span><span class="flow-description">在同一张图上看窗口如何移动、KV 块怎样读入、状态矩阵如何更新，跟踪输入直到输出。</span></span>
+                <span class="flow-copy"><span class="flow-title">注意力机制逐步演算</span><span class="scope-badge" title="各图对应论文或固定模型配置；CSA2 按 V4.1 技术报告与参考实现分开标注">算法与模型对照</span><span class="flow-description">在同一张图上看窗口如何移动、KV 块怎样读入、状态矩阵如何更新，跟踪输入直到输出。</span></span>
                 <span class="flow-tag">交互动画</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
               <li><a class="flow" href="model-architecture/index.html" data-keywords="模型架构 forward Llama Llama2 7B DeepSeek V2 V4.1 Flash V4 Pro GLM-5.3 Kimi K3 MiniMax M3.1 Flash Sheet 基础 输入 输出 hidden KV cache 权重 Dense SwiGLU MHA MoE MSA CSA2 KDA MLA AttnRes Engram mHC DSpark 草稿 验证">
-                <span class="flow-copy"><span class="flow-title">模型架构图谱：七模型 Forward</span><span class="flow-description">从 Llama、DeepSeek V2 学起，切换七个模型 Sheet，点击组件追踪输入、内部计算、输出与验证。</span></span>
+                <span class="flow-copy"><span class="flow-title">模型架构图谱：七模型 Forward</span><span class="scope-badge" title="vLLM 295c062db8 · vLLM-Ascend 94e3e25f8；各模型配置 revision 见所选 Sheet">源码快照</span><span class="flow-description">从 Llama、DeepSeek V2 学起，切换七个模型 Sheet，点击组件追踪输入、内部计算、输出与验证。</span></span>
                 <span class="flow-tag">组件图谱</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
             </ul>
@@ -69,23 +69,23 @@
             <summary><span class="module-number" aria-hidden="true">02</span><h2>引擎与调度</h2><span class="module-description">从服务启动到请求执行</span><span class="module-count"></span></summary>
             <ul class="flow-list">
               <li><a class="flow" href="vllm-ascend-startup/index.html" data-keywords="vLLM Ascend vllm serve 启动 初始化 API Server EngineCore Worker TP KV Scheduler 调度器 NPU">
-                <span class="flow-copy"><span class="flow-title">vLLM-Ascend 启动流程</span><span class="flow-description">26 步串联服务启动、模型分片、KV 分配与调度器创建。</span></span>
+                <span class="flow-copy"><span class="flow-title">vLLM-Ascend 启动流程</span><span class="scope-badge" title="vLLM 295c062db8 · vLLM-Ascend 94e3e25f8">源码快照</span><span class="flow-description">26 步串联服务启动、模型分片、KV 分配与调度器创建。</span></span>
                 <span class="flow-tag">源码流程</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
               <li><a class="flow" href="request-lifecycle/index.html" data-keywords="vLLM V1 请求 生命周期 HTTP SSE 流式 API Server AsyncLLM EngineCore Scheduler Worker Prefill Decode KV 分词 调度 采样 释放">
-                <span class="flow-copy"><span class="flow-title">vLLM 请求完整生命周期</span><span class="flow-description">20 步追踪 HTTP 接入、调度采样、SSE 输出与 KV 引用释放。</span></span>
+                <span class="flow-copy"><span class="flow-title">vLLM 请求完整生命周期</span><span class="scope-badge" title="vLLM v0.11.0 · V1 引擎">历史版本</span><span class="flow-description">20 步追踪 HTTP 接入、调度采样、SSE 输出与 KV 引用释放。</span></span>
                 <span class="flow-tag">源码流程</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
               <li><a class="flow" href="scheduler/index.html" data-keywords="vLLM V1 Scheduler.schedule() 四个队列 本轮列表 running waiting preempted new resumed skipped num_new_tokens num_computed_tokens num_scheduled_tokens token_budget input_budget 调度 KV 抢占 恢复 PRIORITY">
-                <span class="flow-copy"><span class="flow-title">Scheduler.schedule() 调度流程</span><span class="flow-description">沿请求、KV 分配、调度计划与 Worker 回报追踪四张清单和 token 预算。</span></span>
+                <span class="flow-copy"><span class="flow-title">Scheduler.schedule() 调度流程</span><span class="scope-badge" title="vLLM 295c062db8 · V1 Scheduler">源码快照</span><span class="flow-description">沿请求、KV 分配、调度计划与 Worker 回报追踪四张清单和 token 预算。</span></span>
                 <span class="flow-tag">源码流程</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
               <li><a class="flow" href="batching/index.html" data-keywords="vLLM V1 静态批处理 连续批处理 Static Batching Continuous Batching 请求 队列 调度 Prefill Decode KV 释放">
-                <span class="flow-copy"><span class="flow-title">静态批处理与连续批处理</span><span class="flow-description">对照固定批次与逐轮接入请求，观察调度、执行和 KV 释放。</span></span>
+                <span class="flow-copy"><span class="flow-title">静态批处理与连续批处理</span><span class="scope-badge" title="连续批处理：vLLM v0.11.0 / V1；静态批处理：算法教学模型">历史版本与教学对照</span><span class="flow-description">对照固定批次与逐轮接入请求，观察调度、执行和 KV 释放。</span></span>
                 <span class="flow-tag">交互动画</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
               <li><a class="flow" href="chunked-prefill/index.html" data-keywords="vLLM V0 V1 Chunked Prefill 分块 预填充 混合调度 prefill-first Decode token 预算 KV">
-                <span class="flow-copy"><span class="flow-title">Chunked Prefill</span><span class="flow-description">对照 V1 分块混合调度与 V0 历史 prefill 优先，追踪 KV 和输出变化。</span></span>
+                <span class="flow-copy"><span class="flow-title">Chunked Prefill</span><span class="scope-badge" title="分块：vLLM v0.11.0 / V1；整段：vLLM v0.6.6 / V0">历史版本对照</span><span class="flow-description">对照 V1 分块混合调度与 V0 历史 prefill 优先，追踪 KV 和输出变化。</span></span>
                 <span class="flow-tag">交互动画</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
             </ul>
@@ -94,15 +94,15 @@
             <summary><span class="module-number" aria-hidden="true">03</span><h2>并行与通信</h2><span class="module-description">多设备间的计算与数据流</span><span class="module-count"></span></summary>
             <ul class="flow-list">
               <li><a class="flow" href="parallelism/index.html" data-keywords="vLLM TP EP SP PP CP DP 并行 张量 专家 序列 流水线 上下文 数据 训练 推理 分片 通信 GPU">
-                <span class="flow-copy"><span class="flow-title">vLLM 并行流程</span><span class="flow-description">六种单项并行与三种组合，追踪权重分片、计算和通信。</span></span>
+                <span class="flow-copy"><span class="flow-title">vLLM 并行流程</span><span class="scope-badge" title="upstream vLLM 295c062db8；训练 DP 为算法对照">源码与数值教学</span><span class="flow-description">六种单项并行与三种组合，追踪权重分片、计算和通信。</span></span>
                 <span class="flow-tag">交互动画</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
               <li><a class="flow" href="communication-primitives/index.html" data-keywords="Send Recv Broadcast Reduce All-Reduce All-Gather Reduce-Scatter All-to-All Scatter Gather Ring Attention 通信 原语 环传 softmax">
-                <span class="flow-copy"><span class="flow-title">通信原语</span><span class="flow-description">用具体数组理解发送、归约、汇集、交换与 Ring Attention。</span></span>
+                <span class="flow-copy"><span class="flow-title">通信原语</span><span class="scope-badge" title="集合通信 API 语义；Ring Attention 论文与作者实现 d2ea1af">算法教学</span><span class="flow-description">用具体数组理解发送、归约、汇集、交换与 Ring Attention。</span></span>
                 <span class="flow-tag">交互动画</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
               <li><a class="flow" href="eplb-dplb/index.html" data-keywords="vLLM DPLB EPLB DP EP MoE 负载均衡 请求分流 专家 副本 放置 权重 同步 迁移 dispatch combine P2P">
-                <span class="flow-copy"><span class="flow-title">vLLM DPLB 与 EPLB</span><span class="flow-description">追踪请求分流、专家副本放置与请求执行中的同步权重迁移。</span></span>
+                <span class="flow-copy"><span class="flow-title">vLLM DPLB 与 EPLB</span><span class="scope-badge" title="vLLM v0.11.0 · 同步 EPLB 路径">历史版本</span><span class="flow-description">追踪请求分流、专家副本放置与请求执行中的同步权重迁移。</span></span>
                 <span class="flow-tag">源码流程</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
             </ul>
@@ -111,19 +111,19 @@
             <summary><span class="module-number" aria-hidden="true">04</span><h2>KV 缓存与传输</h2><span class="module-description">缓存复用与跨实例协作</span><span class="module-count"></span></summary>
             <ul class="flow-list">
               <li><a class="flow" href="paged-attention/index.html" data-keywords="PagedAttention Paged Attention vLLM Ascend Scheduler Worker BlockPool KV Cache 块表 block_table slot_mapping Prefill Decode">
-                <span class="flow-copy"><span class="flow-title">PagedAttention 的上下游数据流</span><span class="flow-description">跟随一个请求，看 Scheduler 分配块号、Worker 更新块表，以及每层 Attention 如何读写 KV。</span></span>
+                <span class="flow-copy"><span class="flow-title">PagedAttention 的上下游数据流</span><span class="scope-badge" title="vLLM 295c062db8 · vLLM-Ascend 94e3e25f8">源码快照</span><span class="flow-description">跟随一个请求，看 Scheduler 分配块号、Worker 更新块表，以及每层 Attention 如何读写 KV。</span></span>
                 <span class="flow-tag">交互动画</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
               <li><a class="flow" href="prefix-kv-cache/index.html" data-keywords="vLLM SGLang prefix caching prefix cache KVCache BlockPool UnifiedRadixCache 哈希表 前缀树 前缀复用 槽位">
-                <span class="flow-copy"><span class="flow-title">前缀 KV 缓存：哈希表与前缀树</span><span class="flow-description">逐步执行同一对请求，看 vLLM 查到哪个块、SGLang 如何拆开前缀树，以及 Worker 从哪里读写 KV。</span></span>
+                <span class="flow-copy"><span class="flow-title">前缀 KV 缓存：哈希表与前缀树</span><span class="scope-badge" title="vLLM 295c062db8 · SGLang 17e94c4677">源码快照对照</span><span class="flow-description">逐步执行同一对请求，看 vLLM 查到哪个块、SGLang 如何拆开前缀树，以及 Worker 从哪里读写 KV。</span></span>
                 <span class="flow-tag">单步模拟</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
               <li><a class="flow" href="kv-offloading/index.html" data-keywords="vLLM Ascend KV Offloading OffloadingConnector CPU NPU HBM DRAM D2H H2D 卸载 回载 前缀复用 块映射">
-                <span class="flow-copy"><span class="flow-title">KV Offloading 的设备结构</span><span class="flow-description">追踪同一段前缀的 KV 如何从两个 NPU 块写入主存，再回载到另一个请求的新块。</span></span>
+                <span class="flow-copy"><span class="flow-title">KV Offloading 的设备结构</span><span class="scope-badge" title="vLLM 295c062db8 · vLLM-Ascend 94e3e25f8">源码快照</span><span class="flow-description">追踪同一段前缀的 KV 如何从两个 NPU 块写入主存，再回载到另一个请求的新块。</span></span>
                 <span class="flow-tag">设备结构图</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
               <li><a class="flow" href="pd-disaggregation/index.html" data-keywords="vLLM PD Prefill Decode 分离 V0 V1 Scheduler Worker Mooncake KV 缓存 匹配 传输 请求 恢复">
-                <span class="flow-copy"><span class="flow-title">vLLM PD 分离</span><span class="flow-description">对照 V0 / V1，观察 P、D 两侧的缓存匹配、KV 传输与请求恢复。</span></span>
+                <span class="flow-copy"><span class="flow-title">vLLM PD 分离</span><span class="scope-badge" title="V0：vLLM v0.8.5；V1：vLLM 295c062db8">历史与快照对照</span><span class="flow-description">对照 V0 / V1，观察 P、D 两侧的缓存匹配、KV 传输与请求恢复。</span></span>
                 <span class="flow-tag">交互动画</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
             </ul>
@@ -132,15 +132,15 @@
             <summary><span class="module-number" aria-hidden="true">05</span><h2>性能优化</h2><span class="module-description">理解执行开销与加速路径</span><span class="module-count"></span></summary>
             <ul class="flow-list">
               <li><a class="flow" href="speculative-decoding/index.html" data-keywords="vLLM Ascend 投机解码 推测解码 Speculative Decoding MTP DFlash EAGLE EAGLE-3 Medusa 美杜莎 ngram n-gram draft_model 草稿 权重 checkpoint 配置 隐藏状态 hidden state 串行 并行 目标模型 贪心 验证 bonus token">
-                <span class="flow-copy"><span class="flow-title">投机解码</span><span class="flow-description">查看各起草方法需要哪些权重和输入，跟随「今天想」生成候选，再观察目标模型的验证结果。</span></span>
+                <span class="flow-copy"><span class="flow-title">投机解码</span><span class="scope-badge" title="vLLM 295c062db8 · vLLM-Ascend 94e3e25f8；草稿配置 revision 见各方法">源码与算法对照</span><span class="flow-description">查看各起草方法需要哪些权重和输入，跟随「今天想」生成候选，再观察目标模型的验证结果。</span></span>
                 <span class="flow-tag">交互概念图</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
               <li><a class="flow" href="vllm-ascend-graph/index.html" data-keywords="vLLM Ascend ACL Graph 图优化 图捕获 图回放 Python C++ ACLNN Runtime Host NPU FIA 动态 参数 融合">
-                <span class="flow-copy"><span class="flow-title">vLLM-Ascend 图优化</span><span class="flow-description">对照首次捕获与整图回放，展开底层调用和 FIA 参数更新。</span></span>
+                <span class="flow-copy"><span class="flow-title">vLLM-Ascend 图优化</span><span class="scope-badge" title="vLLM 295c062db8 · Ascend 94e3e25f8 · torch_npu 62b9115">源码快照</span><span class="flow-description">对照首次捕获与整图回放，展开底层调用和 FIA 参数更新。</span></span>
                 <span class="flow-tag">源码流程</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
               <li><a class="flow" href="weight-offload-prefetch/index.html" data-keywords="vLLM Ascend CPU Offload Prefetch 权重卸载 权重预取 H2D NPU 静态槽 hidden 激活">
-                <span class="flow-copy"><span class="flow-title">权重 CPU Offload / Prefetch</span><span class="flow-description">沿 CPU 权重和上游激活两条路径，查看它们怎样进入同一层并产生下游输入。</span></span>
+                <span class="flow-copy"><span class="flow-title">权重 CPU Offload / Prefetch</span><span class="scope-badge" title="vLLM 295c062db8 · vLLM-Ascend 94e3e25f8">源码快照</span><span class="flow-description">沿 CPU 权重和上游激活两条路径，查看它们怎样进入同一层并产生下游输入。</span></span>
                 <span class="flow-tag">设备结构图</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
             </ul>

@@ -2,6 +2,23 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
+<!-- learning-scope-style:start -->
+<style>
+.learning-scope-shell{box-sizing:border-box;max-width:960px;width:calc(100% - 32px);margin:16px auto 0;font:13px/1.6 system-ui,"Microsoft YaHei",sans-serif;color:#344454}
+.learning-scope{border:1px solid #dce3e9;border-radius:8px;background:#f7f9fb;overflow-wrap:anywhere}
+.learning-scope>summary{display:list-item;list-style:disclosure-closed inside;cursor:pointer;padding:9px 12px;font-size:13px;line-height:1.6;color:inherit}
+.learning-scope[open]>summary{list-style-type:disclosure-open}
+.learning-scope>summary:focus-visible{outline:2px solid #287cb8;outline-offset:3px}
+.learning-scope-kind{font-weight:650;color:#24668f}
+.learning-scope-hint{font-size:11px;opacity:.7;margin-left:6px}
+.learning-scope[open] .learning-scope-hint{display:none}
+.learning-scope dl{display:grid;grid-template-columns:88px minmax(0,1fr);gap:7px 12px;margin:0;padding:3px 12px 13px}
+.learning-scope dt{font-weight:600}.learning-scope dd{margin:0}
+@media(max-width:480px){.learning-scope dl{grid-template-columns:1fr;gap:3px}.learning-scope dd+dt{margin-top:6px}}
+:root[data-theme=dark] .learning-scope-shell{color:#c5d1dc}:root[data-theme=dark] .learning-scope{background:#1b242d;border-color:#384550}:root[data-theme=dark] .learning-scope-kind{color:#9bcaf0}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .learning-scope-shell{color:#c5d1dc}:root:not([data-theme=light]) .learning-scope{background:#1b242d;border-color:#384550}:root:not([data-theme=light]) .learning-scope-kind{color:#9bcaf0}}
+</style>
+<!-- learning-scope-style:end -->
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="description" content="从 Llama 与 DeepSeek V2 基础结构出发，根据模型 forward 探索七种模型的输入输出、组件内部与推测解码验证。">
   <title>模型架构图谱 · vLLM 学习笔记</title>
@@ -19,11 +36,22 @@
   <script src="app.js" defer></script>
 </head>
 <body>
+<!-- learning-scope:start -->
+<aside class="learning-scope-shell" aria-label="本页范围与源码版本">
+<details class="learning-scope">
+<summary><span class="learning-scope-kind">源码快照</span> 本页范围与源码版本 <span class="learning-scope-hint">展开查看</span></summary>
+<dl><dt>源码基线</dt><dd>vLLM 295c062db8 · vLLM-Ascend 94e3e25f8；各模型配置 revision 见所选 Sheet</dd>
+<dt>后端与配置</dt><dd>七模型静态 forward；MiniMax DSpark 补充采用 SGLang 17e94c4677</dd>
+<dt>流程范围</dt><dd>张量通常为逻辑形状，未展开 TP / EP 物理分片；组件内标明实际实现来源。</dd>
+<dt>教学假设</dt><dd>验证候选和示例数值为教学数据；拆开的数学步骤不等于实际 kernel 数量。</dd></dl>
+</details>
+</aside>
+<!-- learning-scope:end -->
   <a class="skip" href="#component-title">跳到当前组件</a>
   <main class="page">
     <header class="page-header"><a href="../index.html">← 学习流程目录</a><span>FORWARD / ARCHITECTURE</span></header>
     <div class="title-row"><div><p class="eyebrow">从输入走到输出</p><h1>模型架构图谱</h1></div><button id="theme" type="button" aria-label="切换明暗主题">明暗主题</button></div>
-    <p class="lede">选择模型 Sheet，点击组件展开内部；悬停或用键盘聚焦节点，高亮它的输入与输出连线。</p>
+    <p class="lede">选择模型 Sheet，点击组件展开内部；悬停或聚焦节点查看相关连线。点击箭头或连线名称，可固定查看完整的来源、数据与消费者。</p>
     <nav id="sheets" class="sheets" aria-label="模型 Sheet"></nav>
     <section class="model-intro" aria-label="模型基线"><h2 id="model-name"></h2><p id="model-summary"></p><div id="stats" class="stats"></div></section>
     <nav id="breadcrumb" class="breadcrumb" aria-label="组件路径"></nav>
@@ -34,7 +62,12 @@
       <div class="controls"><button id="play" class="primary" type="button">播放数据流</button><button id="all" type="button" aria-pressed="true">全局关系</button><button id="prev" type="button">上一步</button><button id="next" type="button">下一步</button><span id="counter" class="counter"></span></div>
       <div id="step-caption" role="status" aria-live="polite"></div>
       <div class="legend"><span><i class="tensor"></i>张量 / 残差</span><span><i class="memory"></i>记忆 / KV / 状态</span><span><i class="expert"></i>专家计算</span><span>虚线：条件分支</span><span>↗：进入组件</span></div>
+      <section id="edge-inspector" class="edge-inspector" aria-label="连线查看器">
+        <label for="edge-select">选择连线（完整数据名）</label><select id="edge-select"><option value="">选择一条连线</option></select>
+        <div id="edge-selection" hidden><p id="edge-description" role="status" aria-live="polite"></p><button id="close-edge" type="button">取消固定</button></div>
+      </section>
       <div id="diagram" class="diagram" aria-label="当前组件的数据流图"></div>
+      <div id="edge-overflow" class="edge-overflow" hidden><p>图中标为 E 的连线：完整名称</p><div id="edge-overflow-list"></div></div>
       <section id="node-detail" class="node-detail" hidden aria-live="polite"><div class="detail-heading"><h3 id="node-title"></h3><button id="close-node" type="button" aria-label="关闭算子详情">收起</button></div><p id="node-description"></p><div class="detail-ports"><div><h4>接收</h4><ul id="node-in"></ul></div><div><h4>产生并交给</h4><ul id="node-out"></ul></div></div></section>
       <section id="verification-example" hidden aria-labelledby="verification-title"><h3 id="verification-title">验证示例 · 贪心模式</h3><p>教学候选为 a、b、c、d、e。选择目标模型的验证结果，观察最终提交的连续前缀。</p><div class="controls"><button type="button" data-verification="partial" aria-pressed="true">在 c 首次拒绝</button><button type="button" data-verification="all" aria-pressed="false">全部接受</button></div><div id="token-verification" class="token-verification"></div><p id="verification-explanation"></p></section>
       <section class="flow-notes"><h3>完整调用与数据流</h3><ol id="steps"></ol></section>

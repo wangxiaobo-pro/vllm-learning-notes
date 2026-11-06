@@ -9,6 +9,8 @@
 
 图中使用 Ascend V1 的原生 `OffloadingConnector`、单 Worker 和单层 CPU 缓存。每个 NPU 块覆盖 128 个 token，`blocks_per_chunk=2`。假设 A 结束后原设备块已被复用，B 的前 256 个 token 在主存命中。回载完成后，B 复用这些 KV，只计算第 257–260 个 token 的 prefill。
 
+图分开标明主机控制进程、NPU HBM 与 CPU DRAM。Worker 在主机提交 NPU 流上的传输并查询完成事件；写出结束后，`completed_jobs` 回到 Scheduler，由 `complete_store` 将 H3 标为 ready。CPU 字节写入结束与前缀索引可以命中是两个环节。回载完成另报 `finished_recving(B)`，供后续调度恢复 B。
+
 每行数值只取该块首个 token 在同一个 head 上的一个 BF16 分量。实际拷贝涵盖整块 KV。块号与数值用于教学，流程依据源码静态核对。
 
 ## 源码与维护

@@ -2,6 +2,23 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<!-- learning-scope-style:start -->
+<style>
+.learning-scope-shell{box-sizing:border-box;max-width:920px;width:calc(100% - 32px);margin:16px auto 0;font:13px/1.6 system-ui,"Microsoft YaHei",sans-serif;color:#344454}
+.learning-scope{border:1px solid #dce3e9;border-radius:8px;background:#f7f9fb;overflow-wrap:anywhere}
+.learning-scope>summary{display:list-item;list-style:disclosure-closed inside;cursor:pointer;padding:9px 12px;font-size:13px;line-height:1.6;color:inherit}
+.learning-scope[open]>summary{list-style-type:disclosure-open}
+.learning-scope>summary:focus-visible{outline:2px solid #287cb8;outline-offset:3px}
+.learning-scope-kind{font-weight:650;color:#24668f}
+.learning-scope-hint{font-size:11px;opacity:.7;margin-left:6px}
+.learning-scope[open] .learning-scope-hint{display:none}
+.learning-scope dl{display:grid;grid-template-columns:88px minmax(0,1fr);gap:7px 12px;margin:0;padding:3px 12px 13px}
+.learning-scope dt{font-weight:600}.learning-scope dd{margin:0}
+@media(max-width:480px){.learning-scope dl{grid-template-columns:1fr;gap:3px}.learning-scope dd+dt{margin-top:6px}}
+:root[data-theme=dark] .learning-scope-shell{color:#c5d1dc}:root[data-theme=dark] .learning-scope{background:#1b242d;border-color:#384550}:root[data-theme=dark] .learning-scope-kind{color:#9bcaf0}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .learning-scope-shell{color:#c5d1dc}:root:not([data-theme=light]) .learning-scope{background:#1b242d;border-color:#384550}:root:not([data-theme=light]) .learning-scope-kind{color:#9bcaf0}}
+</style>
+<!-- learning-scope-style:end -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Scheduler.schedule() 调度流程 · vLLM 学习笔记</title>
 <style>
@@ -51,6 +68,65 @@ h1 { font-size:clamp(25px, 4vw, 37px); line-height:1.33; letter-spacing:-.035em;
 .view-tabs { display:flex; flex-wrap:wrap; gap:6px; margin-top:16px; }
 .view-tabs button { background:transparent; color:var(--muted); border:0; padding:5px 12px; border-bottom:2px solid var(--line); font-size:14px; }
 .view-tabs button[aria-pressed=true] { border-bottom-color:var(--green); color:var(--green); font-weight:700; }
+.stage-tabs { display:flex; gap:8px; margin:18px 0 12px; flex-wrap:wrap; }
+.stage-tabs button,.chain-jump,.chain-return,.tree-tools button { border:1px solid var(--line); background:var(--panel); border-radius:7px; padding:8px 13px; font-weight:650; font-size:13px; }
+.stage-tabs button[aria-pressed=true] { background:var(--mint); color:var(--green); border-color:var(--green); }
+.stage-tabs span { margin-right:6px; font-family:ui-monospace,Consolas,monospace; }
+.chain-intro { padding:4px 0 12px; }
+.chain-intro h2 { font-size:21px; }
+.chain-intro p { font-size:13px; color:var(--muted); margin:4px 0; }
+.chain-scope { margin:8px 0; font-size:12px; }
+.chain-scope p { margin:5px 0; }
+.chain-layout { display:grid; grid-template-columns:minmax(0,1.12fr) minmax(0,1fr); gap:14px; align-items:start; }
+.chain-tree-panel { overflow:hidden; }
+.tree-tools { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:5px; padding:10px 12px; border-bottom:1px solid var(--line); }
+.tree-tools strong { font-size:13px; }
+.tree-tools button { padding:3px 7px; font-size:11px; }
+.tree-scroll { max-height:680px; overflow:auto; padding:12px 9px; scrollbar-gutter:stable; }
+.call-tree { padding:0; list-style:none; min-width:0; }
+.call-tree .call-tree { margin-left:12px; border-left:1px solid var(--line); }
+.chain-row { display:flex; align-items:flex-start; min-width:0; margin:2px 0; }
+.branch-toggle,.branch-mark { flex:0 0 22px; width:22px; padding:7px 0; border:0; background:transparent; text-align:center; color:var(--muted); font:13px/1.4 ui-monospace,Consolas,monospace; }
+.branch-toggle { color:var(--green); }
+.chain-node { min-width:0; flex:1; display:grid; grid-template-columns:auto minmax(0,1fr); align-items:start; gap:5px; padding:7px; text-align:left; border:1px solid transparent; border-radius:6px; background:transparent; line-height:1.45; }
+.chain-node:hover { background:var(--shade); }
+.chain-node[aria-current=true] { background:var(--mint); border-color:var(--green); }
+.chain-node .node-number { padding-top:1px; color:var(--green); font:600 11px/1.6 ui-monospace,Consolas,monospace; }
+.chain-node code { display:block; font-size:13px; font-weight:650; overflow-wrap:anywhere; }
+.chain-node small { display:block; margin-top:2px; color:var(--muted); font-size:12px; }
+.chain-detail { padding:17px; scroll-margin-top:14px; }
+.chain-detail h3 { margin:5px 0 7px; font-size:19px; line-height:1.4; overflow-wrap:anywhere; }
+.chain-detail .node-summary { font-size:14px; }
+.chain-data { margin-top:12px; font-size:13px; }
+.chain-data dt { margin-top:12px; color:var(--green); font-weight:700; }
+.chain-data dd { margin-top:3px; }
+.chain-note { padding:9px 10px; margin-top:12px; border-left:3px solid var(--amber); background:var(--sand); color:var(--amber); font-size:12px; }
+.chain-evidence { margin-top:14px; padding-top:10px; border-top:1px solid var(--line); }
+.chain-evidence h4,.chain-targets h4 { margin:0 0 5px; font-size:13px; }
+.chain-evidence a { display:block; margin-top:4px; font-size:11px; overflow-wrap:anywhere; }
+.source-version { margin:5px 0 8px; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+.chain-evidence .source-version a { display:inline; font-size:inherit; }
+.source-baseline { margin:8px 0; font-size:12px; overflow-wrap:anywhere; }
+.source-baseline code { font-size:11px; }
+.chain-targets { margin-top:15px; padding-top:12px; border-top:1px solid var(--line); }
+.chain-targets p { color:var(--muted); font-size:12px; margin-bottom:7px; }
+.chain-target-row { display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; }
+.chain-jump { padding:7px 9px; font-size:12px; text-align:left; }
+.chain-jump.primary { color:var(--green); border-color:var(--green); background:var(--mint); }
+.chain-jump small { display:block; font-weight:400; }
+.visual-context { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:10px 12px; background:var(--shade); border:1px solid var(--line); border-radius:8px; font-size:12px; }
+.visual-context span { flex:1; min-width:0; overflow-wrap:anywhere; }
+.chain-return { font-size:12px; padding:5px 9px; }
+@media(max-width:760px) {
+  .chain-layout { grid-template-columns:minmax(0,1fr); }
+  .tree-scroll { max-height:420px; }
+  .chain-detail { padding:14px; }
+}
+@media(max-width:400px) {
+  .call-tree .call-tree { margin-left:7px; }
+  .branch-toggle,.branch-mark { flex-basis:18px; width:18px; }
+  .chain-node { padding:6px 4px; gap:4px; }
+}
 .io-strip { margin:0 0 12px; padding:12px 15px; }
 .io-strip h2 { margin:2px 0 9px; font-size:17px; }
 .io-chain { display:grid; align-items:stretch; grid-template-columns:minmax(0,1fr) 22px minmax(0,1fr) 22px minmax(0,1fr); gap:5px; }
@@ -156,12 +232,23 @@ h1 { font-size:clamp(25px, 4vw, 37px); line-height:1.33; letter-spacing:-.035em;
 </style>
 </head>
 <body>
+<!-- learning-scope:start -->
+<aside class="learning-scope-shell" aria-label="本页范围与源码版本">
+<details class="learning-scope">
+<summary><span class="learning-scope-kind">源码快照</span> 本页范围与源码版本 <span class="learning-scope-hint">展开查看</span></summary>
+<dl><dt>源码基线</dt><dd>vLLM 295c062db8 · V1 Scheduler</dd>
+<dt>后端与配置</dt><dd>同步文本生成 · PRIORITY · ModelRunner V1 输出格式</dd>
+<dt>流程范围</dt><dd>同一轮的请求清单、token/input 预算、KV 抢占回滚及结果回报。</dd>
+<dt>教学假设</dt><dd>请求计数与容量为教学取值；Scheduler 的预记进度不代表设备已经完成计算。</dd></dl>
+</details>
+</aside>
+<!-- learning-scope:end -->
 <main>
   <header class="mast"><a href="../index.html">← vLLM 学习笔记</a><span class="mono">V1 ENGINE / 调度器</span></header>
   <div class="intro">
     <p class="eyebrow">ENGINE INTERNALS &nbsp;/&nbsp; SCHEDULING</p>
     <h1><code>Scheduler.schedule()</code> 调度流程</h1>
-    <p>从请求和 KV 块出发，沿箭头看四张清单如何变成 Worker 的输入，以及执行结果怎样回到下一轮调度。</p>
+    <p>先沿真实调用链定位接口，再跳入具体算例，观察请求、KV 块和预算怎样变化，执行结果如何回到下一轮。</p>
   </div>
   <section class="settings" aria-label="算例设置">
     <div class="case-head"><h2>选择 KV 条件</h2><div class="switch" role="group" aria-label="KV 条件">
@@ -174,10 +261,41 @@ h1 { font-size:clamp(25px, 4vw, 37px); line-height:1.33; letter-spacing:-.035em;
       <p>两种场景初始请求相同。KV 充足时可为 B 和 C 各分配一块。紧张时只有两块可分配给请求，A、B 各占一块。假设 B 在本轮返回 EOS。</p>
     </details>
   </section>
-  <div class="view-tabs" role="group" aria-label="图形视图">
+  <nav class="stage-tabs" aria-label="阅读方式">
+    <button type="button" id="chain-tab" aria-pressed="true"><span>01</span>整体调用链</button>
+    <button type="button" id="visual-tab" aria-pressed="false"><span>02</span>可视化执行</button>
+  </nav>
+  <section id="chain-view" aria-labelledby="chain-title">
+    <div class="chain-intro">
+      <h2 id="chain-title">从一轮 EngineCore.step() 开始</h2>
+      <p>先看外层主链；点「＋」展开子调用，点名称查看输入、状态变化和返回续点，再进入对应的可视化步骤。</p>
+      <div class="source-baseline">源码仓库与 commit：<a id="source-revision"></a><br><span class="hint">调用行、定义行和可视化步骤的源码链接均固定到此提交。</span></div>
+      <details class="chain-scope"><summary>调用链范围 · vLLM 295c062db8 · 同步 MRV1</summary>
+        <p>固定同步 Scheduler、ModelRunner V1、<code>batch_queue=None</code>，以本页两个教学算例走一轮或两轮。异步调度与 <code>step_with_batch_queue()</code> 不在此树内。</p>
+        <p>编号保持稳定；缩进表示调用或明确标记的控制块。「动作」是函数内部语句，「循环」「分支」是控制流。省略诊断日志、统计等辅助路径；执行器内部的 Worker、RPC、模型 forward 留在边界外。</p>
+        <p>调用关系来自本地源码静态核对，token、容量与模型返回是教学取值。页面可离线查看，源码链接需要网络；可视化展示状态快照，不会启动推理。</p>
+      </details>
+    </div>
+    <div class="chain-layout">
+      <section class="panel chain-tree-panel" aria-label="按执行顺序排列的调用树">
+        <div class="tree-tools"><strong>调用与返回 · <span id="chain-count"></span> 个节点</strong><div><button type="button" id="expand-chain">全部展开</button> <button type="button" id="fold-chain">只看主链</button></div></div>
+        <div class="tree-scroll" id="tree-scroll"><ol class="call-tree" id="call-tree"></ol></div>
+      </section>
+      <article id="chain-detail" class="panel chain-detail" aria-labelledby="chain-node-title" tabindex="-1">
+        <div class="eyebrow" id="chain-node-kind"></div>
+        <h3 id="chain-node-title"></h3><p class="node-summary" id="chain-summary"></p>
+        <dl class="chain-data" id="chain-data"></dl>
+        <p class="chain-note" id="chain-note" hidden></p>
+        <section class="chain-evidence"><h4>源码依据</h4><p class="source-version" id="chain-source-version"></p><div id="chain-evidence"></div></section>
+        <section class="chain-targets"><h4>进入可视化执行</h4><p id="chain-target-hint"></p><div id="chain-targets"></div></section>
+      </article>
+    </div>
+  </section>
+  <div class="visual-context" id="visual-context" hidden><button type="button" class="chain-return" id="return-chain">← 返回调用链</button><span id="visual-origin"></span></div>
+  <div class="view-tabs" role="group" aria-label="图形视图" id="visual-tabs" hidden>
     <button type="button" id="map-tab">上下游数据流</button><button type="button" id="ledger-tab">队列与计数</button>
   </div>
-  <nav class="controls" aria-label="流程步骤" id="controls">
+  <nav class="controls" aria-label="流程步骤" id="controls" tabindex="-1" hidden>
     <span class="eyebrow" id="mode-indicator"></span>
     <div class="buttons"><button id="overview" type="button">全局关系</button><button id="prev" type="button">← 上一步</button><button id="next" type="button">下一步 →</button></div>
   </nav>
@@ -192,7 +310,7 @@ h1 { font-size:clamp(25px, 4vw, 37px); line-height:1.33; letter-spacing:-.035em;
     </div>
     <div class="sources" id="io-sources"></div>
   </section>
-  <div id="map-view"><style>
+  <div id="map-view" hidden><style>
 #schedule-map { margin:14px 0; padding:clamp(10px,2vw,19px); color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:12px; }
 #schedule-map * { box-sizing:border-box; }
 #schedule-map h2 { margin:0 0 3px; font-size:20px; }
@@ -1168,12 +1286,1500 @@ const listKeys = [
   ['carry', '续跑', 'scheduled_running_reqs'], ['fresh', '首次准入', 'scheduled_new_reqs'],
   ['resumed', '恢复', 'scheduled_resumed_reqs'], ['preempted', '抢占', 'preempted_reqs']
 ];
-const schedulerSource = 'https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/core/sched/scheduler.py';
+// Source identity for every generated link. verify-source.mjs checks this against
+// source-lock.json and the immutable Git objects, including every cited range.
+const sourceSnapshot = {
+  "repository": "https://github.com/vllm-project/vllm",
+  "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9"
+};
+function sourceLink(path, line, end) {
+  return sourceSnapshot.repository + '/blob/' + sourceSnapshot.commit + '/' + path
+    + (line ? '#L' + line + (end ? '-L' + end : '') : '');
+}
+const schedulerSource = sourceLink('vllm/v1/core/sched/scheduler.py');
 const storageKey = 'vllm-scheduler-trace-v1';
 const num = (i) => String(i + 1).padStart(2, '0');
 let mode = 'normal';
 let stepIndex = -1;
 let view = 'map';
+let screen = 'chain';
+let selectedNode = 'schedule';
+let lastHash = location.hash;
+// vLLM 295c062db8 · 同步 MRV1 · batch_queue=None；targets.step 为页面一基编号。
+const chainNodes = [
+  {
+    "id": "engine",
+    "parent": null,
+    "number": "0",
+    "kind": "调用",
+    "title": "EngineCore.step()",
+    "summary": "一轮调度、执行与输出回写的入口。",
+    "input": "调度器持有运行与等待队列；本例第一轮运行 A、B，等待 S、C。",
+    "changes": "先取得本轮计划，再等待执行结果并回写请求状态。紧张场景需要两次调用，分别演示抢占和恢复。",
+    "output": "返回各客户端的引擎输出，以及本轮是否安排了模型计算。",
+    "resume": "调用结束后返回引擎循环；后续轮次读取本轮保留的请求状态。",
+    "evidence": [
+      {
+        "label": "入口定义",
+        "path": "vllm/v1/engine/core.py",
+        "line": 644,
+        "end": 673
+      },
+      {
+        "label": "引擎循环调用",
+        "path": "vllm/v1/engine/core.py",
+        "line": 1588,
+        "end": 1596
+      },
+      {
+        "label": "选择普通轮次入口的条件",
+        "path": "vllm/v1/engine/core.py",
+        "line": 237,
+        "end": 239
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 1,
+        "label": "本轮初始账本"
+      },
+      {
+        "mode": "pressure",
+        "step": 1,
+        "label": "第一轮初始账本"
+      },
+      {
+        "mode": "pressure",
+        "step": 8,
+        "label": "第二轮初始账本"
+      }
+    ],
+    "note": "本图固定 MRV1、同步调度、batch_queue 为 None。没有展开具体执行器、跨进程通信及工作进程内部。"
+  },
+  {
+    "id": "has-requests",
+    "parent": "engine",
+    "number": "0.1",
+    "kind": "调用",
+    "title": "Scheduler.has_requests()",
+    "summary": "没有待处理请求时提前返回。",
+    "input": "调度器当前的请求与待清理状态；本例运行或等待队列均非空。",
+    "changes": "根据请求与待清理状态判断是否需要继续，本例返回 True。",
+    "output": "布尔值交给 EngineCore.step()；调用方在 False 时返回 ({}, False)。",
+    "resume": "通过检查后，执行下一条 schedule() 调用。",
+    "evidence": [
+      {
+        "label": "调用及提前返回",
+        "path": "vllm/v1/engine/core.py",
+        "line": 652,
+        "end": 654
+      },
+      {
+        "label": "方法定义",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 2822
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 1,
+        "label": "查看非空请求队列"
+      },
+      {
+        "mode": "pressure",
+        "step": 8,
+        "label": "查看第二轮等待队列"
+      }
+    ],
+    "note": "现有步骤没有单独记录这一布尔判断；目标展示判断所依据的队列。"
+  },
+  {
+    "id": "schedule",
+    "parent": "engine",
+    "number": "1",
+    "kind": "调用",
+    "title": "Scheduler.schedule()",
+    "summary": "生成本轮请求配额和缓存块计划。",
+    "input": "self.running / self.waiting 中的请求、token_budget=input_budget=8，以及 KVCacheManager 管理的可用块。",
+    "changes": "先扫描运行请求，再按条件准入等待请求；打包后预先推进本轮计算计数。",
+    "output": "SchedulerOutput.num_scheduled_tokens：充足场景 {A:1, B:1, C:6}；紧张第 1 轮 {B:1}，第 2 轮 {A:8}。",
+    "resume": "返回 EngineCore.step()，下一步将计划交给执行器。",
+    "evidence": [
+      {
+        "label": "调用位置",
+        "path": "vllm/v1/engine/core.py",
+        "line": 654
+      },
+      {
+        "label": "方法定义",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 580
+      },
+      {
+        "label": "返回计划",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1554,
+        "end": 1556
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 1,
+        "label": "本轮初始账本"
+      },
+      {
+        "mode": "pressure",
+        "step": 1,
+        "label": "第一轮初始账本"
+      },
+      {
+        "mode": "pressure",
+        "step": 8,
+        "label": "第二轮初始账本"
+      }
+    ]
+  },
+  {
+    "id": "init",
+    "parent": "schedule",
+    "number": "1.1",
+    "kind": "动作",
+    "title": "初始化本轮账本",
+    "summary": "清空当轮计划并建立两项预算。",
+    "input": "请求的长期状态仍保留，例如 A 已知15个位置、已安排14个位置。",
+    "changes": "重新建立新请求、恢复请求、运行请求和抢占列表；两项预算均置为8。",
+    "output": "本轮计划为空，运行和等待队列继续沿用已有请求。",
+    "resume": "通知缓存管理器新轮次开始，再扫描运行队列。",
+    "evidence": [
+      {
+        "label": "轮次及账本初始化",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 580,
+        "end": 606
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 1,
+        "label": "本轮初始账本"
+      },
+      {
+        "mode": "pressure",
+        "step": 1,
+        "label": "第一轮初始账本"
+      },
+      {
+        "mode": "pressure",
+        "step": 8,
+        "label": "第二轮初始账本"
+      }
+    ],
+    "note": "这是 schedule() 内部的状态动作，没有独立初始化调度函数。"
+  },
+  {
+    "id": "new-step",
+    "parent": "schedule",
+    "number": "1.2",
+    "kind": "调用",
+    "title": "KVCacheManager.new_step_starts()",
+    "summary": "通知缓存协调器开始新轮次。",
+    "input": "缓存管理器及其协调器的当前状态。",
+    "changes": "向协调器转发新轮次通知；请求计划和两项预算仍保持初始化后的值。",
+    "output": "缓存管理器完成本轮开始时的通知。",
+    "resume": "返回 schedule()，随后进入运行请求扫描。",
+    "evidence": [
+      {
+        "label": "调用位置",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 621
+      },
+      {
+        "label": "方法定义与下游通知",
+        "path": "vllm/v1/core/kv_cache_manager.py",
+        "line": 950,
+        "end": 952
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 1,
+        "label": "查看新轮次账本"
+      },
+      {
+        "mode": "pressure",
+        "step": 8,
+        "label": "查看第二轮账本"
+      }
+    ],
+    "note": "该通知没有独立可见快照；目标仍是本轮初始化状态。"
+  },
+  {
+    "id": "running",
+    "parent": "schedule",
+    "number": "1.3",
+    "kind": "循环",
+    "title": "先扫描 RUNNING 队列",
+    "summary": "逐个计算欠算位置并尝试分配。",
+    "input": "第一轮按 A、B 扫描；A 欠一个位置，B 也欠一个位置。",
+    "changes": "根据已知长度与计算游标计算需求，再按预算、阈值和长度上限裁剪。成功后登记计划并扣减预算。",
+    "output": "充足场景先得到 A=1、B=1，预算8降到6；紧张场景会进入抢占重试。",
+    "resume": "扫描结束后检查能否进入等待请求准入分支。",
+    "evidence": [
+      {
+        "label": "运行队列循环",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 646,
+        "end": 651
+      },
+      {
+        "label": "需求计算与裁剪",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 692,
+        "end": 710
+      },
+      {
+        "label": "登记成功计划",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 839,
+        "end": 847
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 2,
+        "label": "A 使用现有块"
+      },
+      {
+        "mode": "normal",
+        "step": 3,
+        "label": "B 跨块续算"
+      },
+      {
+        "mode": "pressure",
+        "step": 3,
+        "label": "B 分配失败"
+      }
+    ],
+    "note": "这是 schedule() 内部循环，不是名为 schedule_running() 的函数。"
+  },
+  {
+    "id": "running-allocate",
+    "parent": "running",
+    "number": "1.3.1",
+    "kind": "调用",
+    "title": "KVCacheManager.allocate_slots()",
+    "summary": "为运行请求保留本轮所需缓存位置。",
+    "input": "当前请求、本轮计算量及前瞻位置数；本例 A、B 各需要计算一个位置。",
+    "changes": "A 可使用原块空位；B 的第17个位置需要再分配一块。紧张场景 B 首次失败，释放 A 的块后再试。",
+    "output": "成功返回缓存块结果；资源不足返回 None，供上层选择抢占分支。",
+    "resume": "成功则登记计划；失败则进入受害者选择、回滚与抢占，随后可能重试本调用。",
+    "evidence": [
+      {
+        "label": "调用及重试循环",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 764,
+        "end": 775
+      },
+      {
+        "label": "失败后的抢占与重试条件",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 783,
+        "end": 837
+      },
+      {
+        "label": "方法定义",
+        "path": "vllm/v1/core/kv_cache_manager.py",
+        "line": 371
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 3,
+        "label": "B 分配成功"
+      },
+      {
+        "mode": "pressure",
+        "step": 3,
+        "label": "B 首次分配失败"
+      },
+      {
+        "mode": "pressure",
+        "step": 5,
+        "label": "B 抢占后重试成功"
+      }
+    ]
+  },
+  {
+    "id": "rollback",
+    "parent": "running",
+    "number": "1.3.2",
+    "kind": "动作",
+    "title": "撤销受害者当轮计划并退预算",
+    "summary": "先撤销 A 尚未执行的一个位置。",
+    "input": "紧张场景 A 已登记一个位置，两项预算均为7；B 分配失败，按优先级选中 A。",
+    "changes": "从运行队列及当轮计划中移除 A，并退回一份计算预算与输入预算。",
+    "output": "A 的当轮计划被撤销，两项预算7回到8；此动作尚不负责清0计算游标。",
+    "resume": "继续调用 _preempt_request(A)，释放其块并改变请求状态。",
+    "evidence": [
+      {
+        "label": "优先级选择受害者",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 785,
+        "end": 789
+      },
+      {
+        "label": "撤销计划并退还预算",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 797,
+        "end": 821
+      }
+    ],
+    "targets": [
+      {
+        "mode": "pressure",
+        "step": 4,
+        "label": "撤销 A 并退还预算"
+      }
+    ],
+    "note": "目标步骤合并展示回滚与后续抢占的最终状态。退预算位于 schedule() 内，不是 _preempt_request() 的职责。"
+  },
+  {
+    "id": "preempt",
+    "parent": "running",
+    "number": "1.3.3",
+    "kind": "调用",
+    "title": "Scheduler._preempt_request()",
+    "summary": "释放 A 的块并将其标记为待恢复。",
+    "input": "已从运行队列和当轮计划移除的 A；已知长度仍为15，计算游标为14。",
+    "changes": "释放请求缓存块，设置抢占状态并将计算游标清0；把 A 放回等待队列，记录抢占通知。",
+    "output": "A 的已知长度保持15，计算游标14变0；等待队列成为 A、S、C。",
+    "resume": "返回分配循环，B 重试取得释放的块；本轮出现抢占，后续等待准入整体跳过。",
+    "evidence": [
+      {
+        "label": "调用位置",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 825,
+        "end": 830
+      },
+      {
+        "label": "方法定义及状态重置",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1571,
+        "end": 1614
+      },
+      {
+        "label": "释放缓存块的实际调用",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 2765,
+        "end": 2774
+      }
+    ],
+    "targets": [
+      {
+        "mode": "pressure",
+        "step": 4,
+        "label": "A 进入待恢复状态"
+      }
+    ],
+    "note": "保留 A 的请求与已知 token，后续可以重算恢复。目标步骤同时展示调用前的预算回滚。"
+  },
+  {
+    "id": "waiting",
+    "parent": "schedule",
+    "number": "1.4",
+    "kind": "分支",
+    "title": "按条件扫描 WAITING 队列",
+    "summary": "本轮无抢占时才准入等待请求。",
+    "input": "运行请求扫描结果、剩余预算及暂停状态；充足场景剩6，紧张第一轮剩7。",
+    "changes": "仅在本轮没有抢占且未全暂停时进入；有缓存的等待队列优先，再检查普通等待队列和容量。",
+    "output": "充足场景检查 S、C；紧张第一轮虽然剩7仍整体跳过，第二轮先检查 A。",
+    "resume": "进入分支则依次检查候选并分配；跳过或扫描结束后进入打包。",
+    "evidence": [
+      {
+        "label": "准入总条件",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 889
+      },
+      {
+        "label": "队列选择与容量检查",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 901,
+        "end": 918
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 4,
+        "label": "检查等待请求 S"
+      },
+      {
+        "mode": "pressure",
+        "step": 5,
+        "label": "本轮抢占后跳过准入"
+      },
+      {
+        "mode": "pressure",
+        "step": 9,
+        "label": "第二轮恢复 A"
+      }
+    ],
+    "note": "这是 schedule() 内的条件分支，没有独立 schedule_waiting() 函数。"
+  },
+  {
+    "id": "blocked",
+    "parent": "waiting",
+    "number": "1.4.1",
+    "kind": "调用",
+    "title": "Scheduler._handle_blocked_waiting_request()",
+    "summary": "语法未完成的 S 暂存并让后续候选继续。",
+    "input": "等待队列首个候选；充足场景先遇到仍在编译语法的 S。",
+    "changes": "检查请求的阻塞原因；本例 S 的语法仍在编译，未能转为可调度状态。",
+    "output": "对 S 返回 False，交回 schedule() 的等待扫描循环；预算仍为 6。",
+    "resume": "返回后由 schedule() 调用局部 skip_request() 暂存 S，再继续检查 C；扫描结束后回填 S。",
+    "evidence": [
+      {
+        "label": "就绪检查及跳过调用",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 918,
+        "end": 921
+      },
+      {
+        "label": "就绪检查定义",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 3185
+      },
+      {
+        "label": "语法未就绪判断",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 3201,
+        "end": 3205
+      },
+      {
+        "label": "局部跳过函数",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 893,
+        "end": 899
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 4,
+        "label": "S 暂存、继续检查 C"
+      }
+    ],
+    "note": "第 04 步合并展示就绪检查与随后暂存 S 的状态；skip_request() 由 schedule() 调用。"
+  },
+  {
+    "id": "prefix",
+    "parent": "waiting",
+    "number": "1.4.2",
+    "kind": "调用",
+    "title": "Scheduler._get_local_prefix_cache_hit()",
+    "summary": "计算游标为零时查询已经缓存的块。",
+    "input": "首次准入的 C，或被抢占后计算游标归0的 A。",
+    "changes": "转调 KVCacheManager.get_computed_blocks()。本例关闭前缀缓存，直接得到空块与命中长度 0。",
+    "output": "C 的前缀命中为0；恢复 A 的命中也为0，需从已知序列开头重算。",
+    "resume": "返回等待准入逻辑，依据命中长度与剩余预算计算本轮计算量。",
+    "evidence": [
+      {
+        "label": "零游标条件与调用",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 948,
+        "end": 956
+      },
+      {
+        "label": "辅助方法定义及缓存管理器调用",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 547,
+        "end": 557
+      },
+      {
+        "label": "缓存查询方法定义",
+        "path": "vllm/v1/core/kv_cache_manager.py",
+        "line": 264
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 5,
+        "label": "C 无前缀命中"
+      },
+      {
+        "mode": "pressure",
+        "step": 9,
+        "label": "A 从零开始重算"
+      }
+    ],
+    "note": "此处是 WAITING 准入且计算游标为 0 的查询入口；本例未启用实际前缀匹配，不表示每轮 Decode 都查询。"
+  },
+  {
+    "id": "waiting-allocate",
+    "parent": "waiting",
+    "number": "1.4.3",
+    "kind": "调用",
+    "title": "KVCacheManager.allocate_slots()",
+    "summary": "为新准入或恢复请求保留本轮位置。",
+    "input": "schedule() 先按预算算出 num_new_tokens：C=min(12−0,6)=6；恢复 A=min(15−0,8)=8，再传入本方法。",
+    "changes": "检查剩余块是否足够，绑定本轮需要的新缓存块；本例 C 和恢复 A 均需 1 块。",
+    "output": "成功获得本轮缓存块后才可进入运行队列；返回 None 时终止本次等待扫描。",
+    "resume": "成功进入准入登记动作；失败则离开扫描并转向打包已有计划。",
+    "evidence": [
+      {
+        "label": "等待请求需求与预算",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1107,
+        "end": 1118
+      },
+      {
+        "label": "预算裁剪",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1144,
+        "end": 1159
+      },
+      {
+        "label": "调用与失败分支",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1245,
+        "end": 1271
+      },
+      {
+        "label": "方法定义",
+        "path": "vllm/v1/core/kv_cache_manager.py",
+        "line": 371
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 5,
+        "label": "为 C 的六个位置分配"
+      },
+      {
+        "mode": "pressure",
+        "step": 9,
+        "label": "为 A 的八个重算位置分配"
+      }
+    ]
+  },
+  {
+    "id": "admit",
+    "parent": "waiting",
+    "number": "1.4.4",
+    "kind": "动作",
+    "title": "准入并区分新请求与恢复请求",
+    "summary": "分配成功后转入运行队列并扣预算。",
+    "input": "已成功分配的 C 或 A，及准入前的请求状态。",
+    "changes": "从等待队列取出请求并加入运行队列；原状态为等待的 C 记入新请求，原状态为抢占的 A 记入恢复请求。",
+    "output": "充足场景计划变为 A=1、B=1、C=6；恢复轮计划为 A=8，两项预算均降为0。",
+    "resume": "继续等待扫描；预算为0时退出，随后回填跳过请求。",
+    "evidence": [
+      {
+        "label": "移动队列及请求分类",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1332,
+        "end": 1347
+      },
+      {
+        "label": "记录计划与扣减预算",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1351,
+        "end": 1358
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 5,
+        "label": "C 作为新请求准入"
+      },
+      {
+        "mode": "pressure",
+        "step": 9,
+        "label": "A 作为恢复请求准入"
+      }
+    ],
+    "note": "这是 schedule() 内部动作。MRV1 在后续打包时把恢复请求放入已有请求数据。"
+  },
+  {
+    "id": "requeue",
+    "parent": "waiting",
+    "number": "1.4.5",
+    "kind": "动作",
+    "title": "回填本轮跳过的请求",
+    "summary": "等待扫描结束后把 S 放回其原类队列。",
+    "input": "本轮暂存的 S；C 已准入且预算已用完。",
+    "changes": "按是否持有缓存分别回填等待队列；本例 S 回到普通等待队列，仍登记为未就绪请求。",
+    "output": "充足场景等待队列为 S，S 本轮计算量仍为0。",
+    "resume": "退出等待准入分支，继续检查本轮计划约束并打包。",
+    "evidence": [
+      {
+        "label": "按队列类型回填",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1380,
+        "end": 1384
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 6,
+        "label": "S 回到等待队列"
+      }
+    ],
+    "note": "紧张场景第一轮未进入等待扫描；第二轮 A 用完预算，没有形成需要回填的暂存请求。"
+  },
+  {
+    "id": "pack",
+    "parent": "schedule",
+    "number": "1.5",
+    "kind": "动作",
+    "title": "检查并打包本轮计划",
+    "summary": "保留本轮计算起点并构造计划对象。",
+    "input": "本轮各请求配额、缓存块、新请求列表、运行与恢复列表，以及抢占或结束通知。",
+    "changes": "求和并检查约束；分别构造新请求数据和已有请求数据，最后构造 SchedulerOutput。",
+    "output": "充足场景总量为8；紧张第一轮总量为一且含 A 的抢占通知，恢复轮总量为8。",
+    "resume": "计划对象形成后，调用 _update_after_schedule() 预记请求计算进度。",
+    "evidence": [
+      {
+        "label": "总量及约束检查",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1392,
+        "end": 1404
+      },
+      {
+        "label": "MRV1 请求数据打包",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1429,
+        "end": 1446
+      },
+      {
+        "label": "构造计划对象",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1500,
+        "end": 1522
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 7,
+        "label": "总量八的完整计划"
+      },
+      {
+        "mode": "pressure",
+        "step": 6,
+        "label": "第一轮仅 B 的计划"
+      },
+      {
+        "mode": "pressure",
+        "step": 10,
+        "label": "第二轮 A 的恢复计划"
+      }
+    ],
+    "note": "“打包”是组织多条真实调用的内部动作，不是独立 pack() 函数。紧张场景快照合并了打包与下一步预记。"
+  },
+  {
+    "id": "new-data",
+    "parent": "pack",
+    "number": "1.5.1",
+    "kind": "调用",
+    "title": "NewRequestData.from_request()",
+    "summary": "把 C 编入新请求数据。",
+    "input": "本轮新准入的 C，及它的缓存块编号。",
+    "changes": "MRV1 为新请求构造执行侧首次接收所需的数据；此时 C 的计算起点仍为0。",
+    "output": "充足场景新请求列表含 C；紧张两轮均没有本例新请求。",
+    "resume": "完成新请求数据后，继续构造已有与恢复请求数据。",
+    "evidence": [
+      {
+        "label": "MRV1 调用位置",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1429,
+        "end": 1437
+      },
+      {
+        "label": "方法定义",
+        "path": "vllm/v1/core/sched/output.py",
+        "line": 59
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 7,
+        "label": "C 的新请求数据"
+      }
+    ],
+    "note": "不要套用 MRV2 把恢复请求合并进新请求列表的另一分支。"
+  },
+  {
+    "id": "cached-data",
+    "parent": "pack",
+    "number": "1.5.2",
+    "kind": "调用",
+    "title": "Scheduler._make_cached_request_data()",
+    "summary": "打包 A、B 或恢复中的 A。",
+    "input": "本轮运行及恢复请求列表、各自配额与块信息；计算游标尚未预记。",
+    "changes": "充足场景保存 A 14、B 16的计算起点；恢复轮保存 A 0，并把 A 加入恢复标记集合。",
+    "output": "生成 CachedRequestData；MRV1 恢复 A 的标记位于 resumed_req_ids。",
+    "resume": "返回 schedule()，作为 SchedulerOutput 的已有请求数据字段。",
+    "evidence": [
+      {
+        "label": "调用位置",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1439,
+        "end": 1446
+      },
+      {
+        "label": "方法定义",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1693,
+        "end": 1700
+      },
+      {
+        "label": "恢复标记、计算起点及返回对象",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1729,
+        "end": 1749
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 7,
+        "label": "A、B 的已有请求数据"
+      },
+      {
+        "mode": "pressure",
+        "step": 10,
+        "label": "A 的恢复标记与块信息"
+      }
+    ]
+  },
+  {
+    "id": "scheduler-output",
+    "parent": "pack",
+    "number": "1.5.3",
+    "kind": "动作",
+    "title": "构造 SchedulerOutput",
+    "summary": "把配额、请求数据和通知汇成一个计划。",
+    "input": "新请求数据、已有请求数据、各请求计划量、总量、块元数据和控制通知。",
+    "changes": "构造计划对象；本例充足场景的配额映射为 A=1、B=1、C=6。",
+    "output": "紧张第一轮计划为 B=1，另附 A 的抢占通知；第二轮则携带 A 的恢复数据。",
+    "resume": "对象构造完成后，schedule() 继续预记计算计数，再返回同一计划。",
+    "evidence": [
+      {
+        "label": "对象构造与关键字段",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1500,
+        "end": 1522
+      },
+      {
+        "label": "数据类型定义",
+        "path": "vllm/v1/core/sched/output.py",
+        "line": 232
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 7,
+        "label": "查看计划字段"
+      },
+      {
+        "mode": "pressure",
+        "step": 6,
+        "label": "查看 A 的抢占通知"
+      },
+      {
+        "mode": "pressure",
+        "step": 10,
+        "label": "查看 A 的恢复计划"
+      }
+    ],
+    "note": "这是数据对象构造；不能画成工作进程已经执行了这些位置。"
+  },
+  {
+    "id": "update-after",
+    "parent": "schedule",
+    "number": "1.6",
+    "kind": "调用",
+    "title": "Scheduler._update_after_schedule()",
+    "summary": "派发前先推进计算游标和在途计数。",
+    "input": "已经打包的计划及调度器内的请求对象；计划仍保存预记前的计算起点。",
+    "changes": "充足场景计算游标 A 14到15、B 16到17、C 0到6；在途计数分别增加一、一、6。",
+    "output": "紧张第一轮 B 的计算游标为17、在途为一；恢复轮 A 两项计数均为8。",
+    "resume": "返回 schedule()，随即把计划返回 EngineCore.step()。",
+    "evidence": [
+      {
+        "label": "调用位置",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1554,
+        "end": 1556
+      },
+      {
+        "label": "方法定义与预记说明",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1616,
+        "end": 1625
+      },
+      {
+        "label": "实际计数变化",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1626,
+        "end": 1639
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 8,
+        "label": "查看派发前预记计数"
+      },
+      {
+        "mode": "pressure",
+        "step": 6,
+        "label": "第一轮 B 的预记计数"
+      },
+      {
+        "mode": "pressure",
+        "step": 10,
+        "label": "第二轮 A 的预记计数"
+      }
+    ],
+    "note": "这些计数是调度器预记，不表示设备此时已经计算完成；结果回报后才扣回在途计数。"
+  },
+  {
+    "id": "schedule-return",
+    "parent": "schedule",
+    "number": "1.7",
+    "kind": "返回",
+    "title": "返回 SchedulerOutput",
+    "summary": "把已打包的计划交回引擎入口。",
+    "input": "计划对象已经构造，请求计算游标和在途计数已预记。",
+    "changes": "结束 schedule() 调用，不在这里启动设备计算。",
+    "output": "充足场景返回8个计算位置的计划；紧张两轮分别返回一个和8个位置的计划。",
+    "resume": "回到 EngineCore.step() 的下一条 execute_model() 调用。",
+    "evidence": [
+      {
+        "label": "调度函数返回",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1554,
+        "end": 1556
+      },
+      {
+        "label": "引擎接收并提交",
+        "path": "vllm/v1/engine/core.py",
+        "line": 654,
+        "end": 655
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 8,
+        "label": "派发前状态 · 总量八"
+      },
+      {
+        "mode": "pressure",
+        "step": 6,
+        "label": "派发前状态 · 第一轮"
+      },
+      {
+        "mode": "pressure",
+        "step": 10,
+        "label": "派发前状态 · 第二轮"
+      }
+    ]
+  },
+  {
+    "id": "execute",
+    "parent": "engine",
+    "number": "2",
+    "kind": "提交",
+    "title": "executor.execute_model(…, non_block=True)",
+    "summary": "把本轮计划提交到执行器。",
+    "input": "schedule() 返回的计划；充足场景为 A=1、B=1、C=6。",
+    "changes": "通过具体执行器提交执行；非阻塞参数使接口返回一个结果句柄。",
+    "output": "返回 Future，其最终结果可能是模型输出，也可能是 None。",
+    "resume": "引擎继续准备语法掩码，然后在 future.result() 处读取执行结果。",
+    "evidence": [
+      {
+        "label": "引擎调用",
+        "path": "vllm/v1/engine/core.py",
+        "line": 655
+      },
+      {
+        "label": "非阻塞接口返回类型",
+        "path": "vllm/v1/executor/abstract.py",
+        "line": 244,
+        "end": 252
+      },
+      {
+        "label": "执行器基础转发",
+        "path": "vllm/v1/executor/abstract.py",
+        "line": 253,
+        "end": 256
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 8,
+        "label": "派发前状态 · 总量八"
+      },
+      {
+        "mode": "pressure",
+        "step": 6,
+        "label": "派发前状态 · 第一轮"
+      },
+      {
+        "mode": "pressure",
+        "step": 10,
+        "label": "派发前状态 · 第二轮"
+      }
+    ],
+    "note": "现有数据步骤没有独立执行器快照，只能查看派发前与回报后状态。具体执行器、工作进程及通信保持为边界。"
+  },
+  {
+    "id": "grammar",
+    "parent": "engine",
+    "number": "3",
+    "kind": "调用",
+    "title": "Scheduler.get_grammar_bitmask()",
+    "summary": "为本轮需要约束采样的请求准备掩码。",
+    "input": "本轮计划与已就绪的结构化输出请求；本例 S 没有被调度。",
+    "changes": "没有本轮可采样的结构化请求时返回 None；存在时才调用语法管理器生成掩码。",
+    "output": "本例掩码为 None；这不影响后面读取执行结果和条件采样。",
+    "resume": "回到 EngineCore.step()，接下来调用 future.result()。",
+    "evidence": [
+      {
+        "label": "引擎调用",
+        "path": "vllm/v1/engine/core.py",
+        "line": 656
+      },
+      {
+        "label": "方法定义及空结果条件",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 1994,
+        "end": 2009
+      },
+      {
+        "label": "实际生成语法掩码",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 2011,
+        "end": 2023
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 8,
+        "label": "派发前状态 · 总量八"
+      },
+      {
+        "mode": "pressure",
+        "step": 6,
+        "label": "派发前状态 · 第一轮"
+      },
+      {
+        "mode": "pressure",
+        "step": 10,
+        "label": "派发前状态 · 第二轮"
+      }
+    ],
+    "note": "没有独立语法掩码快照；跳转展示派发前状态，S 仍在等待队列。该调用发生在读取执行结果之前。"
+  },
+  {
+    "id": "future",
+    "parent": "engine",
+    "number": "4",
+    "kind": "等待",
+    "title": "future.result()",
+    "summary": "读取执行完成后的返回值。",
+    "input": "execute_model() 返回的 Future。",
+    "changes": "在本条调用取得结果之前，不进入后续条件采样分支；若结果未就绪则等待。",
+    "output": "得到模型输出或 None；返回值决定是否还要调用 sample_tokens()。",
+    "resume": "返回值为 None 才进入下一采样分支，否则直接继续处理执行期间的中止请求。",
+    "evidence": [
+      {
+        "label": "读取结果与后续条件",
+        "path": "vllm/v1/engine/core.py",
+        "line": 661,
+        "end": 663
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 9,
+        "label": "回报后状态 · 常规轮次"
+      },
+      {
+        "mode": "pressure",
+        "step": 7,
+        "label": "回报后状态 · 第一轮"
+      },
+      {
+        "mode": "pressure",
+        "step": 11,
+        "label": "回报后状态 · 第二轮"
+      }
+    ],
+    "note": "没有独立等待完成快照；目标为整轮回报后状态。这里先读取执行结果，随后才判断是否采样。"
+  },
+  {
+    "id": "sample",
+    "parent": "engine",
+    "number": "5",
+    "kind": "分支",
+    "title": "结果为空时调用 sample_tokens()",
+    "summary": "仅在执行结果为 None 时继续采样。",
+    "input": "future.result() 的返回值与语法掩码；本例掩码为 None。",
+    "changes": "仅在返回值为 None 时调用执行器的 sample_tokens()；本次调用未传非阻塞参数，默认阻塞返回输出。",
+    "output": "得到供调度器消费的 ModelRunnerOutput；教学回报设定 A 得普通 token、B 得 EOS，中间预填充请求返回空列表。",
+    "resume": "若执行阶段已经返回模型输出则跳过本节点；两条路径都会汇合到中止处理。",
+    "evidence": [
+      {
+        "label": "条件和采样调用",
+        "path": "vllm/v1/engine/core.py",
+        "line": 661,
+        "end": 663
+      },
+      {
+        "label": "采样接口默认参数",
+        "path": "vllm/v1/executor/abstract.py",
+        "line": 270,
+        "end": 276
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 9,
+        "label": "回报后状态 · 常规轮次"
+      },
+      {
+        "mode": "pressure",
+        "step": 7,
+        "label": "回报后状态 · 第一轮"
+      },
+      {
+        "mode": "pressure",
+        "step": 11,
+        "label": "回报后状态 · 第二轮"
+      }
+    ],
+    "note": "采样不是必经调用，也不能仅凭某个请求返回空 token 列表判断这一分支是否发生。现有步骤只有回报后状态，没有独立采样快照。"
+  },
+  {
+    "id": "aborts",
+    "parent": "engine",
+    "number": "6",
+    "kind": "调用",
+    "title": "EngineCore._process_aborts_queue()",
+    "summary": "回写模型输出前处理执行期间的中止请求。",
+    "input": "self.aborts_queue 中的中止请求；通过成员队列读取，无显式模型输出参数。",
+    "changes": "先处理待中止请求，再让调度器消费本轮输出；本例没有中止事件。",
+    "output": "本例请求状态不因中止改变，继续消费普通输出。",
+    "resume": "随后调用 Scheduler.update_from_output()。",
+    "evidence": [
+      {
+        "label": "处理顺序与调用",
+        "path": "vllm/v1/engine/core.py",
+        "line": 665,
+        "end": 670
+      },
+      {
+        "label": "方法定义",
+        "path": "vllm/v1/engine/core.py",
+        "line": 799
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 9,
+        "label": "回报后状态 · 本例无中止"
+      },
+      {
+        "mode": "pressure",
+        "step": 7,
+        "label": "回报后状态 · 第一轮"
+      }
+    ],
+    "note": "本例没有独立中止快照；目标仅显示回报后状态，未展示其他中止分支。"
+  },
+  {
+    "id": "update-output",
+    "parent": "engine",
+    "number": "7",
+    "kind": "调用",
+    "title": "Scheduler.update_from_output()",
+    "summary": "消费模型回报并更新请求与队列。",
+    "input": "原调度计划和模型输出；原计划决定每个请求应扣回多少在途位置。",
+    "changes": "扣回在途计数，追加有效输出并检查停止；必要时释放完成请求，再从队列移除。",
+    "output": "充足场景 A 已知长度15到16、C 仍欠6个提示位置；紧张第二轮 A 仍欠7个重算位置。",
+    "resume": "返回各客户端的引擎输出，交回 EngineCore.step()。",
+    "evidence": [
+      {
+        "label": "引擎调用",
+        "path": "vllm/v1/engine/core.py",
+        "line": 668,
+        "end": 670
+      },
+      {
+        "label": "方法定义",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 2025,
+        "end": 2029
+      },
+      {
+        "label": "扣回在途计数",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 2076,
+        "end": 2085
+      },
+      {
+        "label": "移除停止请求",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 2292,
+        "end": 2299
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 9,
+        "label": "回报后状态 · 常规轮次"
+      },
+      {
+        "mode": "pressure",
+        "step": 7,
+        "label": "回报后状态 · 第一轮"
+      },
+      {
+        "mode": "pressure",
+        "step": 11,
+        "label": "回报后状态 · 第二轮"
+      }
+    ]
+  },
+  {
+    "id": "update-request",
+    "parent": "update-output",
+    "number": "7.1",
+    "kind": "调用",
+    "title": "Scheduler._update_request_with_output()",
+    "summary": "有新 token 时更新请求并调用 check_stop()。",
+    "input": "当前请求及非空的新 token 列表；本例 A 得到普通 token，B 得到 EOS。",
+    "changes": "逐个追加 token 后调用 check_stop()；充足场景 A 已知长度增至 16，B 被标记结束。",
+    "output": "返回有效 token 列表与 stopped。C 和恢复轮 A 的回报没有新 token，调用方跳过本方法。",
+    "resume": "返回 update_from_output()；若请求停止，继续判断是否真正完成并释放。",
+    "evidence": [
+      {
+        "label": "非空输出时调用",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 2164,
+        "end": 2168
+      },
+      {
+        "label": "方法定义、追加与停止检查",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 2492,
+        "end": 2509
+      },
+      {
+        "label": "停止条件定义",
+        "path": "vllm/v1/core/sched/utils.py",
+        "line": 98,
+        "end": 119
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 9,
+        "label": "A 追加输出、B 停止"
+      },
+      {
+        "mode": "pressure",
+        "step": 7,
+        "label": "B 的结束输出"
+      }
+    ],
+    "note": "紧张场景第11步 A 仍处于中间重算块，不能把该步映射为追加新 token 或结束。"
+  },
+  {
+    "id": "free",
+    "parent": "update-output",
+    "number": "7.2",
+    "kind": "调用",
+    "title": "Scheduler._free_request()",
+    "summary": "B 真正结束后归还它持有的块。",
+    "input": "调用方已通过 _handle_stopped_request() 确认真正结束的 B；紧张第 1 轮 B 持有 2 块。",
+    "changes": "记录 finished_req_ids，经 _free_blocks() → _free_request_blocks() → KVCacheManager.free() 释放块并删除请求登记。",
+    "output": "本例紧张第 1 轮可用块由 0 变为 2，供下一轮恢复 A 使用。",
+    "resume": "返回 update_from_output()，由调用方从 running 移除已停止的 B，整理并返回客户端输出。",
+    "evidence": [
+      {
+        "label": "完成判断与释放调用",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 2223,
+        "end": 2229
+      },
+      {
+        "label": "完成判断定义",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 2464,
+        "end": 2467
+      },
+      {
+        "label": "释放方法定义与后续调用",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 2713,
+        "end": 2748
+      },
+      {
+        "label": "缓存管理器释放调用",
+        "path": "vllm/v1/core/sched/scheduler.py",
+        "line": 2765,
+        "end": 2774
+      },
+      {
+        "label": "缓存管理器释放定义",
+        "path": "vllm/v1/core/kv_cache_manager.py",
+        "line": 620,
+        "end": 629
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 9,
+        "label": "B 结束并释放"
+      },
+      {
+        "mode": "pressure",
+        "step": 7,
+        "label": "B 归还两个数据块"
+      }
+    ],
+    "note": "本例无延迟释放连接器；一般配置可能延迟归还缓存块。紧张第二轮的 A 尚未完成，不在这里释放。"
+  },
+  {
+    "id": "engine-return",
+    "parent": "engine",
+    "number": "8",
+    "kind": "返回",
+    "title": "返回 EngineCoreOutputs",
+    "summary": "结束本轮并将保留状态交给下一轮。",
+    "input": "调度器生成的客户端输出，以及本轮安排的总位置数。",
+    "changes": "返回输出映射与“总计划量大于0”的执行标记；本例各展示轮次的标记均为真。",
+    "output": "紧张第一轮结束后等待队列为 A、S、C；第二轮结束后 A 留在运行队列，计算游标为8。",
+    "resume": "回到引擎循环输出结果；下一次 step() 从这些状态重新调度。",
+    "evidence": [
+      {
+        "label": "本轮返回",
+        "path": "vllm/v1/engine/core.py",
+        "line": 671,
+        "end": 673
+      },
+      {
+        "label": "循环接收并发送输出",
+        "path": "vllm/v1/engine/core.py",
+        "line": 1588,
+        "end": 1596
+      }
+    ],
+    "targets": [
+      {
+        "mode": "normal",
+        "step": 9,
+        "label": "回报后状态 · 常规轮次"
+      },
+      {
+        "mode": "pressure",
+        "step": 7,
+        "label": "回报后状态 · 第一轮"
+      },
+      {
+        "mode": "pressure",
+        "step": 11,
+        "label": "回报后状态 · 第二轮"
+      }
+    ],
+    "note": "紧张场景第7步到第8步跨越两次 EngineCore.step() 调用；第11步只完成 A 的首段重算。"
+  }
+];
+const chainById = new Map(chainNodes.map(node => [node.id, node]));
+const collapsedNodes = new Set(chainNodes.filter(node => node.parent !== null).map(node => node.id));
+
+function stateSnapshot() {
+  return {mode, stepIndex, view, screen, selectedNode};
+}
+function rememberState() {
+  try { localStorage.setItem(storageKey, JSON.stringify(stateSnapshot())); } catch {}
+}
+function writeRoute(method = 'replace') {
+  const query = new URLSearchParams({screen, node:selectedNode, case:mode, view, step:String(stepIndex + 1)});
+  const hash = '#' + query.toString();
+  if (location.hash === hash) return;
+  try {
+    history[method + 'State']({scheduler:stateSnapshot()}, '', hash);
+    lastHash = location.hash;
+  } catch {}
+}
+function readRoute() {
+  const query = new URLSearchParams(location.hash.slice(1));
+  if (!query.has('screen')) return null;
+  const next = {
+    screen:query.get('screen'), selectedNode:query.get('node') || 'schedule',
+    mode:query.get('case') || 'normal', view:query.get('view') || 'map',
+    stepIndex:Number(query.get('step') || '0') - 1
+  };
+  if (!['chain','visual'].includes(next.screen) || !chainById.has(next.selectedNode)
+      || !Object.hasOwn(scenarios, next.mode) || !['map','ledger'].includes(next.view)
+      || !Number.isInteger(next.stepIndex) || next.stepIndex < -1
+      || next.stepIndex >= scenarios[next.mode].steps.length) return null;
+  return next;
+}
+function revealNode() {
+  let node = chainById.get(selectedNode);
+  while (node?.parent) {
+    collapsedNodes.delete(node.parent);
+    node = chainById.get(node.parent);
+  }
+}
+function buildChain() {
+  const children = parent => chainNodes.filter(node => node.parent === parent);
+  function appendNodes(list, parent) {
+    const nodes = children(parent);
+    nodes.forEach((node, index) => {
+      const item = element('li');
+      const row = element('div', undefined, 'chain-row');
+      const hasChildren = children(node.id).length > 0;
+      if (hasChildren) {
+        const toggle = element('button', collapsedNodes.has(node.id) ? '+' : '−', 'branch-toggle');
+        toggle.type = 'button';
+        toggle.dataset.toggle = node.id;
+        toggle.setAttribute('aria-label', (collapsedNodes.has(node.id) ? '展开 ' : '收起 ') + node.title);
+        toggle.setAttribute('aria-expanded', !collapsedNodes.has(node.id));
+        row.append(toggle);
+      } else {
+        const mark = element('span', index === nodes.length - 1 ? '└─' : '├─', 'branch-mark');
+        mark.setAttribute('aria-hidden', 'true');
+        row.append(mark);
+      }
+      const button = element('button', undefined, 'chain-node');
+      button.type = 'button';
+      button.dataset.node = node.id;
+      const caption = element('span');
+      caption.append(element('code', node.title), element('small', '[' + node.kind + '] ' + node.summary));
+      button.append(element('span', node.number, 'node-number'), caption);
+      row.append(button);
+      item.append(row);
+      if (hasChildren) {
+        const nested = element('ol', undefined, 'call-tree');
+        nested.hidden = collapsedNodes.has(node.id);
+        appendNodes(nested, node.id);
+        item.append(nested);
+      }
+      list.append(item);
+    });
+  }
+  byId('call-tree').replaceChildren();
+  appendNodes(byId('call-tree'), null);
+  byId('chain-count').textContent = chainNodes.length;
+}
+function scrollToChainSelection() {
+  const button = document.querySelector('[data-node="' + selectedNode + '"]');
+  const box = byId('tree-scroll');
+  const nodeRect = button.getBoundingClientRect();
+  const boxRect = box.getBoundingClientRect();
+  if (nodeRect.top < boxRect.top) box.scrollTop += nodeRect.top - boxRect.top - 8;
+  else if (nodeRect.bottom > boxRect.bottom) box.scrollTop += nodeRect.bottom - boxRect.bottom + 8;
+}
+function renderChain() {
+  const node = chainById.get(selectedNode);
+  document.querySelectorAll('[data-node]').forEach(button => {
+    if (button.dataset.node === selectedNode) button.setAttribute('aria-current', 'true');
+    else button.removeAttribute('aria-current');
+  });
+  byId('chain-node-kind').textContent = '节点 ' + node.number + ' / ' + node.kind;
+  byId('chain-node-title').textContent = node.title;
+  byId('chain-summary').textContent = node.summary;
+  const data = byId('chain-data');
+  data.replaceChildren();
+  for (const [label, key] of [['输入从哪来','input'], ['内部动作与持久状态','changes'], ['输出交给谁','output'], ['返回后在哪里继续','resume']]) {
+    data.append(element('dt', label), element('dd', node[key]));
+  }
+  byId('chain-note').hidden = !node.note;
+  byId('chain-note').textContent = node.note || '';
+  const evidence = byId('chain-evidence');
+  evidence.replaceChildren();
+  const versionLink = element('a', 'vllm-project/vllm @ ' + sourceSnapshot.commit.slice(0,10));
+  versionLink.href = sourceSnapshot.repository + '/tree/' + sourceSnapshot.commit;
+  versionLink.title = sourceSnapshot.commit;
+  versionLink.target = '_blank';
+  versionLink.rel = 'noopener noreferrer';
+  byId('chain-source-version').replaceChildren(versionLink, document.createTextNode(' · 以下行号属于此提交'));
+  for (const source of node.evidence) {
+    const range = source.line + (source.end ? '–' + source.end : '');
+    const link = element('a', source.label + ' · ' + source.path + ':' + range);
+    link.href = sourceLink(source.path, source.line, source.end);
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    evidence.append(link);
+  }
+  const localTargets = node.targets.filter(target => target.mode === mode);
+  const targets = localTargets.length ? localTargets : node.targets;
+  byId('chain-target-hint').textContent = localTargets.length
+    ? '当前算例：' + scenarios[mode].name + '。同一步可分别查看数据流和队列账本。'
+    : '当前算例没有对应快照；以下入口会切换算例。';
+  const links = byId('chain-targets');
+  links.replaceChildren();
+  for (const target of targets) {
+    const row = element('div', undefined, 'chain-target-row');
+    for (const nextView of ['map','ledger']) {
+      const button = element('button', undefined, 'chain-jump' + (nextView === 'map' ? ' primary' : ''));
+      button.type = 'button';
+      button.dataset.targetMode = target.mode;
+      button.dataset.targetStep = target.step;
+      button.dataset.targetView = nextView;
+      button.append(element('span', (nextView === 'map' ? '数据流' : '队列与计数') + ' → ' + String(target.step).padStart(2,'0')));
+      button.append(element('small', (target.mode !== mode ? scenarios[target.mode].name + ' · ' : '') + target.label));
+      row.append(button);
+    }
+    links.append(row);
+  }
+}
+function openVisualization(target) {
+  screen = 'visual';
+  view = target.view;
+  select(target.mode, target.step - 1, 'push');
+  byId('controls').scrollIntoView({block:'start'});
+  byId('controls').focus({preventScroll:true});
+}
+function openChain() {
+  screen = 'chain';
+  revealNode();
+  buildChain();
+  select(mode, stepIndex, 'push');
+  scrollToChainSelection();
+  const button = document.querySelector('[data-node="' + selectedNode + '"]');
+  button.scrollIntoView({block:'nearest'});
+  button.focus({preventScroll:true});
+}
 
 function element(tag, text, className) {
   const node = document.createElement(tag);
@@ -1225,7 +2831,7 @@ function buildTrace() {
 }
 function showSource(ref, id = 'sources') {
   const box = byId(id);
-  box.replaceChildren(element('span', 'scheduler.py'));
+  box.replaceChildren(element('span', 'scheduler.py @ ' + sourceSnapshot.commit.slice(0,10)));
   for (const range of ref.split(/,\s*/)) {
     const [first, last] = range.split('–');
     const link = element('a', range);
@@ -1283,12 +2889,19 @@ function render() {
   const global = stepIndex === -1;
   const overviewIndex = steps.findIndex(step => step.state.total !== null);
   const step = steps[global ? overviewIndex : stepIndex];
-  byId('map-view').hidden = view !== 'map';
-  byId('workbench').hidden = view !== 'ledger';
+  const isVisual = screen === 'visual';
+  byId('chain-view').hidden = isVisual;
+  for (const id of ['visual-context','visual-tabs','controls']) byId(id).hidden = !isVisual;
+  byId('chain-tab').setAttribute('aria-pressed', !isVisual);
+  byId('visual-tab').setAttribute('aria-pressed', isVisual);
+  byId('visual-origin').textContent = '从节点 ' + chainById.get(selectedNode).number + ' · ' + chainById.get(selectedNode).title + ' 进入；可继续前后步进。';
+  if (!isVisual) renderChain();
+  byId('map-view').hidden = !isVisual || view !== 'map';
+  byId('workbench').hidden = !isVisual || view !== 'ledger';
   byId('map-tab').setAttribute('aria-pressed', view === 'map');
   byId('ledger-tab').setAttribute('aria-pressed', view === 'ledger');
-  byId('io-strip').hidden = global || view !== 'map';
-  if (!global && view === 'map') {
+  byId('io-strip').hidden = !isVisual || global || view !== 'map';
+  if (isVisual && !global && view === 'map') {
     const io = ioExamples[mode][stepIndex];
     byId('io-step').textContent = '第 ' + step.round + ' 轮 / 步骤 ' + num(stepIndex);
     byId('io-title').textContent = step.title;
@@ -1296,11 +2909,11 @@ function render() {
     showSource(step.ref, 'io-sources');
     if (step.from === 'worker' || step.to === 'worker' || step.from === 'init') {
       const engineLink = element('a', 'EngineCore.step()');
-      engineLink.href = 'https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/engine/core.py#L644-L673';
+      engineLink.href = sourceLink('vllm/v1/engine/core.py', 644, 673);
       byId('io-sources').append(engineLink);
     }
   }
-  if (view === 'map') window.renderScheduleMap(mode, stepIndex, steps);
+  if (isVisual && view === 'map') window.renderScheduleMap(mode, stepIndex, steps);
   byId('workbench').classList.toggle('focus', !global);
   byId('subtitle').textContent = subtitle;
   byId('mode-indicator').textContent = name + ' / ' + (global ? '全局关系' : '步骤 ' + num(stepIndex) + ' / ' + steps.length);
@@ -1325,13 +2938,14 @@ function render() {
     button.parentElement.classList.toggle('selected', i === stepIndex);
   });
 }
-function select(nextMode, nextStep) {
+function select(nextMode, nextStep, historyMethod = 'replace') {
   const changed = mode !== nextMode;
   mode = nextMode;
   stepIndex = Math.max(-1, Math.min(nextStep, scenarios[mode].steps.length - 1));
   if (changed) buildTrace();
   render();
-  try { localStorage.setItem(storageKey, JSON.stringify({mode, stepIndex, view})); } catch {}
+  rememberState();
+  writeRoute(historyMethod);
 }
 try {
   const saved = JSON.parse(localStorage.getItem(storageKey));
@@ -1340,9 +2954,11 @@ try {
     mode = saved.mode;
     stepIndex = saved.stepIndex;
     view = saved.view === 'ledger' ? 'ledger' : 'map';
+    if (chainById.has(saved.selectedNode)) selectedNode = saved.selectedNode;
   }
 } catch {}
 window.gotoScheduleStep = (index) => {
+  screen = 'visual';
   select(mode, index);
   byId('controls').scrollIntoView({block:'start'});
 };
@@ -1352,7 +2968,7 @@ for (const nextView of ['map', 'ledger']) {
     select(mode, stepIndex);
   });
 }
-document.querySelectorAll('[data-mode]').forEach(btn => btn.addEventListener('click', () => select(btn.dataset.mode, -1)));
+document.querySelectorAll('[data-mode]').forEach(btn => btn.addEventListener('click', () => select(btn.dataset.mode, -1, 'push')));
 byId('overview').addEventListener('click', () => select(mode, -1));
 byId('prev').addEventListener('click', () => select(mode, stepIndex - 1));
 byId('next').addEventListener('click', () => select(mode, stepIndex + 1));
@@ -1362,7 +2978,65 @@ byId('trace').addEventListener('click', event => {
   select(mode, Number(button.dataset.index));
   if (matchMedia('(max-width:760px)').matches) byId('controls').scrollIntoView({block:'start'});
 });
+byId('chain-tab').addEventListener('click', openChain);
+byId('return-chain').addEventListener('click', openChain);
+byId('visual-tab').addEventListener('click', () => {
+  screen = 'visual';
+  select(mode, stepIndex, 'push');
+});
+byId('call-tree').addEventListener('click', event => {
+  const toggle = event.target.closest('[data-toggle]');
+  if (toggle) {
+    if (collapsedNodes.has(toggle.dataset.toggle)) collapsedNodes.delete(toggle.dataset.toggle);
+    else collapsedNodes.add(toggle.dataset.toggle);
+    buildChain();
+    renderChain();
+    document.querySelector('[data-toggle="' + toggle.dataset.toggle + '"]').focus({preventScroll:true});
+    return;
+  }
+  const button = event.target.closest('[data-node]');
+  if (!button) return;
+  selectedNode = button.dataset.node;
+  select(mode, stepIndex, 'push');
+  if (matchMedia('(max-width:760px)').matches) {
+    byId('chain-detail').scrollIntoView({block:'start'});
+    byId('chain-detail').focus({preventScroll:true});
+  }
+});
+byId('chain-targets').addEventListener('click', event => {
+  const button = event.target.closest('[data-target-mode]');
+  if (button) openVisualization({mode:button.dataset.targetMode, step:Number(button.dataset.targetStep), view:button.dataset.targetView});
+});
+byId('expand-chain').addEventListener('click', () => {
+  collapsedNodes.clear(); buildChain(); renderChain();
+});
+byId('fold-chain').addEventListener('click', () => {
+  chainNodes.filter(node => node.parent !== null).forEach(node => collapsedNodes.add(node.id));
+  buildChain(); renderChain();
+});
+const initialRoute = readRoute();
+byId('source-revision').href = sourceSnapshot.repository + '/tree/' + sourceSnapshot.commit;
+byId('source-revision').append(element('code', 'vllm-project/vllm @ ' + sourceSnapshot.commit));
+byId('source-revision').target = '_blank';
+byId('source-revision').rel = 'noopener noreferrer';
+if (initialRoute) ({mode, stepIndex, view, screen, selectedNode} = initialRoute);
+revealNode();
+buildChain();
 buildTrace();
 render();
+if (screen === 'chain') scrollToChainSelection();
+try { history.replaceState({scheduler:stateSnapshot()}, ''); } catch {}
+function restoreNavigation() {
+  // Back/forward may emit both events; restore one time per hash.
+  if (location.hash === lastHash) return;
+  lastHash = location.hash;
+  const next = readRoute() || (!location.hash && history.state?.scheduler)
+    || {mode:'normal',stepIndex:-1,view:'map',screen:'chain',selectedNode:'schedule'};
+  ({mode, stepIndex, view, screen, selectedNode} = next);
+  revealNode(); buildChain(); buildTrace(); render(); rememberState();
+  if (screen === 'chain') scrollToChainSelection();
+}
+window.addEventListener('popstate', restoreNavigation);
+window.addEventListener('hashchange', restoreNavigation);
 </script>
 </body></html>

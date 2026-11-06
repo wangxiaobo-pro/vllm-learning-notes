@@ -2,6 +2,23 @@
 <html lang="zh-CN" data-visualize-standalone>
 <head>
 <meta charset="utf-8">
+<!-- learning-scope-style:start -->
+<style>
+.learning-scope-shell{box-sizing:border-box;max-width:960px;width:100%;margin:0 auto 14px;font:13px/1.6 system-ui,"Microsoft YaHei",sans-serif;color:#344454}
+.learning-scope{border:1px solid #dce3e9;border-radius:8px;background:#f7f9fb;overflow-wrap:anywhere}
+.learning-scope>summary{display:list-item;list-style:disclosure-closed inside;cursor:pointer;padding:9px 12px;font-size:13px;line-height:1.6;color:inherit}
+.learning-scope[open]>summary{list-style-type:disclosure-open}
+.learning-scope>summary:focus-visible{outline:2px solid #287cb8;outline-offset:3px}
+.learning-scope-kind{font-weight:650;color:#24668f}
+.learning-scope-hint{font-size:11px;opacity:.7;margin-left:6px}
+.learning-scope[open] .learning-scope-hint{display:none}
+.learning-scope dl{display:grid;grid-template-columns:88px minmax(0,1fr);gap:7px 12px;margin:0;padding:3px 12px 13px}
+.learning-scope dt{font-weight:600}.learning-scope dd{margin:0}
+@media(max-width:480px){.learning-scope dl{grid-template-columns:1fr;gap:3px}.learning-scope dd+dt{margin-top:6px}}
+:root[data-theme=dark] .learning-scope-shell{color:#c5d1dc}:root[data-theme=dark] .learning-scope{background:#1b242d;border-color:#384550}:root[data-theme=dark] .learning-scope-kind{color:#9bcaf0}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .learning-scope-shell{color:#c5d1dc}:root:not([data-theme=light]) .learning-scope{background:#1b242d;border-color:#384550}:root:not([data-theme=light]) .learning-scope-kind{color:#9bcaf0}}
+</style>
+<!-- learning-scope-style:end -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
@@ -18,6 +35,17 @@ iframe#codex-visualization{height:calc(100vh - 5.2rem)}
 </style>
 </head>
 <body>
+<!-- learning-scope:start -->
+<aside class="learning-scope-shell" aria-label="本页范围与源码版本">
+<details class="learning-scope">
+<summary><span class="learning-scope-kind">算法教学</span> 本页范围与源码版本 <span class="learning-scope-hint">展开查看</span></summary>
+<dl><dt>源码基线</dt><dd>固定参数的 mini decoder；不绑定预训练模型版本</dd>
+<dt>后端与配置</dt><dd>浏览器内计算，3 层、hidden=8、2 heads、词表=8；结构页 T=3，矩阵页 T=4</dd>
+<dt>流程范围</dt><dd>结构页与矩阵页沿同一计算链展开；生成例子另标当前前缀与预测位置。</dd>
+<dt>教学假设</dt><dd>权重未训练，数值用于验算；输出 token 不表示模型语言能力。</dd></dl>
+</details>
+</aside>
+<!-- learning-scope:end -->
 <nav aria-label="学习页面" class="page-switch"><a href="transformer-structure-explorer.html" aria-current="page">结构讲解</a><a href="transformer-structure-explorer-matrices.html">真实矩阵计算</a></nav>
 <iframe id="codex-visualization" sandbox="allow-scripts" referrerpolicy="no-referrer" title="Transformer 数据流探索器" data-srcdoc="&lt;!doctype html&gt;
 &lt;html lang=&quot;zh-CN&quot; data-visualize-standalone&gt;
@@ -2074,20 +2102,20 @@ html&gt;body{padding:0}&lt;/style&gt;
 
   &lt;div class=&quot;intro&quot;&gt;
     &lt;h1&gt;Transformer 数据流探索器&lt;/h1&gt;
-    &lt;div class=&quot;subtle&quot;&gt;用一个可以手算的 mini decoder-only 模型走一遍：&lt;span class=&quot;code-chip&quot;&gt;猫 追 老鼠 &amp;lt;eos&amp;gt;&lt;/span&gt; · B=&lt;span id=&quot;batch-intro&quot;&gt;2&lt;/span&gt; · T=4 · d=8 · h=2 · dₕ=4 · dff=16 · L=3 · V=8&lt;/div&gt;
+    &lt;div class=&quot;subtle&quot;&gt;用一个可以手算的 mini decoder-only 模型走一遍：&lt;span class=&quot;code-chip&quot;&gt;猫 追 老鼠&lt;/span&gt; · B=&lt;span id=&quot;batch-intro&quot;&gt;2&lt;/span&gt; · T=3 · d=8 · h=2 · dₕ=4 · dff=16 · L=&lt;span id=&quot;layer-intro&quot;&gt;3&lt;/span&gt; · V=8&lt;/div&gt;
     &lt;details class=&quot;example-card&quot; aria-label=&quot;贯穿页面的具体示例&quot;&gt;
       &lt;summary&gt;贯穿全页的具体示例 &lt;span class=&quot;subtle&quot;&gt;（点击展开；表中的数字都来自这套小词表和输入）&lt;/span&gt;&lt;/summary&gt;
       &lt;div class=&quot;example-card-grid&quot;&gt;
-        &lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;样本&lt;/th&gt;&lt;th&gt;Token IDs（T=4）&lt;/th&gt;&lt;th&gt;还原文本&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;
-          &lt;tr&gt;&lt;td&gt;batch[0]&lt;/td&gt;&lt;td class=&quot;example-vector&quot;&gt;[1, 2, 3, 7]&lt;/td&gt;&lt;td&gt;猫 追 老鼠 &amp;lt;eos&amp;gt;&lt;/td&gt;&lt;/tr&gt;
-          &lt;tr&gt;&lt;td&gt;batch[1]&lt;/td&gt;&lt;td class=&quot;example-vector&quot;&gt;[4, 5, 6, 7]&lt;/td&gt;&lt;td&gt;鸟 吃 米 &amp;lt;eos&amp;gt;&lt;/td&gt;&lt;/tr&gt;
+        &lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;样本&lt;/th&gt;&lt;th&gt;Token IDs（T=3）&lt;/th&gt;&lt;th&gt;还原文本&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;
+          &lt;tr&gt;&lt;td&gt;batch[0]&lt;/td&gt;&lt;td class=&quot;example-vector&quot;&gt;[1, 2, 3]&lt;/td&gt;&lt;td&gt;猫 追 老鼠&lt;/td&gt;&lt;/tr&gt;
+          &lt;tr&gt;&lt;td&gt;batch[1]&lt;/td&gt;&lt;td class=&quot;example-vector&quot;&gt;[4, 5, 6]&lt;/td&gt;&lt;td&gt;鸟 吃 米&lt;/td&gt;&lt;/tr&gt;
         &lt;/tbody&gt;&lt;/table&gt;
         &lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;ID&lt;/th&gt;&lt;th&gt;词表（V=8）&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;
           &lt;tr&gt;&lt;td&gt;0&lt;/td&gt;&lt;td&gt;&amp;lt;pad&amp;gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;1–3&lt;/td&gt;&lt;td&gt;猫、追、老鼠&lt;/td&gt;&lt;/tr&gt;
           &lt;tr&gt;&lt;td&gt;4–6&lt;/td&gt;&lt;td&gt;鸟、吃、米&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;7&lt;/td&gt;&lt;td&gt;&amp;lt;eos&amp;gt;&lt;/td&gt;&lt;/tr&gt;
         &lt;/tbody&gt;&lt;/table&gt;
       &lt;/div&gt;
-      &lt;div class=&quot;calc-title&quot;&gt;这个 mini 模型的参数账本（不含 bias，Embedding 与 LM Head 不共享）&lt;/div&gt;
+      &lt;div class=&quot;calc-title&quot;&gt;这个 mini 模型默认 L=3 的参数账本（不含 bias，Embedding 与 LM Head 不共享）&lt;/div&gt;
       &lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;模块&lt;/th&gt;&lt;th&gt;形状&lt;/th&gt;&lt;th&gt;参数量&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;
         &lt;tr&gt;&lt;td&gt;Embedding&lt;/td&gt;&lt;td class=&quot;example-vector&quot;&gt;8×8&lt;/td&gt;&lt;td&gt;64&lt;/td&gt;&lt;/tr&gt;
         &lt;tr&gt;&lt;td&gt;每个 Block 的 Q/K/V&lt;/td&gt;&lt;td class=&quot;example-vector&quot;&gt;3×(8×8)&lt;/td&gt;&lt;td&gt;192&lt;/td&gt;&lt;/tr&gt;
@@ -2123,7 +2151,7 @@ html&gt;body{padding:0}&lt;/style&gt;
       &lt;div class=&quot;step-status-meta&quot;&gt;&lt;span id=&quot;current-step-route&quot; class=&quot;step-status-route&quot;&gt;完整模型总览&lt;/span&gt;&lt;span id=&quot;current-step-io&quot;&gt;等待点击“下一步”&lt;/span&gt;&lt;/div&gt;
     &lt;/div&gt;
     &lt;div id=&quot;playback-guide&quot; class=&quot;playback-guide&quot; aria-live=&quot;polite&quot; aria-atomic=&quot;true&quot;&gt;&lt;strong&gt;当前步骤：&lt;/strong&gt;&lt;span id=&quot;playback-narration-text&quot;&gt;点击“自动播放完整流程”，或用“下一步”逐步查看；手动切换会暂停动画。&lt;/span&gt;&lt;span id=&quot;playback-result&quot; class=&quot;playback-result&quot;&gt;每一步的说明和示例结果会同步更新。&lt;/span&gt;&lt;/div&gt;
-    &lt;div class=&quot;batch-row&quot;&gt;&lt;label&gt;Batch B：&lt;select id=&quot;batch-size&quot; class=&quot;form-select&quot; aria-label=&quot;选择 batch 大小&quot;&gt;&lt;option value=&quot;1&quot;&gt;1&lt;/option&gt;&lt;option value=&quot;2&quot; selected&gt;2&lt;/option&gt;&lt;option value=&quot;4&quot;&gt;4&lt;/option&gt;&lt;option value=&quot;8&quot;&gt;8&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;&lt;span id=&quot;batch-summary&quot; class=&quot;subtle&quot;&gt;每次并行处理 2 条序列，主干形状为 [2,4,8]。&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;batch-row&quot;&gt;&lt;label&gt;Batch B：&lt;select id=&quot;batch-size&quot; class=&quot;form-select&quot; aria-label=&quot;选择 batch 大小&quot;&gt;&lt;option value=&quot;1&quot;&gt;1&lt;/option&gt;&lt;option value=&quot;2&quot; selected&gt;2&lt;/option&gt;&lt;option value=&quot;4&quot;&gt;4&lt;/option&gt;&lt;option value=&quot;8&quot;&gt;8&lt;/option&gt;&lt;/select&gt;&lt;/label&gt;&lt;span id=&quot;batch-summary&quot; class=&quot;subtle&quot;&gt;每次并行处理 2 条序列，主干形状为 [2,3,8]。&lt;/span&gt;&lt;/div&gt;
   &lt;/div&gt;
 
   &lt;section id=&quot;panel-single&quot; class=&quot;stage&quot; role=&quot;region&quot; aria-label=&quot;单层 Transformer Block&quot; hidden&gt;
@@ -2134,7 +2162,7 @@ html&gt;body{padding:0}&lt;/style&gt;
           &lt;option value=&quot;0&quot;&gt;猫（位置 0）&lt;/option&gt;
           &lt;option value=&quot;1&quot;&gt;追（位置 1）&lt;/option&gt;
           &lt;option value=&quot;2&quot; selected&gt;老鼠（位置 2）&lt;/option&gt;
-          &lt;option value=&quot;3&quot;&gt;&amp;lt;eos&amp;gt;（位置 3）&lt;/option&gt;
+
         &lt;/select&gt;
       &lt;/label&gt;
       &lt;span class=&quot;subtle&quot;&gt;点击节点，进入这个模块的内部流程。&lt;/span&gt;
@@ -2142,23 +2170,23 @@ html&gt;body{padding:0}&lt;/style&gt;
 
     &lt;div class=&quot;diagram&quot; aria-label=&quot;单层 Transformer Block 数据流&quot;&gt;
       &lt;div class=&quot;flow&quot;&gt;
-        &lt;button class=&quot;node io selected&quot; type=&quot;button&quot; data-step=&quot;x&quot;&gt;&lt;span class=&quot;name&quot;&gt;输入表示 X&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[B,T,d] = [2,4,8]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;2 条句子 × 4 个 token × 8 维&lt;/span&gt;&lt;/button&gt;
+        &lt;button class=&quot;node io selected&quot; type=&quot;button&quot; data-step=&quot;x&quot;&gt;&lt;span class=&quot;name&quot;&gt;输入表示 X&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[B,T,d] = [2,3,8]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;当前 B 条句子 × 3 个 token × 8 维&lt;/span&gt;&lt;/button&gt;
         &lt;span class=&quot;arrow&quot; aria-hidden=&quot;true&quot;&gt;→&lt;/span&gt;
-        &lt;button class=&quot;node norm&quot; type=&quot;button&quot; data-step=&quot;norm1&quot;&gt;&lt;span class=&quot;name&quot;&gt;RMSNorm&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,4,8]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;每行 8 个数重新缩放&lt;/span&gt;&lt;/button&gt;
+        &lt;button class=&quot;node norm&quot; type=&quot;button&quot; data-step=&quot;norm1&quot;&gt;&lt;span class=&quot;name&quot;&gt;RMSNorm&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,3,8]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;每行 8 个数重新缩放&lt;/span&gt;&lt;/button&gt;
         &lt;span class=&quot;arrow&quot; aria-hidden=&quot;true&quot;&gt;→&lt;/span&gt;
-        &lt;button class=&quot;node attn&quot; type=&quot;button&quot; data-step=&quot;qkv&quot;&gt;&lt;span class=&quot;name&quot;&gt;Q / K / V 投影&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;各 [2,2,4,4]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;8 维 → 2 头 × 4 维&lt;/span&gt;&lt;/button&gt;
+        &lt;button class=&quot;node attn&quot; type=&quot;button&quot; data-step=&quot;qkv&quot;&gt;&lt;span class=&quot;name&quot;&gt;Q / K / V 投影&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;各 [2,2,3,4]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;8 维 → 2 头 × 4 维&lt;/span&gt;&lt;/button&gt;
         &lt;span class=&quot;arrow&quot; aria-hidden=&quot;true&quot;&gt;→&lt;/span&gt;
-        &lt;button class=&quot;node attn&quot; type=&quot;button&quot; data-step=&quot;attn&quot;&gt;&lt;span class=&quot;name&quot;&gt;因果自注意力&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,2,4,4] → [2,4,8]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;每个词只看左侧&lt;/span&gt;&lt;/button&gt;
+        &lt;button class=&quot;node attn&quot; type=&quot;button&quot; data-step=&quot;attn&quot;&gt;&lt;span class=&quot;name&quot;&gt;因果自注意力&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;QKV [2,2,3,4] → [2,3,8]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;每个词只看左侧&lt;/span&gt;&lt;/button&gt;
         &lt;span class=&quot;arrow&quot; aria-hidden=&quot;true&quot;&gt;→&lt;/span&gt;
-        &lt;button class=&quot;node&quot; type=&quot;button&quot; data-step=&quot;add1&quot;&gt;&lt;span class=&quot;name&quot;&gt;第一次残差相加&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;H₁ = X + Attn(X)&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;注意力结果与原输入逐元素相加&lt;/span&gt;&lt;/button&gt;
+        &lt;button class=&quot;node&quot; type=&quot;button&quot; data-step=&quot;add1&quot;&gt;&lt;span class=&quot;name&quot;&gt;第一次残差相加&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;H₁ = X + Attn(Norm₁(X))&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;注意力结果与原输入逐元素相加&lt;/span&gt;&lt;/button&gt;
       &lt;/div&gt;
       &lt;div class=&quot;section-label&quot;&gt;第二个子层：输入来自第一次残差后的 H₁&lt;/div&gt;
       &lt;div class=&quot;flow&quot;&gt;
-        &lt;button class=&quot;node norm&quot; type=&quot;button&quot; data-step=&quot;norm2&quot;&gt;&lt;span class=&quot;name&quot;&gt;RMSNorm（输入 H₁）&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,4,8]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;H₁ = X + Attention(X)，再缩放每行&lt;/span&gt;&lt;/button&gt;
+        &lt;button class=&quot;node norm&quot; type=&quot;button&quot; data-step=&quot;norm2&quot;&gt;&lt;span class=&quot;name&quot;&gt;RMSNorm（输入 H₁）&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,3,8]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;H₁ = X + Attention(X)，再缩放每行&lt;/span&gt;&lt;/button&gt;
         &lt;span class=&quot;arrow&quot; aria-hidden=&quot;true&quot;&gt;→&lt;/span&gt;
         &lt;button class=&quot;node mlp&quot; type=&quot;button&quot; data-step=&quot;mlp&quot;&gt;&lt;span class=&quot;name&quot;&gt;SwiGLU / MLP&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;8 → 16 → 8&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;每个位置扩宽再压回&lt;/span&gt;&lt;/button&gt;
         &lt;span class=&quot;arrow&quot; aria-hidden=&quot;true&quot;&gt;→&lt;/span&gt;
-        &lt;button class=&quot;node&quot; type=&quot;button&quot; data-step=&quot;add2&quot;&gt;&lt;span class=&quot;name&quot;&gt;残差相加&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;Y = H₁ + MLP(H₁)&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;输出仍是 [2,4,8]&lt;/span&gt;&lt;/button&gt;
+        &lt;button class=&quot;node&quot; type=&quot;button&quot; data-step=&quot;add2&quot;&gt;&lt;span class=&quot;name&quot;&gt;残差相加&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;Y = H₁ + MLP(Norm₂(H₁))&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;输出仍是 [2,3,8]&lt;/span&gt;&lt;/button&gt;
       &lt;/div&gt;
 
       &lt;div class=&quot;attention-wrap&quot;&gt;
@@ -2173,7 +2201,7 @@ html&gt;body{padding:0}&lt;/style&gt;
         &lt;/div&gt;
         &lt;div class=&quot;matrix-wrap&quot;&gt;
           &lt;table class=&quot;matrix&quot; aria-label=&quot;因果注意力权重示意矩阵&quot;&gt;
-            &lt;thead&gt;&lt;tr&gt;&lt;th&gt;Q\K&lt;/th&gt;&lt;th&gt;猫&lt;/th&gt;&lt;th&gt;追&lt;/th&gt;&lt;th&gt;老鼠&lt;/th&gt;&lt;th&gt;&amp;lt;eos&amp;gt;&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;
+            &lt;thead&gt;&lt;tr&gt;&lt;th&gt;Q\K&lt;/th&gt;&lt;th&gt;猫&lt;/th&gt;&lt;th&gt;追&lt;/th&gt;&lt;th&gt;老鼠&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;
             &lt;tbody id=&quot;attention-matrix&quot;&gt;&lt;/tbody&gt;
           &lt;/table&gt;
           &lt;div class=&quot;legend&quot;&gt;&lt;span&gt;&lt;i class=&quot;swatch&quot;&gt;&lt;/i&gt;可见位置&lt;/span&gt;&lt;span&gt;&lt;i class=&quot;swatch mask&quot;&gt;&lt;/i&gt;未来位置被 mask&lt;/span&gt;&lt;/div&gt;
@@ -2197,7 +2225,7 @@ html&gt;body{padding:0}&lt;/style&gt;
         &lt;div class=&quot;detail-title&quot;&gt;具体输入 → 计算 → 输出&lt;/div&gt;
         &lt;div class=&quot;calc-title&quot; id=&quot;single-calc-title&quot;&gt;示例：位置 2 的“老鼠”&lt;/div&gt;
         &lt;div id=&quot;single-calc&quot; aria-live=&quot;polite&quot;&gt;&lt;/div&gt;
-        &lt;div class=&quot;micro-note&quot;&gt;数值是教学用的简化示例，重点是观察形状、信息流和运算目的；真实模型的权重规模更大。&lt;/div&gt;
+        &lt;div class=&quot;micro-note&quot;&gt;数值与真实矩阵页使用同一套固定、未训练参数实际计算；显示保留 3 位小数，计算不舍入。&lt;/div&gt;
         &lt;div class=&quot;calc-title&quot;&gt;当前张量尺寸&lt;/div&gt;&lt;table class=&quot;kv&quot;&gt;&lt;tbody id=&quot;shape-table&quot;&gt;&lt;/tbody&gt;&lt;/table&gt;
       &lt;/div&gt;
     &lt;/div&gt;
@@ -2212,12 +2240,12 @@ html&gt;body{padding:0}&lt;/style&gt;
       &lt;span class=&quot;subtle&quot;&gt;每层参数不同，但序列长度 T 和隐藏宽度 d 保持不变。&lt;/span&gt;
     &lt;/div&gt;
     &lt;div class=&quot;diagram&quot;&gt;
-      &lt;div class=&quot;flow&quot;&gt;&lt;button class=&quot;node io&quot; type=&quot;button&quot; data-stack-step=&quot;ids&quot;&gt;&lt;span class=&quot;name&quot;&gt;Token IDs&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[B,T] = [2,4]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;[1,2,3,7] 与 [4,5,6,7]&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;&lt;button class=&quot;node io&quot; type=&quot;button&quot; data-stack-step=&quot;embed&quot;&gt;&lt;span class=&quot;name&quot;&gt;Embedding&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,4,8]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;每个 ID 查一行 8 维向量&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;&lt;span class=&quot;subtle&quot;&gt;进入同一条表示流&lt;/span&gt;&lt;/div&gt;
+      &lt;div class=&quot;flow&quot;&gt;&lt;button class=&quot;node io&quot; type=&quot;button&quot; data-stack-step=&quot;ids&quot;&gt;&lt;span class=&quot;name&quot;&gt;Token IDs&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[B,T] = [2,3]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;[1,2,3] 与 [4,5,6]&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;&lt;button class=&quot;node io&quot; type=&quot;button&quot; data-stack-step=&quot;embed&quot;&gt;&lt;span class=&quot;name&quot;&gt;Embedding&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,3,8]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;每个 ID 查一行 8 维向量&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;&lt;span class=&quot;subtle&quot;&gt;进入同一条表示流&lt;/span&gt;&lt;/div&gt;
       &lt;div class=&quot;section-label&quot;&gt;层与层之间：上一层的 Y 变成下一层的 X&lt;/div&gt;
       &lt;div id=&quot;layer-stack&quot; class=&quot;stack&quot; aria-label=&quot;可调层数的 Transformer Block 堆叠&quot;&gt;&lt;/div&gt;
       &lt;div class=&quot;flow&quot;&gt;&lt;span class=&quot;stack-arrow&quot; aria-hidden=&quot;true&quot;&gt;↓&lt;/span&gt;&lt;/div&gt;
-      &lt;div class=&quot;flow&quot;&gt;&lt;button class=&quot;node norm&quot; type=&quot;button&quot; data-stack-step=&quot;finalnorm&quot;&gt;&lt;span class=&quot;name&quot;&gt;Final RMSNorm&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,4,8]&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;&lt;button class=&quot;node attn&quot; type=&quot;button&quot; data-stack-step=&quot;lmhead&quot;&gt;&lt;span class=&quot;name&quot;&gt;LM Head&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,4,8]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;8 维 → 8 个词表分数&lt;/span&gt;&lt;/button&gt;&lt;/div&gt;
-      &lt;div class=&quot;callout&quot;&gt;&lt;strong&gt;层深 ≠ 生成步数：&lt;/strong&gt;一次输入的 4 个位置会在每个 Block 中一起计算；层数只是“表示被加工了多少轮”。&lt;/div&gt;
+      &lt;div class=&quot;flow&quot;&gt;&lt;button class=&quot;node norm&quot; type=&quot;button&quot; data-stack-step=&quot;finalnorm&quot;&gt;&lt;span class=&quot;name&quot;&gt;Final RMSNorm&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,3,8]&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;&lt;button class=&quot;node attn&quot; type=&quot;button&quot; data-stack-step=&quot;lmhead&quot;&gt;&lt;span class=&quot;name&quot;&gt;LM Head&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,3,8]&lt;/span&gt;&lt;span class=&quot;formula&quot;&gt;8 维 → 8 个词表分数&lt;/span&gt;&lt;/button&gt;&lt;/div&gt;
+      &lt;div class=&quot;callout&quot;&gt;&lt;strong&gt;层深 ≠ 生成步数：&lt;/strong&gt;一次输入的 3 个位置会在每个 Block 中一起计算；层数只是“表示被加工了多少轮”。&lt;/div&gt;
     &lt;/div&gt;
     &lt;div class=&quot;detail-grid detail&quot;&gt;
       &lt;div class=&quot;card&quot; aria-live=&quot;polite&quot;&gt;
@@ -2227,8 +2255,8 @@ html&gt;body{padding:0}&lt;/style&gt;
       &lt;/div&gt;
       &lt;div class=&quot;card&quot;&gt;
         &lt;div class=&quot;detail-title&quot;&gt;同一个位置如何逐层变化&lt;/div&gt;
-        &lt;table class=&quot;trace-table&quot;&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;阶段&lt;/th&gt;&lt;th&gt;位置 2 的表示（示意）&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody id=&quot;stack-trace&quot;&gt;&lt;/tbody&gt;&lt;/table&gt;
-        &lt;div class=&quot;calc-title&quot;&gt;这个例子的配置&lt;/div&gt;&lt;table class=&quot;kv&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;输入&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;code-chip&quot;&gt;[2,4]&lt;/span&gt; = 两行 token IDs&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;主干&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;code-chip&quot;&gt;[2,4,8]&lt;/span&gt; 每层不变&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;层数&lt;/td&gt;&lt;td id=&quot;layer-summary&quot;&gt;L=3&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;词表输出&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;code-chip&quot;&gt;[2,4,8]&lt;/span&gt; 每个位置 8 个 logits&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;
+        &lt;table class=&quot;trace-table&quot;&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;阶段&lt;/th&gt;&lt;th&gt;位置 2 的实际教学计算值&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody id=&quot;stack-trace&quot;&gt;&lt;/tbody&gt;&lt;/table&gt;
+        &lt;div class=&quot;calc-title&quot;&gt;这个例子的配置&lt;/div&gt;&lt;table class=&quot;kv&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td&gt;输入&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;code-chip&quot;&gt;[2,3]&lt;/span&gt; = 当前 B 行 token IDs&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;主干&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;code-chip&quot;&gt;[2,3,8]&lt;/span&gt; 每层不变&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;层数&lt;/td&gt;&lt;td id=&quot;layer-summary&quot;&gt;L=3&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;词表输出&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;code-chip&quot;&gt;[2,3,8]&lt;/span&gt; 每个位置 8 个 logits&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;
       &lt;/div&gt;
     &lt;/div&gt;
   &lt;/section&gt;
@@ -2236,14 +2264,14 @@ html&gt;body{padding:0}&lt;/style&gt;
   &lt;section id=&quot;panel-full&quot; class=&quot;stage&quot; role=&quot;tabpanel&quot; aria-labelledby=&quot;tab-full&quot; hidden&gt;
     &lt;div class=&quot;diagram&quot;&gt;
       &lt;div class=&quot;full-flow&quot; aria-label=&quot;完整 decoder-only 模型数据流&quot;&gt;
-        &lt;button class=&quot;node io&quot; type=&quot;button&quot; data-full-step=&quot;text&quot;&gt;&lt;span class=&quot;name&quot;&gt;文本&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;“猫 追 老鼠 &amp;lt;eos&amp;gt;”&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;
-        &lt;button class=&quot;node io&quot; type=&quot;button&quot; data-full-step=&quot;tokenizer&quot;&gt;&lt;span class=&quot;name&quot;&gt;Tokenizer&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[1,2,3,7]&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;
-        &lt;button class=&quot;node io&quot; type=&quot;button&quot; data-full-step=&quot;embedding&quot;&gt;&lt;span class=&quot;name&quot;&gt;Embedding&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,4,8]&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;
-        &lt;button class=&quot;node attn&quot; type=&quot;button&quot; data-full-step=&quot;blocks&quot;&gt;&lt;span class=&quot;name&quot;&gt;L × Decoder Block&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,4,8] → [2,4,8]&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;
-        &lt;button class=&quot;node norm&quot; type=&quot;button&quot; data-full-step=&quot;finalnorm&quot;&gt;&lt;span class=&quot;name&quot;&gt;Final Norm&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,4,8]&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;
-        &lt;button class=&quot;node mlp&quot; type=&quot;button&quot; data-full-step=&quot;lmhead&quot;&gt;&lt;span class=&quot;name&quot;&gt;LM Head&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,4,8]&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;
+        &lt;button class=&quot;node io&quot; type=&quot;button&quot; data-full-step=&quot;text&quot;&gt;&lt;span class=&quot;name&quot;&gt;文本&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;“猫 追 老鼠”&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;
+        &lt;button class=&quot;node io&quot; type=&quot;button&quot; data-full-step=&quot;tokenizer&quot;&gt;&lt;span class=&quot;name&quot;&gt;Tokenizer&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[1,2,3]&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;
+        &lt;button class=&quot;node io&quot; type=&quot;button&quot; data-full-step=&quot;embedding&quot;&gt;&lt;span class=&quot;name&quot;&gt;Embedding&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,3,8]&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;
+        &lt;button class=&quot;node attn&quot; type=&quot;button&quot; data-full-step=&quot;blocks&quot;&gt;&lt;span class=&quot;name&quot;&gt;L × Decoder Block&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,3,8] → [2,3,8]&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;
+        &lt;button class=&quot;node norm&quot; type=&quot;button&quot; data-full-step=&quot;finalnorm&quot;&gt;&lt;span class=&quot;name&quot;&gt;Final Norm&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,3,8]&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;
+        &lt;button class=&quot;node mlp&quot; type=&quot;button&quot; data-full-step=&quot;lmhead&quot;&gt;&lt;span class=&quot;name&quot;&gt;LM Head&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;[2,3,8]&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;
         &lt;button class=&quot;node mlp&quot; type=&quot;button&quot; data-full-step=&quot;prob&quot;&gt;&lt;span class=&quot;name&quot;&gt;logits → 概率&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;softmax / 采样&lt;/span&gt;&lt;/button&gt;&lt;span class=&quot;arrow&quot;&gt;→&lt;/span&gt;
-        &lt;button class=&quot;node io&quot; type=&quot;button&quot; data-full-step=&quot;next&quot;&gt;&lt;span class=&quot;name&quot;&gt;下一个 token&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;例如“&amp;lt;eos&amp;gt;”&lt;/span&gt;&lt;/button&gt;
+        &lt;button class=&quot;node io&quot; type=&quot;button&quot; data-full-step=&quot;next&quot;&gt;&lt;span class=&quot;name&quot;&gt;下一个 token&lt;/span&gt;&lt;span class=&quot;shape&quot;&gt;由当前概率选择&lt;/span&gt;&lt;/button&gt;
       &lt;/div&gt;
       &lt;div class=&quot;callout&quot; id=&quot;full-callout&quot;&gt;&lt;strong&gt;推理闭环：&lt;/strong&gt;模型每次根据已有上下文预测一个 token，缓存历史 K/V，再把新 token 放回上下文继续预测，直到遇到停止条件。&lt;/div&gt;
     &lt;/div&gt;
@@ -2285,12 +2313,175 @@ html&gt;body{padding:0}&lt;/style&gt;
 &lt;/div&gt;
 
 &lt;script&gt;
+/* BEGIN SHARED TEACHING ENGINE */
+/*
+ * A fully calculated, deterministic teaching Transformer.
+ * The small fixed parameters below are NOT trained model weights.
+ * All intermediate values use JavaScript double precision; round only in the UI.
+ * Tensor convention: [batch, token, feature], heads [batch, head, token, feature].
+ */
+const ToyEngine = (() =&gt; {
+  &#x27;use strict&#x27;;
+
+  const VOCAB = [&#x27;&lt;pad&gt;&#x27;, &#x27;猫&#x27;, &#x27;追&#x27;, &#x27;老鼠&#x27;, &#x27;鸟&#x27;, &#x27;吃&#x27;, &#x27;米&#x27;, &#x27;&lt;eos&gt;&#x27;];
+  const EXAMPLES = [[1, 2, 3, 7], [4, 5, 6, 7]];
+  const EPSILON = 1e-5;
+  const HEADS = 2;
+  const HEAD_DIM = 4;
+
+  // Fixed arithmetic construction rather than an unseeded random generator.
+  // The definition and salt completely determine every visible parameter.
+  const matrix = (rows, cols, salt, scale = 0.025) =&gt;
+    Array.from({ length: rows }, (_, i) =&gt; Array.from({ length: cols }, (_, j) =&gt;
+      (((i + 1) * 13 + (j + 1) * 7 + salt * 11 + (i + 1) * (j + 1) * 3) % 17 - 8) * scale));
+  const mapRows = (tensor, fn) =&gt; tensor.map(sample =&gt; sample.map(fn));
+  const dot = (x, y) =&gt; x.reduce((sum, value, i) =&gt; sum + value * y[i], 0);
+  const multiplyRow = (row, weight) =&gt; weight[0].map((_, j) =&gt;
+    row.reduce((sum, value, i) =&gt; sum + value * weight[i][j], 0));
+  const linear = (tensor, weight) =&gt; mapRows(tensor, row =&gt; multiplyRow(row, weight));
+  const add = (a, b) =&gt; a.map((sample, n) =&gt; sample.map((row, t) =&gt; row.map((value, d) =&gt; value + b[n][t][d])));
+  const softmax = row =&gt; {
+    const max = Math.max(...row);
+    const exponentials = row.map(x =&gt; Math.exp(x - max));
+    const sum = exponentials.reduce((a, b) =&gt; a + b, 0);
+    return exponentials.map(x =&gt; x / sum);
+  };
+  const silu = value =&gt; value / (1 + Math.exp(-value));
+
+  function rmsNorm(input, gamma = Array(8).fill(1), epsilon = EPSILON) {
+    const squares = mapRows(input, row =&gt; row.map(x =&gt; x * x));
+    const meanSquare = mapRows(squares, row =&gt; [row.reduce((a, b) =&gt; a + b, 0) / row.length]);
+    const rms = mapRows(meanSquare, row =&gt; [Math.sqrt(row[0] + epsilon)]);
+    const normalized = input.map((sample, b) =&gt; sample.map((row, t) =&gt; row.map(x =&gt; x / rms[b][t][0])));
+    const output = mapRows(normalized, row =&gt; row.map((x, d) =&gt; x * gamma[d]));
+    return { input, squares, meanSquare, rms, normalized, gamma, epsilon, output };
+  }
+
+  function splitHeads(tensor) {
+    return tensor.map(sample =&gt; Array.from({ length: HEADS }, (_, h) =&gt;
+      sample.map(row =&gt; row.slice(h * HEAD_DIM, (h + 1) * HEAD_DIM))));
+  }
+
+  function mergeHeads(tensor) {
+    return tensor.map(sample =&gt; sample[0].map((_, t) =&gt; sample.flatMap(head =&gt; head[t])));
+  }
+
+  // Adjacent coordinate pairs: (0,1), (2,3). theta_i = position / 10000^(2*i/d_head).
+  function rope(tensor) {
+    return tensor.map(sample =&gt; sample.map(head =&gt; head.map((row, t) =&gt; {
+      const result = [];
+      for (let pair = 0; pair &lt; HEAD_DIM / 2; pair++) {
+        const angle = t / Math.pow(10000, 2 * pair / HEAD_DIM);
+        const cosine = Math.cos(angle), sine = Math.sin(angle);
+        const x = row[2 * pair], y = row[2 * pair + 1];
+        result.push(x * cosine - y * sine, x * sine + y * cosine);
+      }
+      return result;
+    })));
+  }
+
+  function swiglu(input, wg, wu, wd) {
+    const gate = linear(input, wg);
+    const up = linear(input, wu);
+    const activated = mapRows(gate, row =&gt; row.map(silu));
+    const gated = activated.map((sample, b) =&gt; sample.map((row, t) =&gt; row.map((x, d) =&gt; x * up[b][t][d])));
+    const output = linear(gated, wd);
+    return { input, wg, wu, gate, up, activated, gated, wd, output };
+  }
+
+  function blockForward(input, layerIndex = 0) {
+    const salt = layerIndex * 8;
+    const gamma1 = Array.from({ length: 8 }, (_, d) =&gt; 0.96 + ((d + layerIndex) % 5) * 0.02);
+    const gamma2 = Array.from({ length: 8 }, (_, d) =&gt; 0.98 + ((d + layerIndex * 2) % 4) * 0.02);
+    const norm1 = rmsNorm(input, gamma1);
+    const wq = matrix(8, 8, salt + 1);
+    const wk = matrix(8, 8, salt + 2);
+    const wv = matrix(8, 8, salt + 3);
+    const qFlat = linear(norm1.output, wq);
+    const kFlat = linear(norm1.output, wk);
+    const vFlat = linear(norm1.output, wv);
+    const qBefore = splitHeads(qFlat), kBefore = splitHeads(kFlat), v = splitHeads(vFlat);
+    const q = rope(qBefore), k = rope(kBefore);
+    const scores = q.map((sample, b) =&gt; sample.map((head, h) =&gt;
+      head.map(query =&gt; k[b][h].map(key =&gt; dot(query, key)))));
+    const scale = Math.sqrt(HEAD_DIM);
+    const scaled = scores.map(sample =&gt; sample.map(head =&gt; head.map(row =&gt; row.map(x =&gt; x / scale))));
+    const masked = scaled.map(sample =&gt; sample.map(head =&gt; head.map((row, t) =&gt;
+      row.map((x, j) =&gt; j &gt; t ? -Infinity : x))));
+    const attention = masked.map(sample =&gt; sample.map(head =&gt; head.map(softmax)));
+    const context = attention.map((sample, b) =&gt; sample.map((head, h) =&gt; head.map(weights =&gt;
+      Array.from({ length: HEAD_DIM }, (_, d) =&gt; weights.reduce((sum, a, t) =&gt; sum + a * v[b][h][t][d], 0)))));
+    const merged = mergeHeads(context);
+    const wo = matrix(8, 8, salt + 4);
+    const attnOut = linear(merged, wo);
+    const residual1 = add(input, attnOut);
+    const norm2 = rmsNorm(residual1, gamma2);
+    const ffn = swiglu(norm2.output, matrix(8, 16, salt + 5), matrix(8, 16, salt + 6), matrix(16, 8, salt + 7));
+    const mlp = ffn.output;
+    const output = add(residual1, mlp);
+    return {
+      index: layerIndex, input, norm1, wq, wk, wv, qFlat, kFlat, vFlat, qBefore, kBefore, v, q, k,
+      scores, scale, scaled, masked, attention, context, merged, wo, attnOut, residual1, norm2,
+      wg: ffn.wg, wu: ffn.wu, gate: ffn.gate, up: ffn.up, activated: ffn.activated,
+      gated: ffn.gated, wd: ffn.wd, mlp, output
+    };
+  }
+
+  function run({ batch = 2, layers = 3, inputIds = null } = {}) {
+    batch = Number(batch); layers = Number(layers);
+    if (![1, 2, 4, 8].includes(batch)) throw new RangeError(&#x27;batch must be 1, 2, 4, or 8&#x27;);
+    if (!Number.isInteger(layers) || layers &lt; 2 || layers &gt; 6) throw new RangeError(&#x27;layers must be an integer from 2 to 6&#x27;);
+    const sequenceLength = inputIds ? inputIds[0].length : 4;
+    if (inputIds &amp;&amp; (inputIds.length !== batch || !sequenceLength || inputIds.some(row =&gt; row.length !== sequenceLength || row.some(id =&gt; !Number.isInteger(id) || id &lt; 0 || id &gt;= VOCAB.length)))) throw new RangeError(&quot;inputIds must be equal-length rows of valid vocabulary IDs&quot;);
+    const config = { batch, layers, B: batch, T: sequenceLength, d: 8, h: 2, dh: 4, dff: 16, L: layers, V: 8,
+      epsilon: EPSILON, ropeTheta: 10000, trained: false, dtype: &#x27;JavaScript float64&#x27;,
+      sampling: &#x27;greedy argmax&#x27;, batchRepeats: batch &gt; 2 };
+    const ids = inputIds ? inputIds.map(row =&gt; row.slice()) : Array.from({ length: batch }, (_, b) =&gt; EXAMPLES[b % EXAMPLES.length].slice());
+    const texts = ids.map(row =&gt; row.map(id =&gt; VOCAB[id]).join(&#x27; &#x27;));
+    const embeddingTable = [
+      [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+      [0.2, 0.6, -0.1, 0.3, 0.4, -0.2, 0.1, 0.5],
+      [-0.3, 0.2, 0.5, 0.1, -0.1, 0.4, 0.6, 0.2],
+      [0.4, -0.1, 0.7, 0.2, 0.0, 0.3, -0.2, 0.5],
+      [0.5, 0.1, 0.2, -0.2, 0.6, 0.3, 0.0, -0.1],
+      [0.1, 0.4, -0.3, 0.6, 0.2, 0.0, 0.5, -0.2],
+      [-0.2, 0.3, 0.4, 0.0, 0.5, -0.1, 0.2, 0.6],
+      [0.3, -0.2, 0.1, 0.5, -0.3, 0.6, 0.4, 0.2]
+    ];
+    const embedding = ids.map(sample =&gt; sample.map(id =&gt; embeddingTable[id].slice()));
+    const blocks = [];
+    let hidden = embedding;
+    for (let layer = 0; layer &lt; layers; layer++) {
+      const block = blockForward(hidden, layer);
+      blocks.push(block);
+      hidden = block.output;
+    }
+    const finalNorm = rmsNorm(hidden, [1.0, 0.98, 1.02, 1.0, 1.04, 0.96, 1.02, 1.0]);
+    const lmWeight = matrix(8, 8, 101, 0.04);
+    const logits = linear(finalNorm.output, lmWeight);
+    const lastLogits = logits.map(sample =&gt; [sample[sample.length - 1].slice()]);
+    const probs = mapRows(lastLogits, softmax);
+    const nextIds = probs.map(sample =&gt; [sample[0].reduce((best, p, i, row) =&gt; p &gt; row[best] ? i : best, 0)]);
+    const nextTokens = nextIds.map(row =&gt; VOCAB[row[0]]);
+    const appendedIds = ids.map((row, b) =&gt; [...row, nextIds[b][0]]);
+    const ropeCos = Array.from({ length: sequenceLength }, (_, t) =&gt; [Math.cos(t), Math.cos(t / 100)]);
+    const ropeSin = Array.from({ length: sequenceLength }, (_, t) =&gt; [Math.sin(t), Math.sin(t / 100)]);
+    const causalMask = Array.from({ length: sequenceLength }, (_, t) =&gt; Array.from({ length: sequenceLength }, (_, j) =&gt; j &gt; t ? -Infinity : 0));
+    return { config, vocab: VOCAB.slice(), ids, texts, embeddingTable, embedding, blocks, finalNorm, lmWeight,
+      logits, lastLogits, probs, nextIds, nextTokens, appendedIds, ropeCos, ropeSin, causalMask,
+      note: &#x27;所有矩阵数字均由这套固定、未训练的 mini Transformer 参数实际计算；为教学演示，预测没有语言意义。显示可四舍五入，计算使用完整双精度。B 大于 2 时循环使用两条输入；文本中的 &lt;eos&gt; 在这里是教学输入标记，演示继续计算一次 next-token，不执行真实服务的停止策略。&#x27; };
+  }
+
+  return { run, matrix, linear, rmsNorm, softmax, blockForward, swiglu };
+})();
+/* END SHARED TEACHING ENGINE */
+
 (() =&gt; {
   const root = document.getElementById(&#x27;llm-map&#x27;);
   if (!root) return;
   const tabs = [...root.querySelectorAll(&#x27;[data-tab]&#x27;)];
   const panels = { single: root.querySelector(&#x27;#panel-single&#x27;), stack: root.querySelector(&#x27;#panel-stack&#x27;), full: root.querySelector(&#x27;#panel-full&#x27;), module: root.querySelector(&#x27;#panel-module&#x27;) };
-  const demo = { vocabSize: 8, seqLen: 4, hidden: 8, heads: 2, headDim: 4, ff: 16, layers: 3 };
+  const demo = { vocabSize: 8, seqLen: 3, hidden: 8, heads: 2, headDim: 4, ff: 16, layers: 3 };
   const state = { tab: &#x27;full&#x27;, query: 2, layers: demo.layers, mode: &#x27;infer&#x27;, selectedLayer: 1, batch: 2, moduleStep: &#x27;text&#x27;, moduleParent: &#x27;full&#x27; };
   const saved = window.openai &amp;&amp; window.openai.widgetState &amp;&amp; window.openai.widgetState.modelContent;
   try { if (saved) Object.assign(state, JSON.parse(saved)); } catch (_) {}
@@ -2303,14 +2494,14 @@ html&gt;body{padding:0}&lt;/style&gt;
   normalizeRouteState();
 
   const details = {
-    x: [&#x27;输入表示 X&#x27;, &#x27;样本 1 的“老鼠”已经是一个 8 维向量；4 个位置和 2 条样本组成 [2,4,8]，Block 不直接处理汉字。&#x27;],
+    x: [&#x27;输入表示 X&#x27;, &#x27;样本 1 的“老鼠”已经是一个 8 维向量；每条样本 3 个位置，当前批次组成 [B,3,8]，Block 不直接处理汉字。&#x27;],
     norm1: [&#x27;RMSNorm&#x27;, &#x27;把“老鼠”的 8 个数缩放到稳定范围，方便后面的矩阵乘法；位置数和宽度都不变。&#x27;],
     qkv: [&#x27;Q / K / V 投影&#x27;, &#x27;同一个 8 维输入分别乘三组 8×8 toy 权重，得到三种角色，再拆成 2 个 4 维头。&#x27;],
     attn: [&#x27;因果自注意力&#x27;, &#x27;用 QKᵀ 算相似度，加上 causal mask 屏蔽未来位置，再用 softmax 权重加权 V。一个位置因此能聚合左侧上下文。&#x27;],
-    add1: [&#x27;第一次残差相加&#x27;, &#x27;把注意力结果加回原输入：H₁ = X + Attn(X)。这是信息高速公路，也保证主干尺寸不变。&#x27;],
-    norm2: [&#x27;第二次 RMSNorm&#x27;, &#x27;在 MLP 前再次稳定 batch[0] 位置 2 的数值尺度；仍然是 [2,4,8]。&#x27;],
+    add1: [&#x27;第一次残差相加&#x27;, &#x27;把注意力结果加回原输入：H₁ = X + Attn(Norm₁(X))。这是信息高速公路，也保证主干尺寸不变。&#x27;],
+    norm2: [&#x27;第二次 RMSNorm&#x27;, &#x27;在 MLP 前再次稳定 batch[0] 位置 2 的数值尺度；仍然是 [B,3,8]。&#x27;],
     mlp: [&#x27;SwiGLU / MLP&#x27;, &#x27;对每个位置单独做通道变换：8 → 16 → 8。注意力负责“位置之间交流”，MLP 负责“每个位置内部加工”。&#x27;],
-    add2: [&#x27;第二次残差相加&#x27;, &#x27;Y = H₁ + MLP(H₁)。Y 会作为下一层的输入，尺寸仍为 [2,4,8]。&#x27;]
+    add2: [&#x27;第二次残差相加&#x27;, &#x27;Y = H₁ + MLP(Norm₂(H₁))。Y 会作为下一层的输入，尺寸仍为 [B,3,8]。&#x27;]
   };
   const whyDetails = {
     x: &#x27;把离散 token 变成连续向量，后续才能用矩阵乘法学习关系。&#x27;,
@@ -2322,16 +2513,34 @@ html&gt;body{padding:0}&lt;/style&gt;
     mlp: &#x27;注意力混合位置，MLP 混合通道；两种混合互补，才能同时建模关系和语义特征。&#x27;,
     add2: &#x27;把新加工出的特征叠加回主干，让下一层继续加工而不丢失已有信息。&#x27;
   };
-  const calcDetails = {
-    x: { title: &#x27;示例：batch[0] 位置 2 的“老鼠”&#x27;, rows: [[&#x27;输入&#x27;, &#x27;X[0,2] = [0.40, -0.10, 0.70, 0.20, 0.00, 0.30, -0.20, 0.50]&#x27;], [&#x27;计算&#x27;, &#x27;直接把 Embedding 的第 3 行交给 Block&#x27;], [&#x27;输出&#x27;, &#x27;仍是一个 [d]=[8] 的位置表示&#x27;]] },
-    norm1: { title: &#x27;RMSNorm：缩放而不改形状&#x27;, rows: [[&#x27;输入&#x27;, &#x27;x = [0.40, -0.10, 0.70, 0.20, 0.00, 0.30, -0.20, 0.50]&#x27;], [&#x27;计算&#x27;, &#x27;mean(x²)=0.135，rms=√0.135≈0.367；γ=[0.45]×8&#x27;], [&#x27;输出&#x27;, &#x27;N₂ ≈ [0.49, -0.12, 0.86, 0.24, 0.00, 0.37, -0.24, 0.61]&#x27;]] },
-    qkv: { title: &#x27;Q/K/V：同一向量的三次投影&#x27;, rows: [[&#x27;输入&#x27;, &#x27;N₂ = [0.49, -0.12, 0.86, 0.24, 0.00, 0.37, -0.24, 0.61]&#x27;], [&#x27;计算&#x27;, &#x27;分别乘 3 个 8×8 toy 矩阵 WQ、WK、WV&#x27;], [&#x27;输出&#x27;, &#x27;Q=[0.52,0.10,-0.31,0.44,0.20,-0.18,0.57,0.09]；K=[0.41,-0.06,0.72,0.18,-0.22,0.12,0.33,0.47]；V=[0.30,0.15,0.64,-0.10,0.55,-0.20,0.28,0.40]；reshape=[2,4]&#x27;]] },
-    attn: { title: &#x27;注意力：分数 → 权重 → 加权内容&#x27;, rows: [[&#x27;输入&#x27;, &#x27;“老鼠”的 head 1 分数 = [0.21, -0.05, 0.68, -∞]&#x27;], [&#x27;计算&#x27;, &#x27;softmax(scores) ≈ [0.30, 0.23, 0.47, 0.00]&#x27;], [&#x27;输出&#x27;, &#x27;0.30·V猫 + 0.23·V追 + 0.47·V老鼠 ≈ [0.29, 0.27, 0.40, 0.14]&#x27;]] },
-    add1: { title: &#x27;残差：把新信息加回原路&#x27;, rows: [[&#x27;输入&#x27;, &#x27;X₂ 与 Attn₂ 都是 [8]&#x27;], [&#x27;计算&#x27;, &#x27;H₁₂ = X₂ + Wo(context₂)&#x27;], [&#x27;输出&#x27;, &#x27;H₁₂ 仍是 [8]，原信息与上下文信息同时保留&#x27;]] },
-    norm2: { title: &#x27;第二次 RMSNorm：处理第一次残差后的 H₁&#x27;, rows: [[&#x27;输入&#x27;, &#x27;H₁₂ = [0.69,0.17,1.10,0.34,0.10,0.60,0.00,1.00]&#x27;], [&#x27;计算&#x27;, &#x27;mean(H₁²)=0.400，rms≈0.632；再乘 γ=[0.45]×8&#x27;], [&#x27;输出&#x27;, &#x27;N₂′≈[0.49,0.12,0.78,0.24,0.07,0.43,0.00,0.71]，供 MLP 使用&#x27;]] },
-    mlp: { title: &#x27;SwiGLU：每个位置内部做通道变换&#x27;, rows: [[&#x27;输入&#x27;, &#x27;N₂′ = [0.49,-0.12,0.86,0.24,0.00,0.37,-0.24,0.61]&#x27;], [&#x27;计算&#x27;, &#x27;g,u 各从 8 维投影到 16 维；取 SiLU(g)⊙u，再乘 Wd&#x27;], [&#x27;输出&#x27;, &#x27;MLP₂=[0.03,0.02,0.05,-0.01,0.04,0.01,-0.02,0.06]（16→8）&#x27;]] },
-    add2: { title: &#x27;第二次残差：得到本层输出&#x27;, rows: [[&#x27;输入&#x27;, &#x27;H₁₂ [8] 与 MLP₂ [8]&#x27;], [&#x27;计算&#x27;, &#x27;Y₂ = H₁₂ + MLP₂&#x27;], [&#x27;输出&#x27;, &#x27;Y₂ [8] → 下一层的 X₂&#x27;]] }
-  };
+  const formatNumber = value =&gt; value === -Infinity ? &#x27;−∞&#x27; : (Math.abs(value)&lt;0.0005 ? &#x27;0.000&#x27; : value.toFixed(3));
+  const withBatch=text=&gt;text.replace(/\[B,/g,&#x27;[&#x27;+state.batch+&#x27;,&#x27;);
+  const vector = values =&gt; &#x27;[&#x27; + values.map(formatNumber).join(&#x27;, &#x27;) + &#x27;]&#x27;;
+  const rowAt = tensor =&gt; tensor[0][2];
+  let cachedLesson = null, cachedLessonKey = &#x27;&#x27;;
+  function lesson() {
+    const key=state.batch+&#x27;:&#x27;+state.layers;
+    if(key!==cachedLessonKey){cachedLesson=ToyEngine.run({batch:Number(state.batch),layers:Number(state.layers),inputIds:Array.from({length:Number(state.batch)},(_,i)=&gt;i%2?[4,5,6]:[1,2,3])});cachedLessonKey=key;}
+    return cachedLesson;
+  }
+  function currentBlock(){return lesson().blocks[Math.max(0,Math.min(state.layers-1,Number(state.selectedLayer)-1))];}
+  function calculation(key) {
+    const b=currentBlock(), head=0, at=2, n=key===&#x27;norm2&#x27;?b.norm2:b.norm1;
+    const definitions={
+      x:[[&#x27;输入 hidden&#x27;,vector(rowAt(b.input)),&#x27;Embedding 或上一层的输出&#x27;]],
+      norm1:[[&#x27;输入 x&#x27;,vector(rowAt(n.input)),&#x27;保留 token 和通道轴&#x27;],[&#x27;逐元素平方&#x27;,vector(rowAt(n.squares)),&#x27;同一 token 的 8 个通道&#x27;],[&#x27;均方与 RMS&#x27;,&#x27;mean=&#x27;+formatNumber(n.meanSquare[0][at][0])+&#x27;；RMS=&#x27;+formatNumber(n.rms[0][at][0]),&#x27;epsilon = 0.00001&#x27;],[&#x27;缩放参数 γ&#x27;,vector(n.gamma),&#x27;当前层独立参数&#x27;],[&#x27;归一化输出&#x27;,vector(rowAt(n.output)),&#x27;交给 QKV 投影&#x27;]],
+      qkv:[[&#x27;共同输入&#x27;,vector(rowAt(b.norm1.output)),&#x27;来自本层第一次 RMSNorm&#x27;],[&#x27;Q 线性投影&#x27;,vector(rowAt(b.qFlat)),&#x27;8 → 2 heads × 4&#x27;],[&#x27;K 线性投影&#x27;,vector(rowAt(b.kFlat)),&#x27;与 Q 使用独立权重&#x27;],[&#x27;V 线性投影&#x27;,vector(rowAt(b.vFlat)),&#x27;V 不做位置旋转&#x27;],[&#x27;Q / K 的 RoPE&#x27;,&#x27;Q₀=&#x27;+vector(b.q[0][head][at])+&#x27;；K₀=&#x27;+vector(b.k[0][head][at]),&#x27;position=2；展示 head 0&#x27;]],
+      attn:[[&#x27;QKᵀ / √4 + mask&#x27;,vector(b.masked[0][head][at]),&#x27;head 0，query 位置 2&#x27;],[&#x27;沿历史位置 softmax&#x27;,vector(b.attention[0][head][at]),&#x27;未来位置权重为 0&#x27;],[&#x27;加权 V&#x27;,vector(b.context[0][head][at]),&#x27;同一 head 的 context&#x27;],[&#x27;拼接两头&#x27;,vector(rowAt(b.merged)),&#x27;恢复 8 个通道&#x27;],[&#x27;Wo 输出投影&#x27;,vector(rowAt(b.attnOut)),&#x27;交给第一次残差相加&#x27;]],
+      add1:[[&#x27;原 residual X&#x27;,vector(rowAt(b.input)),&#x27;保留的未归一化输入&#x27;],[&#x27;Attention 分支&#x27;,vector(rowAt(b.attnOut)),&#x27;来自 Wo&#x27;],[&#x27;H₁ = X + Attention&#x27;,vector(rowAt(b.residual1)),&#x27;交给第二次 RMSNorm&#x27;]],
+      norm2:[],
+      mlp:[[&#x27;Norm2 输出 / MLP 输入&#x27;,vector(rowAt(b.norm2.output)),&#x27;同一个张量直接传递&#x27;],[&#x27;Gate / Up 投影&#x27;,&#x27;g=&#x27;+vector(rowAt(b.gate))+&#x27;；u=&#x27;+vector(rowAt(b.up)),&#x27;各 16 维&#x27;],[&#x27;SiLU(g) × u&#x27;,vector(rowAt(b.gated)),&#x27;逐通道相乘&#x27;],[&#x27;Down 投影 / MLP 输出&#x27;,vector(rowAt(b.mlp)),&#x27;16 → 8，交给第二次残差&#x27;]],
+      add2:[[&#x27;原 residual H₁&#x27;,vector(rowAt(b.residual1)),&#x27;与 Norm2 使用同一份 H₁&#x27;],[&#x27;MLP 分支&#x27;,vector(rowAt(b.mlp)),&#x27;与上一页输出完全相同&#x27;],[&#x27;Y = H₁ + MLP&#x27;,vector(rowAt(b.output)),&#x27;下一层直接接收 Y&#x27;]]
+    };
+    definitions.norm2=definitions.norm1.map(step=&gt;step.slice());
+    if(key===&#x27;norm2&#x27;){definitions.norm2[0][0]=&#x27;输入 H₁&#x27;;definitions.norm2.at(-1)[2]=&#x27;直接交给 MLP&#x27;;}
+    const nodes=definitions[key]||definitions.x;
+    return {title:&#x27;Block &#x27;+(b.index+1)+&#x27; · batch[0] 位置 2 · &#x27;+(details[key]||details.x)[0],nodes,rows:nodes.map(([label,value])=&gt;[label,value])};
+  }
   const internalWhy = {
     x: &#x27;先把每个位置表示成同宽向量，后续所有模块才能在统一的 d=8 主干上协作。&#x27;,
     norm1: &#x27;归一化只调整数值尺度，不改变“这是哪个位置”的结构；这样矩阵乘法不会因为数值过大而不稳定。&#x27;,
@@ -2343,8 +2552,8 @@ html&gt;body{padding:0}&lt;/style&gt;
     add2: &#x27;把通道加工结果写回主干，下一层才能继续在同一条表示流上工作。&#x27;
   };
   const internalText = {
-    x: [&#x27;先接收 Embedding 或上一层传来的位置向量。&#x27;, &#x27;本例两条样本各有 4 个位置，合成 [2,4,8]；“老鼠”这一行是 8 个数字。&#x27;, &#x27;输出仍是同形状主干，准备进入第一个子层。&#x27;],
-    norm1: [&#x27;先对“老鼠”这一行的 8 个通道逐元素平方并求平均：0.135。&#x27;, &#x27;取平方根得到 RMS≈0.367，再用向量除以 RMS 并乘 γ=0.45。&#x27;, &#x27;形状保持 [2,4,8]，但数值尺度更稳定，方便后面的投影。&#x27;],
+    x: [&#x27;先接收 Embedding 或上一层传来的位置向量。&#x27;, &#x27;本例每条样本各有 3 个位置，合成 [B,3,8]；“老鼠”这一行是 8 个数字。&#x27;, &#x27;输出仍是同形状主干，准备进入第一个子层。&#x27;],
+    norm1: [&#x27;沿当前 token 的特征维计算平方均值。&#x27;, &#x27;用 √(mean+ε) 归一化，再乘当前层 γ。&#x27;, &#x27;数值从同一计算 trace 读取。&#x27;],
     qkv: [&#x27;归一化后的向量分别乘 WQ、WK、WV，生成 Query、Key、Value。&#x27;, &#x27;把宽度 8 reshape 成 2 个头、每头 4 维，并对 Q/K 注入 RoPE 位置关系。&#x27;, &#x27;得到 [B,h,T,dₕ] 的三路张量，交给注意力计算。&#x27;],
     attn: [&#x27;当前 Query 与所有历史 Key 做点积，得到“应该关注谁”的分数。&#x27;, &#x27;除以 √dₕ 后加 causal mask，把未来位置设为 −∞，再做 softmax。&#x27;, &#x27;用这些权重加权 Value，拼回各个头，经过 Wo 投影回到 8 维。&#x27;],
     add1: [&#x27;主干 X 与注意力输出都保持 [8]，因此可以逐元素相加。&#x27;, &#x27;加法把上下文信息写回原表示，同时保留原始信息和梯度通路。&#x27;, &#x27;得到 H₁，继续进入第二个子层。&#x27;],
@@ -2357,55 +2566,23 @@ html&gt;body{padding:0}&lt;/style&gt;
     return &#x27;&lt;div class=&quot;internal-node &#x27; + (cls || &#x27;&#x27;) + &#x27;&quot;&gt;&lt;strong&gt;&#x27; + title + &#x27;&lt;/strong&gt;&#x27; + (formula ? &#x27;&lt;span class=&quot;formula&quot;&gt;&#x27; + formula + &#x27;&lt;/span&gt;&#x27; : &#x27;&#x27;) + (tiny ? &#x27;&lt;span class=&quot;tiny&quot;&gt;&#x27; + tiny + &#x27;&lt;/span&gt;&#x27; : &#x27;&#x27;) + &#x27;&lt;/div&gt;&#x27;;
   }
   function renderInternal(key, target) {
-    const title = (details[key] || details.x)[0];
-    if (!target) root.querySelector(&#x27;#internal-step-name&#x27;).textContent = title;
-    let html = &#x27;&#x27;;
-    if (key === &#x27;norm1&#x27; || key === &#x27;norm2&#x27;) {
-      const normInput = key === &#x27;norm2&#x27; ? &#x27;h=[0.69,0.17,1.10,0.34,0.10,0.60,0.00,1.00]&#x27; : &#x27;x=[0.40,-0.10,0.70,0.20,0.00,0.30,-0.20,0.50]&#x27;;
-      const normSquares = key === &#x27;norm2&#x27; ? &#x27;h²=[0.48,0.03,1.21,0.12,0.01,0.36,0.00,1.00]&#x27; : &#x27;x²=[0.16,0.01,0.49,0.04,0.00,0.09,0.04,0.25]&#x27;;
-      const normRms = key === &#x27;norm2&#x27; ? &#x27;mean(h²)=0.400；√(mean+ε)≈0.632&#x27; : &#x27;mean(x²)=0.135；√(mean+ε)≈0.367&#x27;;
-      const normOutput = key === &#x27;norm2&#x27; ? &#x27;[0.49,0.12,0.78,0.24,0.07,0.43,0.00,0.71]&#x27; : &#x27;[0.49,-0.12,0.86,0.24,0.00,0.37,-0.24,0.61]&#x27;;
-      html = &#x27;&lt;div class=&quot;internal-flow&quot;&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;输入向量&#x27;, &#x27;&lt;span class=&quot;vector&quot;&gt;&#x27; + normInput + &#x27;&lt;/span&gt;&#x27;, &#x27;[8]，&#x27; + (key === &#x27;norm2&#x27; ? &#x27;来自 H₁&#x27; : &#x27;token=老鼠&#x27;)) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;norm&#x27;, &#x27;逐元素平方&#x27;, normSquares, &#x27;把正负值都转成能量&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;norm&#x27;, &#x27;求均方根&#x27;, normRms, &#x27;得到尺度因子&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;norm&#x27;, &#x27;缩放 + γ&#x27;, &#x27;向量 / rms × γ，γ=[0.45]×8&#x27;, &#x27;每个通道乘 toy γ&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;输出 &#x27; + (key === &#x27;norm2&#x27; ? &#x27;N₂′&#x27; : &#x27;N₂&#x27;), normOutput, &#x27;[8]，形状不变&#x27;) + &#x27;&lt;/div&gt;&#x27;;
-      html = &#x27;&lt;div class=&quot;internal-flow&quot;&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;输入向量&#x27;, &#x27;&lt;span class=&quot;vector&quot;&gt;x=[0.40,-0.10,0.70,0.20,0.00,0.30,-0.20,0.50]&lt;/span&gt;&#x27;, &#x27;[8]&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;norm&#x27;, &#x27;逐元素平方&#x27;, &#x27;x²=[0.16,0.01,0.49,0.04,0.00,0.09,0.04,0.25]&#x27;, &#x27;把正负值都转成能量&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;norm&#x27;, &#x27;求均方根&#x27;, &#x27;mean(x²)=0.135；√(mean+ε)≈0.367&#x27;, &#x27;得到尺度因子&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;norm&#x27;, &#x27;缩放 + γ&#x27;, &#x27;x / rms × γ&#x27;, &#x27;γ=[0.45,0.45,0.45,0.45,0.45,0.45,0.45,0.45]（toy）&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;输出 N₂&#x27;, &#x27;[0.49,-0.12,0.86,0.24,0.00,0.37,-0.24,0.61]&#x27;, &#x27;[8]，形状不变&#x27;) + &#x27;&lt;/div&gt;&#x27;;
-    } else if (key === &#x27;qkv&#x27;) {
-      html = &#x27;&lt;div class=&quot;internal-flow&quot;&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;输入 N₂&#x27;, &#x27;N₂=[0.49,-0.12,0.86,0.24,0.00,0.37,-0.24,0.61]&#x27;, &#x27;一个位置的一行向量&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&lt;div class=&quot;internal-branches&quot;&gt;&lt;div class=&quot;internal-branch&quot;&gt;&#x27; + internalNode(&#x27;attn&#x27;, &#x27;Query 分支&#x27;, &#x27;Q=[0.52,0.10,-0.31,0.44,0.20,-0.18,0.57,0.09]&#x27;, &#x27;我要找什么？&#x27;) + internalNode(&#x27;attn&#x27;, &#x27;reshape&#x27;, &#x27;[8] → [h=2,dₕ=4]&#x27;, &#x27;每头一份 Query&#x27;) + &#x27;&lt;/div&gt;&lt;div class=&quot;internal-branch&quot;&gt;&#x27; + internalNode(&#x27;attn&#x27;, &#x27;Key 分支&#x27;, &#x27;K=[0.41,-0.06,0.72,0.18,-0.22,0.12,0.33,0.47]&#x27;, &#x27;我是什么标签？&#x27;) + internalNode(&#x27;attn&#x27;, &#x27;reshape&#x27;, &#x27;[8] → [2,4]&#x27;, &#x27;供所有 Query 匹配&#x27;) + &#x27;&lt;/div&gt;&lt;div class=&quot;internal-branch&quot;&gt;&#x27; + internalNode(&#x27;attn&#x27;, &#x27;Value 分支&#x27;, &#x27;V=[0.30,0.15,0.64,-0.10,0.55,-0.20,0.28,0.40]&#x27;, &#x27;我要提供什么内容？&#x27;) + internalNode(&#x27;attn&#x27;, &#x27;reshape&#x27;, &#x27;[8] → [2,4]&#x27;, &#x27;携带被汇总的信息&#x27;) + &#x27;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;internal-flow&quot; style=&quot;margin-top:8px&quot;&gt;&#x27; + internalNode(&#x27;attn&#x27;, &#x27;RoPE（只作用于 Q/K）&#x27;, &#x27;旋转每对 Q/K 坐标&#x27;, &#x27;把相对位置关系写入注意力&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;交给注意力&#x27;, &#x27;Q,K,V=[B,h,T,dₕ]=[2,2,4,4]&#x27;, &#x27;三种角色在这里汇合&#x27;) + &#x27;&lt;/div&gt;&#x27;;
-    } else if (key === &#x27;attn&#x27;) {
-      // 注意力的细节只在独立模块页展开：主干保持一个“因果自注意力”节点，点击后再看完整的四步计算。
-      const matrix = attentionRows.map((row, r) =&gt; &#x27;&lt;tr&gt;&lt;th&gt;&#x27; + tokens[r] + &#x27;&lt;/th&gt;&#x27; + row.map((v, c) =&gt; {
-        const allowed = c &lt;= r;
-        const heat = allowed ? Math.round(v * 65) : 0;
-        return &#x27;&lt;td class=&quot;&#x27; + (allowed ? &#x27;allowed&#x27; : &#x27;masked&#x27;) + (r === Number(state.query) ? &#x27; query&#x27; : &#x27;&#x27;) + &#x27;&quot; style=&quot;--heat:&#x27; + heat + &#x27;%&quot;&gt;&#x27; + (allowed ? v.toFixed(2) : &#x27;—&#x27;) + &#x27;&lt;/td&gt;&#x27;;
-      }).join(&#x27;&#x27;) + &#x27;&lt;/tr&gt;&#x27;).join(&#x27;&#x27;);
-      html = &#x27;&lt;div class=&quot;attention-module&quot;&gt;&#x27; +
-        &#x27;&lt;div class=&quot;attention-module-note&quot;&gt;注意力在做什么：选中的词作为 Query，只向左聚合已经出现的上下文。&lt;/div&gt;&#x27; +
-        &#x27;&lt;div class=&quot;internal-flow attention-flow&quot;&gt;&#x27; +
-        internalNode(&#x27;attn&#x27;, &#x27;QKᵀ&#x27;, &#x27;Q 与所有 Key 做点积&#x27;, &#x27;得到相似度分数&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; +
-        internalNode(&#x27;attn&#x27;, &#x27;÷ √dₕ&#x27;, &#x27;缩放分数&#x27;, &#x27;避免点积过大，让 softmax 更稳定&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; +
-        internalNode(&#x27;attn&#x27;, &#x27;+ causal mask&#x27;, &#x27;未来位置 = −∞&#x27;, &#x27;当前位置不能偷看未来 token&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; +
-        internalNode(&#x27;attn&#x27;, &#x27;softmax × V&#x27;, &#x27;[0.30, 0.23, 0.47, 0.00] × V&#x27;, &#x27;把权重变成上下文加权和&#x27;) +
-        &#x27;&lt;/div&gt;&#x27; +
-        &#x27;&lt;div class=&quot;attention-result&quot;&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;输出 context&#x27;, &#x27;[0.29,0.27,0.40,0.14] → concat → [8]&#x27;, &#x27;多头结果拼回主干宽度，再交给 Wo 投影&#x27;) + &#x27;&lt;/div&gt;&#x27; +
-        &#x27;&lt;div class=&quot;matrix-wrap attention-matrix-module&quot;&gt;&lt;table class=&quot;matrix&quot; aria-label=&quot;独立模块页中的因果注意力权重矩阵&quot;&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;Q\\K&lt;/th&gt;&#x27; + tokens.map(token =&gt; &#x27;&lt;th&gt;&#x27; + token + &#x27;&lt;/th&gt;&#x27;).join(&#x27;&#x27;) + &#x27;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&#x27; + matrix + &#x27;&lt;/tbody&gt;&lt;/table&gt;&lt;div class=&quot;legend&quot;&gt;&lt;span&gt;&lt;i class=&quot;swatch&quot;&gt;&lt;/i&gt;可见位置&lt;/span&gt;&lt;span&gt;&lt;i class=&quot;swatch mask&quot;&gt;&lt;/i&gt;未来位置被 mask&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&#x27; +
-        &#x27;&lt;/div&gt;&#x27;;
-    } else if (key === &#x27;mlp&#x27;) {
-      html = &#x27;&lt;div class=&quot;internal-flow&quot;&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;输入 N₂′&#x27;, &#x27;[8]&#x27;, &#x27;一个位置，不跨位置通信&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&lt;div class=&quot;internal-branches&quot;&gt;&lt;div class=&quot;internal-branch&quot;&gt;&#x27; + internalNode(&#x27;mlp&#x27;, &#x27;Gate 投影&#x27;, &#x27;g=[0.20,-0.40,0.60,0.10,…] → [16]&#x27;, &#x27;决定哪些通道打开&#x27;) + &#x27;&lt;/div&gt;&lt;div class=&quot;internal-branch&quot;&gt;&#x27; + internalNode(&#x27;mlp&#x27;, &#x27;Up 投影&#x27;, &#x27;u=[0.80,0.30,0.50,-0.20,…] → [16]&#x27;, &#x27;生成候选通道内容&#x27;) + &#x27;&lt;/div&gt;&lt;div class=&quot;internal-branch&quot;&gt;&#x27; + internalNode(&#x27;mlp&#x27;, &#x27;非线性门控&#x27;, &#x27;SiLU(g)⊙u=[0.09,-0.05,0.20,-0.01,…] → [16]&#x27;, &#x27;逐通道相乘&#x27;) + &#x27;&lt;/div&gt;&lt;/div&gt;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;mlp&#x27;, &#x27;Down 投影&#x27;, &#x27;Wd:[16]→[8]&#x27;, &#x27;压回主干宽度&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;MLP 输出&#x27;, &#x27;[0.03,0.02,0.05,-0.01,0.04,0.01,-0.02,0.06]&#x27;, &#x27;等待残差相加&#x27;) + &#x27;&lt;/div&gt;&#x27;;
-    } else if (key === &#x27;add1&#x27; || key === &#x27;add2&#x27;) {
-      const left = key === &#x27;add1&#x27; ? &#x27;X=[0.40,-0.10,0.70,0.20,0.00,0.30,-0.20,0.50]&#x27; : &#x27;H₁=[0.69,0.17,1.10,0.34,0.10,0.60,0.00,1.00]&#x27;;
-      const right = key === &#x27;add1&#x27; ? &#x27;Wo(context)=[0.29,0.27,0.40,0.14,0.10,0.30,0.20,0.50]&#x27; : &#x27;MLP(H₁)=[0.08,-0.02,0.12,0.03,-0.01,0.04,0.02,0.06]&#x27;;
-      html = &#x27;&lt;div class=&quot;internal-flow&quot;&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;主干输入&#x27;, left, &#x27;原来的表示&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;＋&lt;/span&gt;&#x27; + internalNode(&#x27;attn&#x27;, &#x27;子层输出&#x27;, right, &#x27;新加工的信息&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;逐元素 Add&#x27;, &#x27;相同位置、相同通道相加&#x27;, &#x27;不需要拼接或改变宽度&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;io&#x27;, key === &#x27;add1&#x27; ? &#x27;H₁&#x27; : &#x27;Y&#x27;, key === &#x27;add1&#x27; ? &#x27;[0.69,0.17,1.10,0.34,0.10,0.60,0.00,1.00]&#x27; : &#x27;[0.77,0.15,1.22,0.37,0.09,0.64,0.02,1.06]&#x27;, &#x27;送往下一步&#x27;) + &#x27;&lt;/div&gt;&#x27;;
-    } else {
-      html = &#x27;&lt;div class=&quot;internal-flow&quot;&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;位置向量&#x27;, &#x27;[8]&#x27;, &#x27;来自 Embedding 或上一层&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;并行处理 4 个位置&#x27;, &#x27;[B,T,d]=[2,4,8]&#x27;, &#x27;每个位置都有自己的向量&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;统一主干&#x27;, &#x27;[2,4,8]&#x27;, &#x27;准备进入下一个子层&#x27;) + &#x27;&lt;/div&gt;&#x27;;
+    const c=calculation(key);
+    if(!target)root.querySelector(&#x27;#internal-step-name&#x27;).textContent=c.title;
+    let output=&#x27;&lt;div class=&quot;internal-flow&quot;&gt;&#x27;+c.nodes.map(([label,value,note],i)=&gt;(i?&#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27;:&#x27;&#x27;)+internalNode(&#x27;io&#x27;,label,value,note)).join(&#x27;&#x27;)+&#x27;&lt;/div&gt;&#x27;;
+    if(key===&#x27;attn&#x27;){
+      const rows=currentBlock().attention[0][0];
+      output+=&#x27;&lt;div class=&quot;matrix-wrap attention-matrix-module&quot;&gt;&lt;table class=&quot;matrix&quot;&gt;&lt;caption&gt;同一 Block / head 0 的因果权重&lt;/caption&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;Q / K&lt;/th&gt;&#x27;+tokens.map(token=&gt;&#x27;&lt;th&gt;&#x27;+token+&#x27;&lt;/th&gt;&#x27;).join(&#x27;&#x27;)+&#x27;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&#x27;+rows.map((row,r)=&gt;&#x27;&lt;tr&gt;&lt;th&gt;&#x27;+tokens[r]+&#x27;&lt;/th&gt;&#x27;+row.map((v,c)=&gt;&#x27;&lt;td class=&quot;&#x27;+(c&lt;=r?&#x27;allowed&#x27;:&#x27;masked&#x27;)+&#x27;&quot;&gt;&#x27;+(c&lt;=r?formatNumber(v):&#x27;—&#x27;)+&#x27;&lt;/td&gt;&#x27;).join(&#x27;&#x27;)+&#x27;&lt;/tr&gt;&#x27;).join(&#x27;&#x27;)+&#x27;&lt;/tbody&gt;&lt;/table&gt;&lt;/div&gt;&#x27;;
     }
-    html += &#x27;&lt;div class=&quot;internal-why&quot;&gt;&lt;strong&gt;为什么这样做：&lt;/strong&gt;&#x27; + (internalWhy[key] || internalWhy.x) + &#x27;&lt;/div&gt;&#x27;;
-    const canvas = root.querySelector(target &amp;&amp; target.canvas ? target.canvas : &#x27;#internal-canvas&#x27;);
-    const text = root.querySelector(target &amp;&amp; target.text ? target.text : &#x27;#internal-text-flow&#x27;);
-    if (canvas) canvas.innerHTML = html;
-    if (text) text.innerHTML = (internalText[key] || internalText.x).map((step, i) =&gt; &#x27;&lt;li&gt;&#x27; + step + &#x27;&lt;/li&gt;&#x27;).join(&#x27;&#x27;);
+    output+=&#x27;&lt;p class=&quot;micro-note&quot;&gt;与真实矩阵页共用固定教学参数；显示 3 位小数，后续使用未舍入值。当前为 &#x27;+c.title+&#x27;。&lt;/p&gt;&#x27;;
+    output+=&#x27;&lt;div class=&quot;internal-why&quot;&gt;&lt;strong&gt;为什么这样做：&lt;/strong&gt;&#x27;+(internalWhy[key]||internalWhy.x)+&#x27;&lt;/div&gt;&#x27;;
+    const canvas=root.querySelector(target&amp;&amp;target.canvas?target.canvas:&#x27;#internal-canvas&#x27;),text=root.querySelector(target&amp;&amp;target.text?target.text:&#x27;#internal-text-flow&#x27;);
+    if(canvas)canvas.innerHTML=output;
+    if(text)text.innerHTML=c.nodes.map(([label,value,note])=&gt;&#x27;&lt;li&gt;&lt;strong&gt;&#x27;+label+&#x27;&lt;/strong&gt; → &#x27;+value+&#x27;；&#x27;+note+&#x27;&lt;/li&gt;&#x27;).join(&#x27;&#x27;);
   }
   const fullDetails = {
     text: [&#x27;文本&#x27;, &#x27;人类看到的是字符串；模型接收前必须先经过 tokenizer。&#x27;],
     tokenizer: [&#x27;Tokenizer&#x27;, &#x27;把文本切成 token，并映射为整数 ID。不同 tokenizer 的切分粒度可以不同。&#x27;],
-    embedding: [&#x27;Embedding&#x27;, &#x27;例如 ID=3（老鼠）查到 E[3]=[0.40,-0.10,0.70,0.20,0.00,0.30,-0.20,0.50]；4 行这样的向量组成 [2,4,8]。&#x27;],
+    embedding: [&#x27;Embedding&#x27;, &#x27;例如 ID=3（老鼠）查到 E[3]=[0.40,-0.10,0.70,0.20,0.00,0.30,-0.20,0.50]；每条样本各查 3 行，当前批次合为 [B,3,8]。&#x27;],
     blocks: [&#x27;L × Decoder Block&#x27;, &#x27;每层都做一次注意力和 MLP。层与层之间传递的是同一条 [B,T,d] 表示流，语义逐层变得更丰富。&#x27;],
     finalnorm: [&#x27;Final Norm&#x27;, &#x27;对最后一层输出做一次归一化，准备投影到词表空间。&#x27;],
     lmhead: [&#x27;LM Head&#x27;, &#x27;把位置 2 的 8 维向量乘一个 8×8 toy 词表矩阵，得到 8 个候选 token 的 logits。&#x27;],
@@ -2422,79 +2599,56 @@ html&gt;body{padding:0}&lt;/style&gt;
     prob: &#x27;概率让选择策略可控：贪心偏确定，采样能保留多样性。&#x27;,
     next: &#x27;自回归闭环把一次预测变成一段文本，同时保持每一步都能利用最新上下文。&#x27;
   };
-  const generationRows = [
-    [&#x27;文本&#x27;, &#x27;猫 追 老鼠（上下文 3 个 token）&#x27;],
-    [&#x27;Tokenizer&#x27;, &#x27;[1, 2, 3, 7]（猫=1，追=2，老鼠=3，eos=7）&#x27;],
-    [&#x27;Embedding + L×Block&#x27;, &#x27;[1,4,8] → [1,4,8]（batch[0] 的一行）&#x27;],
-    [&#x27;LM Head（取位置 2）&#x27;, &#x27;h₂ [8] × Wᵀ[8,8] → logits [8]&#x27;],
-    [&#x27;Top 候选 logits&#x27;, &#x27;&amp;lt;eos&amp;gt;: 2.8；追: 1.1；猫: 0.2；其余 0.1 以下&#x27;],
-    [&#x27;Softmax 概率&#x27;, &#x27;&amp;lt;eos&amp;gt;: 0.78；追: 0.15；猫: 0.07；其余合计 0&#x27;],
-    [&#x27;选择并追加&#x27;, &#x27;next token = EOS；若未停止则回到输入继续&#x27;]
-  ];
+  let generationRows=[],generationParts={};
   const fullInternal = {
-    text: {
-      title: &#x27;文本&#x27;,
-      html: &#x27;&lt;div class=&quot;internal-flow&quot;&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;字符串&#x27;, &#x27;猫 追 老鼠&#x27;, &#x27;人类可读的字符序列&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;规范化输入&#x27;, &#x27;空格、特殊符号按 tokenizer 规则处理&#x27;, &#x27;准备切分&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;交给 Tokenizer&#x27;, &#x27;String → token IDs&#x27;, &#x27;模型还不能直接读字符&#x27;) + &#x27;&lt;/div&gt;&#x27;,
-      text: [&#x27;先把字符串作为一段有顺序的文本输入。&#x27;, &#x27;Tokenizer 会按词表规则切分字符或子词。&#x27;, &#x27;输出仍是离散符号，下一步要转换成整数 ID。&#x27;]
-    },
-    tokenizer: {
-      title: &#x27;Tokenizer&#x27;,
-      html: &#x27;&lt;div class=&quot;internal-flow&quot;&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;文本片段&#x27;, &#x27;猫｜追｜老鼠｜&amp;lt;eos&amp;gt;&#x27;, &#x27;切分粒度由词表决定&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;查词表&#x27;, &#x27;token → id&#x27;, &#x27;每个 token 对应一个整数索引&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;Token IDs&#x27;, &#x27;[1,2,3,7]&#x27;, &#x27;[B,T]=[1,4]&#x27;) + &#x27;&lt;/div&gt;&#x27;,
-      text: [&#x27;Tokenizer 先决定边界，把文本切成词、子词或字符。&#x27;, &#x27;每个片段查表得到一个整数 ID，顺序被保留下来。&#x27;, &#x27;这些 ID 是 Embedding 查表的地址，还没有语义向量。&#x27;]
-    },
-    embedding: {
-      title: &#x27;Embedding&#x27;,
-      html: &#x27;&lt;div class=&quot;internal-flow&quot;&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;Token IDs&#x27;, &#x27;[B,T]=[1,4]&#x27;, &#x27;离散索引&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;Embedding table&#x27;, &#x27;E[id] → ℝ⁸&#x27;, &#x27;每一行是一个可学习向量&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;隐藏表示 X₀&#x27;, &#x27;[B,T,d]=[1,4,8]&#x27;, &#x27;进入第一层 Block&#x27;) + &#x27;&lt;/div&gt;&#x27;,
-      text: [&#x27;用每个 ID 作为行号，从词表矩阵中查出一个 8 维向量。&#x27;, &#x27;把所有位置的向量按顺序堆成 [B,T,d]。&#x27;, &#x27;从这里开始，模型主要在连续向量和矩阵上计算。&#x27;]
-    },
+    text: {title:&#x27;文本&#x27;,html:&#x27;&#x27;,text:[]},
+    tokenizer: {title:&#x27;Tokenizer&#x27;,html:&#x27;&#x27;,text:[]},
+    embedding: {title:&#x27;Embedding&#x27;,html:&#x27;&#x27;,text:[]},
     blocks: {
       title: &#x27;L × Decoder Block&#x27;,
       html: &#x27;&lt;div class=&quot;internal-flow&quot;&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;输入 X₀&#x27;, &#x27;[B,T,d]&#x27;, &#x27;Embedding 输出&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;attn&#x27;, &#x27;每层：Attention&#x27;, &#x27;跨位置混合上下文&#x27;, &#x27;Query 读取历史 Key/Value&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;mlp&#x27;, &#x27;每层：MLP&#x27;, &#x27;逐位置混合通道&#x27;, &#x27;Gate/Up/SiLU/Down&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;输出 YL&#x27;, &#x27;[B,T,d]&#x27;, &#x27;送往 Final Norm&#x27;) + &#x27;&lt;/div&gt;&lt;div class=&quot;viz-row&quot; style=&quot;margin-top:10px&quot;&gt;&lt;button class=&quot;btn btn-primary&quot; type=&quot;button&quot; data-full-nav=&quot;stack&quot;&gt;进入多层 Block&lt;/button&gt;&lt;button class=&quot;btn btn-ghost&quot; type=&quot;button&quot; data-full-nav=&quot;single&quot;&gt;直接查看单层 Block&lt;/button&gt;&lt;/div&gt;&#x27;,
       text: [&#x27;同一条 [B,T,d] 表示流会依次通过 L 个参数独立的 Block。&#x27;, &#x27;每个 Block 先让位置之间交流，再在每个位置内部加工通道。&#x27;, &#x27;点击“进入多层 Block”可以查看层间传递；再从具体层进入单层内部。&#x27;]
     },
-    finalnorm: {
-      title: &#x27;Final RMSNorm&#x27;,
-      html: &#x27;&lt;div class=&quot;internal-flow&quot;&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;最后一层输出&#x27;, &#x27;[B,T,d]&#x27;, &#x27;深层表示&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;norm&#x27;, &#x27;RMSNorm&#x27;, &#x27;h / √mean(h²) × γf&#x27;, &#x27;重新校准尺度&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;归一化表示&#x27;, &#x27;[B,T,d]&#x27;, &#x27;进入 LM Head&#x27;) + &#x27;&lt;/div&gt;&#x27;,
-      text: [&#x27;所有 Block 完成后，对最终隐藏状态再做一次 RMSNorm。&#x27;, &#x27;只校准数值尺度，不改变 batch、序列长度和隐藏宽度。&#x27;, &#x27;这样 LM Head 接收的表示范围更稳定。&#x27;]
-    },
-    lmhead: {
-      title: &#x27;LM Head&#x27;,
-      html: &#x27;&lt;div class=&quot;internal-flow&quot;&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;隐藏向量 h₂&#x27;, &#x27;[d]=[8] = [0.46,-0.06,0.78,0.22,0.04,0.34,-0.16,0.54]&#x27;, &#x27;通常关注最后位置&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;×&lt;/span&gt;&#x27; + internalNode(&#x27;mlp&#x27;, &#x27;词表权重 Wᵀ&#x27;, &#x27;[8,8]（8 个 token）&#x27;, &#x27;把隐藏空间翻译到词表&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;mlp&#x27;, &#x27;Logits&#x27;, &#x27;[8] = [0.2,0.2,1.1,0.1,0.1,0.1,0.1,2.8]&#x27;, &#x27;每个候选 token 一个分数&#x27;) + &#x27;&lt;/div&gt;&#x27;,
-      text: [&#x27;取每个位置的隐藏向量，与词表投影矩阵相乘。&#x27;, &#x27;每个候选 token 得到一个未归一化分数 logits。&#x27;, &#x27;推理时通常只使用最后一个位置的 logits 选择下一个 token。&#x27;]
-    },
-    prob: {
-      title: &#x27;logits → 概率&#x27;,
-      html: &#x27;&lt;div class=&quot;internal-flow&quot;&gt;&#x27; + internalNode(&#x27;mlp&#x27;, &#x27;Logits&#x27;, &#x27;[0.2,0.2,1.1,0.1,0.1,0.1,0.1,2.8]&#x27;, &#x27;还不能直接比较概率&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;mlp&#x27;, &#x27;Softmax&#x27;, &#x27;exp(zᵢ)/Σⱼexp(zⱼ)&#x27;, &#x27;归一化为总和 1&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;概率分布&#x27;, &#x27;&amp;lt;eos&amp;gt; 0.78｜追 0.15｜猫 0.07&#x27;, &#x27;用于选择策略&#x27;) + &#x27;&lt;/div&gt;&#x27;,
-      text: [&#x27;Softmax 把 logits 的相对大小转换成概率。&#x27;, &#x27;贪心选择最高概率，采样则按整条分布随机选择。&#x27;, &#x27;温度、top-k、top-p 等策略都作用在这一步附近。&#x27;]
-    },
-    next: {
-      title: &#x27;下一个 token&#x27;,
-      html: &#x27;&lt;div class=&quot;internal-flow&quot;&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;选择结果&#x27;, &#x27;next token = EOS&#x27;, &#x27;示例中满足停止条件&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;追加到上下文&#x27;, &#x27;猫 追 老鼠 ＋ &amp;lt;eos&amp;gt;&#x27;, &#x27;序列变长&#x27;) + &#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27; + internalNode(&#x27;io&#x27;, &#x27;判断是否停止&#x27;, &#x27;EOS / 长度上限 / stop 字符串&#x27;, &#x27;否则再次走完整路径&#x27;) + &#x27;&lt;/div&gt;&#x27;,
-      text: [&#x27;从概率分布选出一个 token，并把它追加到已有上下文。&#x27;, &#x27;如果没有遇到停止条件，新的上下文会再次经过模型。&#x27;, &#x27;因此生成是一圈一圈的自回归闭环，而不是一次输出整段文本。&#x27;]
-    }
+    finalnorm: {title:&#x27;Final RMSNorm&#x27;,html:&#x27;&#x27;,text:[]},
+    lmhead: {title:&#x27;LM Head&#x27;,html:&#x27;&#x27;,text:[]},
+    prob: {title:&#x27;logits → 概率&#x27;,html:&#x27;&#x27;,text:[]},
+    next: {title:&#x27;下一个 token&#x27;,html:&#x27;&#x27;,text:[]}
   };
+  const generationFlow=(nodes)=&gt;&#x27;&lt;div class=&quot;internal-flow&quot;&gt;&#x27;+nodes.map(([label,value,note],i)=&gt;(i?&#x27;&lt;span class=&quot;internal-arrow&quot;&gt;→&lt;/span&gt;&#x27;:&#x27;&#x27;)+internalNode(&#x27;io&#x27;,label,value,note)).join(&#x27;&#x27;)+&#x27;&lt;/div&gt;&#x27;;
   // 自动播放共用的逐步讲解：播放代理只负责切换视图，这里负责把“为什么”和本步结果说清楚。
   const playbackGuide = {
-    full: {
-      text: [&#x27;先接收一段人类可读的文本，模型还不能直接对字符做矩阵运算。&#x27;, &#x27;字符串：猫 追 老鼠&#x27;],
-      tokenizer: [&#x27;Tokenizer 把文本切成 4 个 token，并查表得到整数 ID；顺序会保留下来。&#x27;, &#x27;Token IDs：[1, 2, 3, 7]&#x27;],
-      embedding: [&#x27;Embedding 把 ID=3 查成 E[3] 的 8 个数；两条样本各查 4 行。&#x27;, &#x27;输出：[B,4,8]，默认就是 [2,4,8]&#x27;],
-      finalnorm: [&#x27;所有 Block 完成后，Final RMSNorm 重新校准数值尺度，避免深层输出漂移。&#x27;, &#x27;输出：[B,4,8]&#x27;],
-      lmhead: [&#x27;LM Head 把 8 维隐藏向量投影到 8 个 token，为每个候选 token 产生一个 logits。&#x27;, &#x27;输出：[B,4,8]，位置 2 的 logits 例子是 [0.2,0.2,1.1,0.1,0.1,0.1,0.1,2.8]&#x27;],
-      prob: [&#x27;Softmax 把 8 个 logits 归一化成概率，后面才能进行贪心或采样选择。&#x27;, &#x27;概率：&lt;eos&gt; 0.78 · 追 0.15 · 猫 0.07&#x27;],
-      next: [&#x27;选出下一个 token 并追加到上下文；没有遇到停止条件就继续下一轮。&#x27;, &#x27;结果：next token = EOS&#x27;]
-    },
+    full: {},
     single: {
-      x: [&#x27;单层 Block 接收 Embedding 或上一层的隐藏表示，四个位置沿 Batch 维并行处理。&#x27;, &#x27;输入：[B,4,8]&#x27;],
-      norm1: [&#x27;RMSNorm 只调整每个位置的数值尺度，不改变 Batch、序列长度和隐藏宽度。&#x27;, &#x27;输出：[B,4,8]&#x27;],
-      qkv: [&#x27;Q/K/V 投影把同一表示分成“发问、匹配、携带内容”三种角色，再拆成多个注意力头。&#x27;, &#x27;输出：Q,K,V=[B,2,4,4]&#x27;],
-      attn: [&#x27;因果注意力计算相似度、屏蔽未来位置、softmax 加权 V，让当前位置读取左侧上下文。&#x27;, &#x27;输出：context=[B,4,8]&#x27;],
-      add1: [&#x27;第一次残差把注意力的新信息加回主干，同时保留原始表示和梯度通路。&#x27;, &#x27;输出：H₁=[B,4,8]&#x27;],
-      norm2: [&#x27;第二次 RMSNorm 为 MLP 提供稳定的输入尺度，仍保持同样的张量形状。&#x27;, &#x27;输出：N₂′=[B,4,8]&#x27;],
-      mlp: [&#x27;SwiGLU/MLP 在每个位置内部混合通道：先扩到 16 维，做门控非线性，再压回 8 维。&#x27;, &#x27;输出：MLP=[B,4,8]&#x27;],
-      add2: [&#x27;第二次残差把通道加工结果写回主干，得到这一层的输出并送入下一层。&#x27;, &#x27;输出：Y=[B,4,8]&#x27;]
+      x: [&#x27;单层 Block 接收 Embedding 或上一层的隐藏表示，每条样本的三个位置沿序列 T 维并行计算；B 维区分不同样本，注意力不跨样本。&#x27;, &#x27;输入：[B,3,8]&#x27;],
+      norm1: [&#x27;RMSNorm 只调整每个位置的数值尺度，不改变 Batch、序列长度和隐藏宽度。&#x27;, &#x27;输出：[B,3,8]&#x27;],
+      qkv: [&#x27;Q/K/V 投影把同一表示分成“发问、匹配、携带内容”三种角色，再拆成多个注意力头。&#x27;, &#x27;输出：Q,K,V=[B,2,3,4]&#x27;],
+      attn: [&#x27;因果注意力计算相似度、屏蔽未来位置、softmax 加权 V，让当前位置读取左侧上下文。&#x27;, &#x27;输出：context=[B,3,8]&#x27;],
+      add1: [&#x27;第一次残差把注意力的新信息加回主干，同时保留原始表示和梯度通路。&#x27;, &#x27;输出：H₁=[B,3,8]&#x27;],
+      norm2: [&#x27;第二次 RMSNorm 为 MLP 提供稳定的输入尺度，仍保持同样的张量形状。&#x27;, &#x27;输出：N₂′=[B,3,8]&#x27;],
+      mlp: [&#x27;SwiGLU/MLP 在每个位置内部混合通道：先扩到 16 维，做门控非线性，再压回 8 维。&#x27;, &#x27;输出：MLP=[B,3,8]&#x27;],
+      add2: [&#x27;第二次残差把通道加工结果写回主干，得到这一层的输出并送入下一层。&#x27;, &#x27;输出：Y=[B,3,8]&#x27;]
     }
   };
+  function refreshGeneration(){
+    const generation=lesson(),generationVector=vector(generation.lastLogits[0][0]),probabilityVector=vector(generation.probs[0][0]);
+    const generatedToken=generation.nextTokens[0].replaceAll(&#x27;&lt;&#x27;,&#x27;&amp;lt;&#x27;).replaceAll(&#x27;&gt;&#x27;,&#x27;&amp;gt;&#x27;);
+    generationRows=[[&#x27;生成输入 · batch[0]&#x27;,&#x27;猫 追 老鼠 → [1,2,3]，尚无 EOS&#x27;],[&#x27;Embedding + &#x27;+state.layers+&#x27;×Block&#x27;,&#x27;[&#x27;+state.batch+&#x27;,3,8] → [&#x27;+state.batch+&#x27;,3,8]；与下钻页面同一份计算&#x27;],[&#x27;LM Head 取末位 t=2&#x27;,generationVector],[&#x27;softmax 全词表概率&#x27;,probabilityVector],[&#x27;词表顺序&#x27;,&#x27;pad / 猫 / 追 / 老鼠 / 鸟 / 吃 / 米 / eos&#x27;],[&#x27;贪心选择&#x27;,generatedToken+&#x27;，ID=&#x27;+generation.nextIds[0][0]],[&#x27;下一轮&#x27;,generation.nextIds[0][0]===7?&#x27;新生成 EOS，按停止规则结束&#x27;:&#x27;将新 ID 追加到 [1,2,3]；下次 forward 才计算它的 KV&#x27;]];
+    generationParts={
+    text:[[&#x27;生成前缀&#x27;,&#x27;猫 追 老鼠&#x27;,&#x27;样本 0；完整流程沿同一个 T=3 前缀计算&#x27;]],
+    tokenizer:[[&#x27;Tokenizer 输出&#x27;,&#x27;[1,2,3]&#x27;,&#x27;没有在生成前加入 EOS&#x27;]],
+    embedding:[[&#x27;查 embedding&#x27;,&#x27;[&#x27;+state.batch+&#x27;,3] → [&#x27;+state.batch+&#x27;,3,8]&#x27;,&#x27;和矩阵页使用同一参数表&#x27;]],
+    finalnorm:[[state.layers+&#x27; 层的最后输出&#x27;,vector(generation.blocks.at(-1).output[0][2]),&#x27;末位置 t=2&#x27;],[&#x27;Final RMSNorm&#x27;,vector(generation.finalNorm.output[0][2]),&#x27;交给 LM Head&#x27;]],
+    lmhead:[[&#x27;末位 normalized hidden&#x27;,vector(generation.finalNorm.output[0][2]),&#x27;t=2，前缀末位&#x27;],[&#x27;LM Head&#x27;,&#x27;h × Whead → &#x27;+generationVector,&#x27;Whead 为固定教学权重&#x27;]],
+    prob:[[&#x27;同一组 logits&#x27;,generationVector,&#x27;8 个有限分数&#x27;],[&#x27;softmax&#x27;,probabilityVector,&#x27;按 pad/猫/追/老鼠/鸟/吃/米/eos 顺序；和为 1&#x27;]],
+    next:[[&#x27;贪心选择&#x27;,generatedToken+&#x27;，ID=&#x27;+generation.nextIds[0][0],&#x27;来自当前 softmax&#x27;],[&#x27;更新序列&#x27;,JSON.stringify(generation.appendedIds[0]),&#x27;本次新 ID 只追加一次&#x27;],[&#x27;停止或继续&#x27;,generation.nextIds[0][0]===7?&#x27;新生成 EOS，停止&#x27;:&#x27;未生成 EOS，后续 forward 继续&#x27;,&#x27;未训练教学参数，不解释为语言能力&#x27;]]
+  };
+
+    Object.entries(generationParts).forEach(([key,nodes])=&gt;{fullInternal[key].html=generationFlow(nodes);fullInternal[key].text=nodes.map(([label,value,note])=&gt;label+&#x27;：&#x27;+value+&#x27;；&#x27;+note);});
+    playbackGuide.full=Object.fromEntries(Object.entries(generationParts).map(([key,nodes])=&gt;[key,[nodes[0][2],nodes.map(([label,value])=&gt;label+&#x27;：&#x27;+value).join(&#x27;；&#x27;)]]));
+    fullDetails.text[1]=&#x27;完整生成、单层与多层图沿同一个三词前缀「猫 追 老鼠」计算。矩阵探索页默认另用 T=4 输入，但共用参数与计算源。&#x27;;
+    fullDetails.embedding[1]=&#x27;每条样本 3 个 token；[1,2,3] 查表得到 [3,8]。当前批次形状 [&#x27;+state.batch+&#x27;,3,8]。&#x27;;
+    root.querySelector(&#x27;[data-full-step=&quot;next&quot;] .shape&#x27;).textContent=generation.nextTokens[0]+&#x27;，ID=&#x27;+generation.nextIds[0][0];
+  }
   function updatePlaybackNarration(step, index, total) {
     const text = root.querySelector(&#x27;#playback-narration-text&#x27;);
     const result = root.querySelector(&#x27;#playback-result&#x27;);
@@ -2507,7 +2661,7 @@ html&gt;body{padding:0}&lt;/style&gt;
       const layer = Number(step.layer) || 1;
       guide = [
         &#x27;Block &#x27; + layer + &#x27; 重复“注意力混合上下文 + MLP 混合通道”，把上一层表示加工得更丰富。&#x27; + (layer === 1 ? &#x27; 第一个 Block 会展开到单层内部；后面的 Block 沿同一条主干继续前进。&#x27; : &#x27;&#x27;),
-        &#x27;输出：X&#x27; + layer + &#x27;=[&#x27; + b + &#x27;,4,8]&#x27;
+        &#x27;输出：X&#x27; + layer + &#x27;=[&#x27; + b + &#x27;,3,8]&#x27;
       ];
     }
     guide = guide.map(part =&gt; String(part).replace(/\[B([,\]])/g, &#x27;[&#x27; + b + &#x27;$1&#x27;));
@@ -2516,15 +2670,15 @@ html&gt;body{padding:0}&lt;/style&gt;
   }
   function playbackStepMeta(step) {
     const b = Math.max(1, Number(state.batch) || 2);
-    const main = &#x27;[&#x27; + b + &#x27;,4,8]&#x27;;
+    const main = &#x27;[&#x27; + b + &#x27;,3,8]&#x27;;
     if (!step) return { stage: &#x27;等待开始&#x27;, title: &#x27;尚未开始&#x27;, route: &#x27;完整模型总览&#x27;, io: &#x27;等待点击“下一步”&#x27; };
     if (step.type === &#x27;stack&#x27;) return { stage: &#x27;多层 Decoder Block&#x27;, title: &#x27;Block &#x27; + step.layer + &#x27; · 层间输出&#x27;, route: &#x27;完整模型 → 多层 Decoder Block → Block &#x27; + step.layer, io: &#x27;输入 X&#x27; + (step.layer - 1) + &#x27; &#x27; + main + &#x27; → 输出 X&#x27; + step.layer + &#x27; &#x27; + main };
     if (step.type === &#x27;single&#x27;) {
       const io = {
         x: &#x27;Embedding / 上一层 → X &#x27; + main,
         norm1: &#x27;X &#x27; + main + &#x27; → N₁ &#x27; + main,
-        qkv: &#x27;N₁ &#x27; + main + &#x27; → Q/K/V [&#x27; + b + &#x27;,2,4,4]&#x27;,
-        attn: &#x27;Q/K/V [&#x27; + b + &#x27;,2,4,4] → context &#x27; + main,
+        qkv: &#x27;N₁ &#x27; + main + &#x27; → Q/K/V [&#x27; + b + &#x27;,2,3,4]&#x27;,
+        attn: &#x27;Q/K/V [&#x27; + b + &#x27;,2,3,4] → context &#x27; + main,
         add1: &#x27;X + Attention &#x27; + main + &#x27; → H₁ &#x27; + main,
         norm2: &#x27;H₁ &#x27; + main + &#x27; → N₂′ &#x27; + main,
         mlp: &#x27;N₂′ &#x27; + main + &#x27; → MLP &#x27; + main,
@@ -2533,16 +2687,8 @@ html&gt;body{padding:0}&lt;/style&gt;
       const stage = [&#x27;norm1&#x27;, &#x27;qkv&#x27;, &#x27;attn&#x27;, &#x27;add1&#x27;].includes(step.key) ? &#x27;Attention 子层&#x27; : ([&#x27;norm2&#x27;, &#x27;mlp&#x27;, &#x27;add2&#x27;].includes(step.key) ? &#x27;MLP 子层&#x27; : &#x27;Block 输入&#x27;);
       return { stage, title: &#x27;Block &#x27; + (step.layer || 1) + &#x27; · &#x27; + step.label, route: &#x27;完整模型 → 多层 Decoder Block → 单层 Block&#x27;, io: io[step.key] || (&#x27;输入 → 输出 &#x27; + main) };
     }
-    const full = {
-      text: [&#x27;输入：字符串“猫 追 老鼠 &lt;eos&gt;”&#x27;, &#x27;输出：待分词文本&#x27;],
-      tokenizer: [&#x27;输入：文本&#x27;, &#x27;输出：Token IDs [1,2,3,7]&#x27;],
-      embedding: [&#x27;输入：Token IDs [&#x27; + b + &#x27;,4]&#x27;, &#x27;输出：Embedding &#x27; + main],
-      finalnorm: [&#x27;输入：最后一层 Xᴸ &#x27; + main, &#x27;输出：归一化后的 &#x27; + main],
-      lmhead: [&#x27;输入：隐藏向量 [8]&#x27;, &#x27;输出：logits [8]&#x27;],
-      prob: [&#x27;输入：logits [8]&#x27;, &#x27;输出：概率分布 [8]&#x27;],
-      next: [&#x27;输入：概率分布&#x27;, &#x27;输出：下一个 token&#x27;]
-    };
-    const pair = full[step.key] || [&#x27;输入：上一步结果&#x27;, &#x27;输出：当前模块结果&#x27;];
+    const nodes=generationParts[step.key]||[];
+    const pair=[nodes.length?&#x27;输入：&#x27;+nodes[0][0]+&#x27; &#x27;+nodes[0][1]:&#x27;输入：上一步结果&#x27;,nodes.length?&#x27;输出：&#x27;+nodes.at(-1)[0]+&#x27; &#x27;+nodes.at(-1)[1]:&#x27;输出：当前模块结果&#x27;];
     const stage = [&#x27;text&#x27;, &#x27;tokenizer&#x27;].includes(step.key) ? &#x27;输入处理&#x27; : (step.key === &#x27;embedding&#x27; ? &#x27;表示层&#x27; : ([&#x27;finalnorm&#x27;, &#x27;lmhead&#x27;, &#x27;prob&#x27;, &#x27;next&#x27;].includes(step.key) ? &#x27;输出与生成&#x27; : &#x27;完整模型&#x27;));
     return { stage, title: step.label, route: &#x27;完整模型 → &#x27; + step.label, io: pair[0] + &#x27; → &#x27; + pair[1] };
   }
@@ -2566,12 +2712,10 @@ html&gt;body{padding:0}&lt;/style&gt;
     if (progress) progress.setAttribute(&#x27;aria-valuenow&#x27;, String(current));
   }
   const shapeRows = [
-    [&#x27;主干输入（两条样本）&#x27;, &#x27;[2,4,8]&#x27;], [&#x27;每头 Q/K/V&#x27;, &#x27;[2,2,4,4]&#x27;], [&#x27;注意力矩阵&#x27;, &#x27;[2,2,4,4]&#x27;], [&#x27;MLP 中间层&#x27;, &#x27;[2,4,16]&#x27;], [&#x27;Block 输出&#x27;, &#x27;[2,4,8]&#x27;]
+    [&#x27;主干输入（当前批次）&#x27;, &#x27;[2,3,8]&#x27;], [&#x27;每头 Q/K/V&#x27;, &#x27;[2,2,3,4]&#x27;], [&#x27;注意力矩阵&#x27;, &#x27;[2,2,3,3]&#x27;], [&#x27;MLP 中间层&#x27;, &#x27;[2,3,16]&#x27;], [&#x27;Block 输出&#x27;, &#x27;[2,3,8]&#x27;]
   ];
-  const attentionRows = [
-    [1.00, 0, 0, 0], [0.35, 0.65, 0, 0], [0.18, 0.31, 0.51, 0], [0.12, 0.18, 0.27, 0.43]
-  ];
-  const tokens = [&#x27;猫&#x27;,&#x27;追&#x27;,&#x27;老鼠&#x27;,&#x27;&amp;lt;eos&amp;gt;&#x27;];
+  const attentionRows = () =&gt; currentBlock().attention[0][0];
+  const tokens = [&#x27;猫&#x27;,&#x27;追&#x27;,&#x27;老鼠&#x27;];
 
   let localWriteAt = 0;
   function save() {
@@ -2657,7 +2801,7 @@ html&gt;body{padding:0}&lt;/style&gt;
   function renderMatrix() {
     const q = Number(state.query);
     const body = root.querySelector(&#x27;#attention-matrix&#x27;);
-    body.innerHTML = attentionRows.map((row, r) =&gt; &#x27;&lt;tr&gt;&lt;th&gt;&#x27; + tokens[r] + &#x27;&lt;/th&gt;&#x27; + row.map((v, c) =&gt; {
+    body.innerHTML = attentionRows().map((row, r) =&gt; &#x27;&lt;tr&gt;&lt;th&gt;&#x27; + tokens[r] + &#x27;&lt;/th&gt;&#x27; + row.map((v, c) =&gt; {
       const allowed = c &lt;= r;
       const heat = allowed ? Math.round(v * 65) : 0;
       return &#x27;&lt;td class=&quot;&#x27; + (allowed ? &#x27;allowed&#x27; : &#x27;masked&#x27;) + (r === q ? &#x27; query&#x27; : &#x27;&#x27;) + &#x27;&quot; style=&quot;--heat:&#x27; + heat + &#x27;%&quot;&gt;&#x27; + (allowed ? v.toFixed(2) : &#x27;—&#x27;) + &#x27;&lt;/td&gt;&#x27;;
@@ -2666,56 +2810,56 @@ html&gt;body{padding:0}&lt;/style&gt;
   function renderBatch() {
     const b = Math.max(1, Number(state.batch) || 2);
     state.batch = b;
-    const size = &#x27;[B,T] = [&#x27; + b + &#x27;,4]&#x27;;
-    const hidden = &#x27;[B,T,d] = [&#x27; + b + &#x27;,4,8]&#x27;;
-    const logits = &#x27;[B,T,V] = [&#x27; + b + &#x27;,4,&#x27; + demo.vocabSize + &#x27;]&#x27;;
+    const size = &#x27;[B,T] = [&#x27; + b + &#x27;,3]&#x27;;
+    const hidden = &#x27;[B,T,d] = [&#x27; + b + &#x27;,3,8]&#x27;;
+    const logits = &#x27;[B,T,V] = [&#x27; + b + &#x27;,3,&#x27; + demo.vocabSize + &#x27;]&#x27;;
     const select = root.querySelector(&#x27;#batch-size&#x27;);
     if (select) select.value = String(b);
     const intro = root.querySelector(&#x27;#batch-intro&#x27;); if (intro) intro.textContent = String(b);
-    const summary = root.querySelector(&#x27;#batch-summary&#x27;); if (summary) summary.textContent = &#x27;每次并行处理 &#x27; + b + &#x27; 条序列，主干形状为 [&#x27; + b + &#x27;,4,8]。&#x27;;
+    const summary = root.querySelector(&#x27;#batch-summary&#x27;); if (summary) summary.textContent = &#x27;每次并行处理 &#x27; + b + &#x27; 条序列，主干形状为 [&#x27; + b + &#x27;,3,8]。&#x27;;
     const t = root.querySelector(&#x27;#batch-token-shape&#x27;); if (t) t.textContent = size;
     const e = root.querySelector(&#x27;#batch-embed-shape&#x27;); if (e) e.textContent = hidden;
     const bl = root.querySelector(&#x27;#batch-block-shape&#x27;); if (bl) bl.textContent = hidden + &#x27;（每个样本独立处理）&#x27;;
     const l = root.querySelector(&#x27;#batch-logits-shape&#x27;); if (l) l.textContent = logits;
     const panelValue = root.querySelector(&#x27;#batch-panel-value&#x27;); if (panelValue) panelValue.textContent = String(b);
     const ex = root.querySelector(&#x27;#batch-example&#x27;);
-    if (ex) ex.textContent = &#x27;示意：&#x27; + b + &#x27; 条样本沿第一个维度堆叠；示例行是 [1,2,3,7]（猫 追 老鼠 eos）和 [4,5,6,7]（鸟 吃 米 eos）。&#x27;;
+    if (ex) ex.textContent = &#x27;示意：&#x27; + b + &#x27; 条样本沿第一个维度堆叠；示例行是 [1,2,3]（猫 追 老鼠）和 [4,5,6]（鸟 吃 米）。&#x27;;
     root.querySelectorAll(&#x27;.node .shape, .node .formula, .kv .code-chip&#x27;).forEach(el =&gt; {
-      el.textContent = el.textContent.replace(/\[\d+,2,4,4\]/g, &#x27;[&#x27; + b + &#x27;,2,4,4]&#x27;).replace(/\[\d+,4,V\]/g, &#x27;[&#x27; + b + &#x27;,4,&#x27; + demo.vocabSize + &#x27;]&#x27;).replace(/\[\d+,4,8\]/g, &#x27;[&#x27; + b + &#x27;,4,8]&#x27;).replace(/\[B,T,d\] = \[\d+,4,8\]/g, &#x27;[B,T,d] = [&#x27; + b + &#x27;,4,8]&#x27;).replace(/\[\d+,4\]/g, &#x27;[&#x27; + b + &#x27;,4]&#x27;);
+      el.textContent = el.textContent.replace(/\[\d+,2,3,([34])\]/g, (_,width) =&gt; &#x27;[&#x27; + b + &#x27;,2,3,&#x27;+width+&#x27;]&#x27;).replace(/\[\d+,3,V\]/g, &#x27;[&#x27; + b + &#x27;,3,&#x27; + demo.vocabSize + &#x27;]&#x27;).replace(/\[\d+,3,8\]/g, &#x27;[&#x27; + b + &#x27;,3,8]&#x27;).replace(/\[B,T,d\] = \[\d+,3,8\]/g, &#x27;[B,T,d] = [&#x27; + b + &#x27;,3,8]&#x27;).replace(/\[\d+,3\]/g, &#x27;[&#x27; + b + &#x27;,3]&#x27;);
     });
+    renderFullTrace();
   }
   function renderSingleDetail(key) {
     const d = details[key] || details.x;
-    const c = calcDetails[key] || calcDetails.x;
+    const c = calculation(key);
     root.querySelector(&#x27;#single-detail-title&#x27;).textContent = d[0];
-    root.querySelector(&#x27;#single-detail-body&#x27;).textContent = d[1];
+    root.querySelector(&#x27;#single-detail-body&#x27;).textContent = withBatch(d[1]);
     root.querySelector(&#x27;#single-detail-why&#x27;).textContent = whyDetails[key] || whyDetails.x;
     root.querySelector(&#x27;#single-calc-title&#x27;).textContent = c.title;
     root.querySelector(&#x27;#single-calc&#x27;).innerHTML = c.rows.map(r =&gt; &#x27;&lt;div class=&quot;calc-step&quot;&gt;&lt;div class=&quot;calc-label&quot;&gt;&#x27; + r[0] + &#x27;&lt;/div&gt;&lt;div class=&quot;calc-value&quot;&gt;&#x27; + r[1] + &#x27;&lt;/div&gt;&lt;/div&gt;&#x27;).join(&#x27;&#x27;);
     const b = Math.max(1, Number(state.batch) || 2);
-    const dynamicShapes = shapeRows.map(r =&gt; [r[0], r[1].replace(/\[\d+,4,8\]/g, &#x27;[&#x27; + b + &#x27;,4,8]&#x27;).replace(/\[\d+,2,4,4\]/g, &#x27;[&#x27; + b + &#x27;,2,4,4]&#x27;).replace(/\[\d+,4,16\]/g, &#x27;[&#x27; + b + &#x27;,4,16]&#x27;)]);
+    const dynamicShapes = shapeRows.map(r =&gt; [r[0], r[1].replace(/\[\d+,3,8\]/g, &#x27;[&#x27; + b + &#x27;,3,8]&#x27;).replace(/\[\d+,2,3,([34])\]/g, (_,width) =&gt; &#x27;[&#x27; + b + &#x27;,2,3,&#x27;+width+&#x27;]&#x27;).replace(/\[\d+,3,16\]/g, &#x27;[&#x27; + b + &#x27;,3,16]&#x27;)]);
     root.querySelector(&#x27;#shape-table&#x27;).innerHTML = dynamicShapes.map(r =&gt; &#x27;&lt;tr&gt;&lt;td&gt;&#x27; + r[0] + &#x27;&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;code-chip&quot;&gt;&#x27; + r[1] + &#x27;&lt;/span&gt;&lt;/td&gt;&lt;/tr&gt;&#x27;).join(&#x27;&#x27;);
     root.querySelectorAll(&#x27;[data-step]&#x27;).forEach(n =&gt; n.classList.toggle(&#x27;selected&#x27;, n.dataset.step === key));
     renderInternal(key);
   }
   root.querySelectorAll(&#x27;[data-step]&#x27;).forEach(n =&gt; n.addEventListener(&#x27;click&#x27;, () =&gt; { stopPlayback(&#x27;已停止自动播放，可继续查看单层模块。&#x27;); navigateTo(&#x27;module&#x27;, { step: n.dataset.step, parent: &#x27;single&#x27; }); }));
   root.querySelector(&#x27;#query-token&#x27;).addEventListener(&#x27;change&#x27;, e =&gt; { resetPlayback(); state.query = Number(e.target.value); renderMatrix(); save(); });
-  root.querySelector(&#x27;#batch-size&#x27;).addEventListener(&#x27;change&#x27;, e =&gt; { resetPlayback(); state.batch = Number(e.target.value) || 2; renderBatch(); save(); });
+  root.querySelector(&#x27;#batch-size&#x27;).addEventListener(&#x27;change&#x27;, e =&gt; { resetPlayback(); state.batch = Number(e.target.value) || 2; renderStack(); renderMatrix(); renderSingleDetail(&#x27;x&#x27;); if(state.tab===&#x27;module&#x27;)renderModulePage(state.moduleStep,state.moduleParent); save(); });
   function renderStack() {
     const n = state.layers;
     const b = Math.max(1, Number(state.batch) || 2);
     state.selectedLayer = Math.max(1, Math.min(Number(state.selectedLayer) || 1, n));
     root.querySelector(&#x27;#layer-count&#x27;).textContent = n;
+    root.querySelector(&#x27;#layer-intro&#x27;).textContent=n;
     root.querySelector(&#x27;#layer-summary&#x27;).textContent = &#x27;L=&#x27; + n;
-    const fmt = a =&gt; &#x27;[&#x27; + a.map(v =&gt; v.toFixed(2)).join(&#x27;, &#x27;) + &#x27;]&#x27;;
-    const base = [0.40, -0.10, 0.70, 0.20, 0.00, 0.30, -0.20, 0.50];
-    const trace = [[&#x27;X₀ Embedding · batch[0] 的“老鼠”&#x27;, fmt(base)]];
-    for (let i = 1; i &lt;= n; i++) trace.push([&#x27;Y&#x27; + i + &#x27; = Block &#x27; + i, fmt(base.map((v, j) =&gt; v + i * [0.03, 0.02, 0.04, 0.01, 0.01, 0.02, 0.02, 0.02][j]))]);
+    const computed=lesson();
+    const trace=[[&#x27;X₀ Embedding · batch[0] 的“老鼠”&#x27;,vector(rowAt(computed.embedding))],...computed.blocks.map((block,i)=&gt;[&#x27;Y&#x27;+(i+1)+&#x27; = Block &#x27;+(i+1),vector(rowAt(block.output))])];
     root.querySelector(&#x27;#stack-trace&#x27;).innerHTML = trace.map(r =&gt; &#x27;&lt;tr&gt;&lt;th&gt;&#x27; + r[0] + &#x27;&lt;/th&gt;&lt;td&gt;&#x27; + r[1] + &#x27;&lt;/td&gt;&lt;/tr&gt;&#x27;).join(&#x27;&#x27;);
     const stack = root.querySelector(&#x27;#layer-stack&#x27;);
-    let html = &#x27;&lt;div class=&quot;stack-row&quot;&gt;&lt;div&gt;&lt;/div&gt;&lt;div class=&quot;layer-box&quot;&gt;&lt;strong&gt;输入 X₀&lt;/strong&gt;&lt;br&gt;&lt;span class=&quot;subtle&quot;&gt;Embedding 输出&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;layer-shape&quot;&gt;&lt;div&gt;&lt;span class=&quot;io-label&quot;&gt;输出&lt;/span&gt; X₀ [&#x27; + b + &#x27;,4,8]&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&#x27;;
+    let html = &#x27;&lt;div class=&quot;stack-row&quot;&gt;&lt;div&gt;&lt;/div&gt;&lt;div class=&quot;layer-box&quot;&gt;&lt;strong&gt;输入 X₀&lt;/strong&gt;&lt;br&gt;&lt;span class=&quot;subtle&quot;&gt;Embedding 输出&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;layer-shape&quot;&gt;&lt;div&gt;&lt;span class=&quot;io-label&quot;&gt;输出&lt;/span&gt; X₀ [&#x27; + b + &#x27;,3,8]&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&#x27;;
     for (let i = 1; i &lt;= n; i++) {
-      html += &#x27;&lt;div class=&quot;stack-arrow&quot; aria-hidden=&quot;true&quot;&gt;↓&lt;/div&gt;&lt;div class=&quot;stack-row&quot;&gt;&lt;div class=&quot;layer-tag&quot;&gt;Block &#x27; + i + &#x27;&lt;/div&gt;&lt;button class=&quot;layer-box&#x27; + (i === state.selectedLayer ? &#x27; active&#x27; : &#x27;&#x27;) + &#x27;&quot; type=&quot;button&quot; data-layer-detail=&quot;&#x27; + i + &#x27;&quot;&gt;&lt;strong&gt;Norm → Attention → Add → Norm → MLP → Add&lt;/strong&gt;&lt;br&gt;&lt;span class=&quot;subtle&quot;&gt;参数 θ&#x27; + i + &#x27; 独立&lt;/span&gt;&lt;/button&gt;&lt;div class=&quot;layer-shape&quot;&gt;&lt;div&gt;&lt;span class=&quot;io-label&quot;&gt;输入&lt;/span&gt; X&#x27; + (i - 1) + &#x27; [&#x27; + b + &#x27;,4,8]&lt;/div&gt;&lt;div&gt;&lt;span class=&quot;io-label&quot;&gt;输出&lt;/span&gt; X&#x27; + i + &#x27; [&#x27; + b + &#x27;,4,8]&lt;/div&gt;&lt;button class=&quot;btn btn-ghost&quot; type=&quot;button&quot; data-layer-enter=&quot;&#x27; + i + &#x27;&quot;&gt;进入单层&lt;/button&gt;&lt;/div&gt;&lt;/div&gt;&#x27;;
+      html += &#x27;&lt;div class=&quot;stack-arrow&quot; aria-hidden=&quot;true&quot;&gt;↓&lt;/div&gt;&lt;div class=&quot;stack-row&quot;&gt;&lt;div class=&quot;layer-tag&quot;&gt;Block &#x27; + i + &#x27;&lt;/div&gt;&lt;button class=&quot;layer-box&#x27; + (i === state.selectedLayer ? &#x27; active&#x27; : &#x27;&#x27;) + &#x27;&quot; type=&quot;button&quot; data-layer-detail=&quot;&#x27; + i + &#x27;&quot;&gt;&lt;strong&gt;Norm → Attention → Add → Norm → MLP → Add&lt;/strong&gt;&lt;br&gt;&lt;span class=&quot;subtle&quot;&gt;参数 θ&#x27; + i + &#x27; 独立&lt;/span&gt;&lt;/button&gt;&lt;div class=&quot;layer-shape&quot;&gt;&lt;div&gt;&lt;span class=&quot;io-label&quot;&gt;输入&lt;/span&gt; X&#x27; + (i - 1) + &#x27; [&#x27; + b + &#x27;,3,8]&lt;/div&gt;&lt;div&gt;&lt;span class=&quot;io-label&quot;&gt;输出&lt;/span&gt; X&#x27; + i + &#x27; [&#x27; + b + &#x27;,3,8]&lt;/div&gt;&lt;button class=&quot;btn btn-ghost&quot; type=&quot;button&quot; data-layer-enter=&quot;&#x27; + i + &#x27;&quot;&gt;进入单层&lt;/button&gt;&lt;/div&gt;&lt;/div&gt;&#x27;;
     }
     stack.innerHTML = html;
     stack.querySelectorAll(&#x27;[data-layer-detail]&#x27;).forEach(btn =&gt; btn.addEventListener(&#x27;click&#x27;, () =&gt; { stopPlayback(&#x27;已停止自动播放，可继续查看层间结构。&#x27;); navigateTo(&#x27;single&#x27;, { layer: btn.dataset.layerDetail, step: &#x27;x&#x27; }); }));
@@ -2740,6 +2884,7 @@ html&gt;body{padding:0}&lt;/style&gt;
   }));
 
   function renderFullTrace() {
+    refreshGeneration();
     root.querySelector(&#x27;#generation-trace&#x27;).innerHTML = generationRows.map(r =&gt; &#x27;&lt;tr&gt;&lt;th&gt;&#x27; + r[0] + &#x27;&lt;/th&gt;&lt;td&gt;&#x27; + r[1] + &#x27;&lt;/td&gt;&lt;/tr&gt;&#x27;).join(&#x27;&#x27;);
   }
   function renderFullInternal(key) {
@@ -2760,7 +2905,7 @@ html&gt;body{padding:0}&lt;/style&gt;
     state.moduleParent = parent || &#x27;full&#x27;;
     root.querySelector(&#x27;#module-page-title&#x27;).textContent = title + &#x27;：内部计算&#x27;;
     root.querySelector(&#x27;#module-page-detail-title&#x27;).textContent = title;
-    root.querySelector(&#x27;#module-page-detail-body&#x27;).textContent = d[1];
+    root.querySelector(&#x27;#module-page-detail-body&#x27;).textContent = withBatch(d[1]);
     root.querySelector(&#x27;#module-page-detail-why&#x27;).textContent = why;
     root.querySelector(&#x27;#module-page-return-note&#x27;).textContent = &#x27;模块计算完成后，结果回到主干表示流；可以沿面包屑返回上一级。&#x27;;
     if (internal) {
@@ -2785,7 +2930,7 @@ html&gt;body{padding:0}&lt;/style&gt;
   function updateFullStep(key, auto) {
     const d = fullDetails[key] || fullDetails.text;
     root.querySelector(&#x27;#full-detail-title&#x27;).textContent = d[0];
-    root.querySelector(&#x27;#full-detail-body&#x27;).textContent = d[1];
+    root.querySelector(&#x27;#full-detail-body&#x27;).textContent = withBatch(d[1]);
     root.querySelector(&#x27;#full-detail-why&#x27;).textContent = fullWhy[key] || fullWhy.text;
     root.querySelectorAll(&#x27;[data-full-step]&#x27;).forEach(x =&gt; x.classList.toggle(&#x27;selected&#x27;, x.dataset.fullStep === key));
     if (!auto &amp;&amp; root.querySelector(&#x27;#autoplay-status&#x27;) &amp;&amp; !state.playing) root.querySelector(&#x27;#autoplay-status&#x27;).textContent = &#x27;已选中：&#x27; + d[0];

@@ -2,6 +2,23 @@
 <html lang="zh-CN" data-visualize-standalone>
 <head>
 <meta charset="utf-8">
+<!-- learning-scope-style:start -->
+<style>
+.learning-scope-shell{box-sizing:border-box;max-width:736px;width:100%;margin:0 auto 14px;font:13px/1.6 system-ui,"Microsoft YaHei",sans-serif;color:#344454}
+.learning-scope{border:1px solid #dce3e9;border-radius:8px;background:#f7f9fb;overflow-wrap:anywhere}
+.learning-scope>summary{display:list-item;list-style:disclosure-closed inside;cursor:pointer;padding:9px 12px;font-size:13px;line-height:1.6;color:inherit}
+.learning-scope[open]>summary{list-style-type:disclosure-open}
+.learning-scope>summary:focus-visible{outline:2px solid #287cb8;outline-offset:3px}
+.learning-scope-kind{font-weight:650;color:#24668f}
+.learning-scope-hint{font-size:11px;opacity:.7;margin-left:6px}
+.learning-scope[open] .learning-scope-hint{display:none}
+.learning-scope dl{display:grid;grid-template-columns:88px minmax(0,1fr);gap:7px 12px;margin:0;padding:3px 12px 13px}
+.learning-scope dt{font-weight:600}.learning-scope dd{margin:0}
+@media(max-width:480px){.learning-scope dl{grid-template-columns:1fr;gap:3px}.learning-scope dd+dt{margin-top:6px}}
+:root[data-theme=dark] .learning-scope-shell{color:#c5d1dc}:root[data-theme=dark] .learning-scope{background:#1b242d;border-color:#384550}:root[data-theme=dark] .learning-scope-kind{color:#9bcaf0}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .learning-scope-shell{color:#c5d1dc}:root:not([data-theme=light]) .learning-scope{background:#1b242d;border-color:#384550}:root:not([data-theme=light]) .learning-scope-kind{color:#9bcaf0}}
+</style>
+<!-- learning-scope-style:end -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com https://persistent.oaistatic.com/plugins/visualize/; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
@@ -10,6 +27,17 @@
 
 </head>
 <body>
+<!-- learning-scope:start -->
+<aside class="learning-scope-shell" aria-label="本页范围与源码版本">
+<details class="learning-scope">
+<summary><span class="learning-scope-kind">源码快照</span> 本页范围与源码版本 <span class="learning-scope-hint">展开查看</span></summary>
+<dl><dt>源码基线</dt><dd>vLLM 295c062db8 · Ascend 94e3e25f8 · torch_npu 62b9115</dd>
+<dt>后端与配置</dt><dd>Qwen2 dense · TP=1 · BF16 未量化 · FULL 图模式 · qk_norm=False</dd>
+<dt>流程范围</dt><dd>捕获、回放与 FIA 动态参数更新；执行依赖和张量数据依赖分别绘制。</dd>
+<dt>教学假设</dt><dd>来自静态源码走读；融合命中、tiling 和 kernel 数量仍需具体部署环境验证。</dd></dl>
+</details>
+</aside>
+<!-- learning-scope:end -->
 <iframe id="codex-visualization" sandbox="allow-scripts" referrerpolicy="no-referrer" title="vLLM-Ascend 图优化：捕获、回放与底层调用" data-srcdoc="&lt;!doctype html&gt;
 &lt;html lang=&quot;zh-CN&quot; data-visualize-standalone&gt;
 &lt;head&gt;
@@ -1851,6 +1879,8 @@ html&gt;body{padding:0}&lt;/style&gt;
 #ascend-op-detail .od-chart .stage-active { stroke:var(--viz-series-1); stroke-width:2; }
 #ascend-op-detail .od-chart .record-line { stroke:var(--viz-series-1); }
 #ascend-op-detail .od-chart .task-line { stroke:var(--viz-series-3); }
+#ascend-op-detail .od-chart .execution { stroke-dasharray:2 5; }
+#ascend-op-detail .od-chart .tensor { stroke:var(--viz-series-1); stroke-width:1.7; }
 @media(max-width:480px){#ascend-op-detail .od-top {padding-right:0;}}
 &lt;/style&gt;
 &lt;div id=&quot;ascend-op-detail&quot;&gt;
@@ -1918,6 +1948,9 @@ graph.replay()
     &lt;span class=&quot;text-small tabular-nums&quot; id=&quot;od-count&quot;&gt;12 组&lt;/span&gt;
   &lt;/div&gt;
   &lt;div class=&quot;od-smallgap&quot; id=&quot;od-status&quot; aria-live=&quot;polite&quot;&gt;&lt;/div&gt;
+  &lt;h3 class=&quot;od-gap&quot;&gt;先追数据：写入缓存与 FIA 的三路输入&lt;/h3&gt;
+  &lt;div class=&quot;text-small od-smallgap&quot;&gt;实线表示本地数据依赖，箭头不表示跨卡传输；下方算子长图的点线表示执行先后。Q 直接交给 FIA，只有 K/V 写入缓存。&lt;/div&gt;
+  &lt;div class=&quot;od-smallgap&quot; id=&quot;od-attention-inputs&quot;&gt;&lt;/div&gt;
   &lt;div class=&quot;od-gap&quot; id=&quot;od-operators&quot;&gt;&lt;/div&gt;
   &lt;div class=&quot;od-legend text-small od-gap&quot;&gt;
     &lt;span&gt;&lt;i class=&quot;od-swatch existing&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;模型 / CustomOp 已有融合&lt;/span&gt;
@@ -2146,6 +2179,45 @@ return: output[0], output[3], output[2]
    el(&#x27;od-stage-detail&#x27;).textContent=stage&lt;0?&#x27;同形状、可换内容的两次输入：首次逐项录制；后续更新输入并整图执行。&#x27;:stages[stage];
    drawTwoRuns();
  }
+ function drawAttentionInputs(){
+   const w=Math.floor(el(&#x27;od-attention-inputs&#x27;).getBoundingClientRect().width);if(!w)return;
+   const svg=base(&#x27;attentioninputs&#x27;,w),wide=w&gt;=600;
+   const panels=[
+     {title:&#x27;① 写缓存：本轮 K/V 按 slot_mapping 落到目标槽&#x27;,inputs:[
+       [&#x27;本层投影与 RoPE&#x27;,&#x27;K 经 RoPE；V 保持不变&#x27;,&#x27;K,V：[T,8,128]&#x27;],
+       [&#x27;Worker 准备本轮 metadata&#x27;,&#x27;slot_mapping：[T]&#x27;,&#x27;token 行 → 本卡 KV 槽&#x27;]
+     ],action:[&#x27;reshape_and_cache&#x27;,&#x27;只写 key / value；不写 Q&#x27;,&#x27;持久 K/V cache 按槽更新&#x27;],output:[&#x27;同一份持久 KV cache&#x27;,&#x27;原有历史 + 本轮 K/V&#x27;,&#x27;已写槽供下方 FIA 读取&#x27;]},
+     {title:&#x27;② 读 Attention：三路输入共同决定本轮输出&#x27;,inputs:[
+       [&#x27;本层 RoPE 输出 Q&#x27;,&#x27;Q：[T,32,128]&#x27;,&#x27;直接参与 QKᵀ，不经过缓存写入&#x27;],
+       [&#x27;① 的同一份 KV cache&#x27;,&#x27;已有历史 + 本轮 K/V&#x27;,&#x27;读取 block_table 指定的块&#x27;],
+       [&#x27;Worker 准备本轮 metadata&#x27;,&#x27;block_table；Q/KV lengths&#x27;,&#x27;选择有效块与有效 token 范围&#x27;]
+     ],action:[&#x27;FIA Attention&#x27;,&#x27;Q + KV cache + 表 / 长度&#x27;,&#x27;图内 event wait 满足后执行&#x27;],output:[&#x27;Attention 输出 O&#x27;,&#x27;[T,32,128] → [T,4096]&#x27;,&#x27;交给本层 o_proj&#x27;]}
+   ];
+   let y=24;
+   panels.forEach((p,pi)=&gt;{
+     y+=text(svg,p.title,2,y,w-4,false,&#x27;weight&#x27;)+18;
+     const gap=18,n=p.inputs.length,nw=wide?(w-8-gap*(n-1))/n:w-64;
+     const sourceH=Math.max(...p.inputs.map(d=&gt;bh(nw,...d))),inputs=[];
+     p.inputs.forEach((d,i)=&gt;{
+       const b={x:wide?4+i*(nw+gap):52,y:wide?y:y+i*(sourceH+18),w:nw,h:sourceH};
+       inputs.push(b);box(svg,b,...d,&#x27;view&#x27;);
+     });
+     const sourcesBottom=Math.max(...inputs.map(b=&gt;b.y+b.h));
+     const aw=wide?Math.min(w-8,370):w-64,ax=wide?(w-aw)/2:52;
+     const action={x:ax,y:sourcesBottom+50,w:aw,h:bh(aw,...p.action)};
+     inputs.forEach((b,i)=&gt;{
+       const target=action.x+action.w*(i+1)/(n+1);
+       if(wide)path(svg,`M${b.x+b.w/2},${b.y+b.h}V${sourcesBottom+20+i*8}H${target}V${action.y}`,&#x27;line tensor&#x27;);
+       else path(svg,`M${b.x},${b.y+b.h/2}H${8+i*14}V${sourcesBottom+16+i*9}H${target}V${action.y}`,&#x27;line tensor&#x27;);
+     });
+     box(svg,action,...p.action,pi?&#x27;event&#x27;:&#x27;normal&#x27;);
+     const output={x:ax,y:action.y+action.h+32,w:aw,h:bh(aw,...p.output)};
+     path(svg,`M${ax+aw/2},${action.y+action.h}V${output.y}`,&#x27;line tensor&#x27;);
+     box(svg,output,...p.output,&#x27;existing&#x27;);y=output.y+output.h+34;
+     if(pi===1){y+=text(svg,&#x27;事件是执行条件：update_stream 更新 FIA 参数并 record → 图内 wait/reset → FIA。它不生产 Q/K/V。&#x27;,2,y,w-4,true,&#x27;secondary&#x27;)+12;}
+   });
+   finish(svg,w,y,&#x27;od-attention-inputs&#x27;);
+ }
  function drawOperators(){
    const w=Math.floor(el(&#x27;od-operators&#x27;).getBoundingClientRect().width);if(!w)return;
    const svg=base(&#x27;operators&#x27;,w), narrow=w&lt;600, hostW=narrow?0:Math.min(205,w*.28), dx=narrow?18:hostW+42, nw=w-dx-65;
@@ -2177,7 +2249,7 @@ return: output[0], output[3], output[2]
    const attnTop=attnLabelY-18,attnBottom=boxes[6].y+boxes[6].h+10;
    svg.append(S(&#x27;rect&#x27;,{x:dx-7,y:attnTop,width:nw+14,height:attnBottom-attnTop,rx:6,class:&#x27;group&#x27;}));
    // Device order is distinct from the CPU call-to-implementation arrows.
-   boxes.forEach((b,i)=&gt;{if(i&lt;boxes.length-1){const next=boxes[i+1];path(svg,`M${b.x+b.w/2},${b.y+b.h}V${next.y}`);}});
+    boxes.forEach((b,i)=&gt;{if(i&lt;boxes.length-1){const next=boxes[i+1];path(svg,`M${b.x+b.w/2},${b.y+b.h}V${next.y}`,&#x27;line execution&#x27;);}});
    // r1 bypasses the attention branch; r2 bypasses the MLP branch.
    const rail=w-14, a=boxes[0], b=boxes[8], c=boxes[11];
    const returnY=bottom+46, returnH=bh(nw,&#x27;返回两个引用（无相加）&#x27;,&#x27;(m, r₂)&#x27;,&#x27;下一层开头才执行 m + r₂&#x27;);
@@ -2189,6 +2261,10 @@ return: output[0], output[3], output[2]
    const vRail=w-39, vs=boxes[2], vt=boxes[4];
    path(svg,`M${vs.x+vs.w},${vs.y+vs.h/2}H${vRail}V${vt.y+vt.h/2}H${vt.x+vt.w}`,&#x27;line&#x27;);
    label(svg,&#x27;V&#x27;,vRail-7,vs.y+vs.h/2+30,20,true);
+    // Q is a separate FIA input; cache writes only consume K/V and slots.
+    const qRail=w-53,qs=boxes[3],qt=boxes[6];
+    path(svg,`M${qs.x+qs.w},${qs.y+qs.h/2}H${qRail}V${qt.y+qt.h/2}H${qt.x+qt.w}`,&#x27;line tensor&#x27;);
+    label(svg,&#x27;Q&#x27;,qRail-5,qs.y+qs.h/2+27,18,true);
    if(!narrow){
      if(mode===&#x27;capture&#x27;)boxes.forEach((b,i)=&gt;{
        let cy=b.y+30;text(svg,ops[i].call,2,cy,hostW,true);
@@ -2272,7 +2348,7 @@ return: output[0], output[3], output[2]
    el(&#x27;od-next&#x27;).textContent=current&lt;0?&#x27;逐算子查看&#x27;:&#x27;下一步&#x27;;el(&#x27;od-count&#x27;).textContent=current&lt;0?&#x27;12 组&#x27;:`${current+1} / 12`;
    el(&#x27;od-status&#x27;).textContent=current&lt;0?(mode===&#x27;capture&#x27;?&#x27;主机执行 callable；捕获流上的设备任务及依赖被记录，暂不执行。&#x27;:&#x27;新 token 写入原地址；图中计算执行，FIA 参数按本轮 metadata 更新。&#x27;):ops[current].detail;
    const op=ops[current&lt;0?0:current];el(&#x27;od-code-label&#x27;).textContent=(current&lt;0?&#x27;示例 1：&#x27;:&#x27;当前 &#x27;+(current+1)+&#x27;：&#x27;)+op.title;el(&#x27;od-code&#x27;).textContent=op.code;el(&#x27;od-source&#x27;).textContent=op.src;
-   drawOperators();
+   drawAttentionInputs();drawOperators();
  }
  function restore(state){const s=state?.privateContent;if(![2,3].includes(s?.version))return;mode=s.mode===&#x27;replay&#x27;?&#x27;replay&#x27;:&#x27;capture&#x27;;current=Number.isInteger(s.current)?Math.max(-1,Math.min(11,s.current)):-1;stage=Number.isInteger(s.stage)?Math.max(-1,Math.min(6,s.stage)):-1;update();updateStages();}
  el(&#x27;od-both&#x27;).addEventListener(&#x27;click&#x27;,()=&gt;{stage=-1;updateStages();save();});
@@ -2290,7 +2366,7 @@ return: output[0], output[3], output[2]
  const list=el(&#x27;od-source-list&#x27;);ops.forEach((op,i)=&gt;{const li=document.createElement(&#x27;li&#x27;),b=document.createElement(&#x27;button&#x27;),d=document.createElement(&#x27;div&#x27;),c=document.createElement(&#x27;code&#x27;);b.className=&#x27;btn btn-ghost&#x27;;b.type=&#x27;button&#x27;;b.textContent=op.title;b.addEventListener(&#x27;click&#x27;,()=&gt;{current=i;el(&#x27;od-code-details&#x27;).open=true;update();save();});d.textContent=op.detail;c.className=&#x27;text-small od-sources&#x27;;c.textContent=op.src;li.append(b,d,c);list.append(li);});
  window.addEventListener(&#x27;openai:set_globals&#x27;,e=&gt;{if(e.detail?.globals?.widgetState)restore(e.detail.globals.widgetState);});
  el(&#x27;od-runs-expanded&#x27;).after(el(&#x27;od-layers-expanded&#x27;));
- new ResizeObserver(()=&gt;{const w=Math.floor(root.getBoundingClientRect().width);if(w!==previousWidth){previousWidth=w;drawCallLayers();drawUpdateCalls();drawTwoRuns();drawOperators();drawStorage();drawFusion();}}).observe(root);
+ new ResizeObserver(()=&gt;{const w=Math.floor(root.getBoundingClientRect().width);if(w!==previousWidth){previousWidth=w;drawCallLayers();drawUpdateCalls();drawTwoRuns();drawAttentionInputs();drawOperators();drawStorage();drawFusion();}}).observe(root);
  drawCallLayers();drawUpdateCalls();update();updateStages();drawStorage();drawFusion();restore(window.openai?.widgetState);
 })();
 &lt;/script&gt;

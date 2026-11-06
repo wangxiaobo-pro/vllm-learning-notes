@@ -17,6 +17,7 @@
   <div class="pa-legend text-small"><span><i class="pa-plan"></i>调度元数据</span><span><i class="pa-live"></i>本轮张量 / 索引</span><span><i class="pa-store"></i>常驻 K/V</span></div>
   <div aria-live="polite" aria-atomic="true"><h3 data-step-title></h3><div data-caption></div></div>
   <svg data-graph role="img" aria-label="按 Scheduler、Worker 和 NPU 归属展示的数据依赖图"></svg>
+  <nav aria-label="完整八步流程"><h3>完整编号流程</h3><ol class="pa-steps text-small" data-steps></ol></nav>
   <details><summary>源码入口与示例条件</summary><div class="pa-source">
     <span>本地静态源码 · vLLM 295c062db8 · vLLM-Ascend 94e3e25f8。块号 #7 和 #3 是教学取值。单 KV 组、普通 full attention、NHD、无前缀缓存、无投机解码。</span>
     <span>Decode 选择支持专用 PA 的 A2 场景，头维度 128、无滑窗，FULL_DECODE_ONLY 且 pa_shape_list 含本批形状 1。图表示算子的数据依赖。未命中时，普通 Decode 的 FIA 也可依据块表和有效长度读缓存。</span>
@@ -37,6 +38,10 @@
  #pa-flow .pa-source {display:grid;gap:.5em;margin-top:.5em}
  #pa-flow .pa-source a {display:block;width:fit-content}
  #pa-flow summary {width:fit-content}
+ #pa-flow .pa-steps {display:grid;gap:9px;padding-left:1.8em;margin:0}
+ #pa-flow .pa-steps button {color:var(--foreground);text-align:left;white-space:normal;max-width:100%;overflow-wrap:anywhere}
+ #pa-flow .pa-steps button[aria-current="step"] {font-weight:600;outline:1px solid var(--blue)}
+ #pa-flow .pa-steps p {margin:.25em 0 0;color:var(--foreground)}
 </style>
 <script>
 (() => {
@@ -75,6 +80,7 @@
       decode:'一个新位置的 Attention 结果 O[1, Hq, D] 合并 head 维，交给 o_proj。',
       prefill:'128 个位置的 Attention 结果 O[128, Hq, D] 合并 head 维，交给 o_proj。'}
   ];
+  const ordinal=n=>String.fromCodePoint(0x2460+n-1);
   const ready=new Map(stages.flatMap((stage,i)=>stage.outputs.map(id=>[id,i+1])));
   const playInterval=2800;
   let mode='decode', focus='all', step=0, timer=null, lastWidth=0;
@@ -134,8 +140,9 @@
     const narrow=small?W*.387:W*.268, medium=small?W*.42:W*.365, wide=small?W*.72:W*.52;
     function place(id,cx,y,w,kind='live'){
       const rows=txt[id].flatMap((v,i)=>{
+        if(i===0 && ready.has(id) && (!step||ready.get(id)===step))v=ordinal(ready.get(id))+' '+v;
         const font=(i===0?'500 13px ':'400 12px ')+family;
-        if(small&&id==='slot'&&i===0){return ['compute_','slot_mapping'].map(s=>({s,title:true}));}
+        if(small&&id==='slot'&&i===0){return [(!step||ready.get(id)===step?ordinal(ready.get(id))+' ':'')+'compute_','slot_mapping'].map(s=>({s,title:true}));}
         return wrap(v,w-14,font).map(s=>({s,title:i===0}));
       });
       const h=rows.length*17+15;
@@ -143,7 +150,7 @@
       dims[id]=n;return n;
     }
     function edge(a,b,k,points,label,at,desc){
-      edges.push({a,b,k,points,label,at,desc:desc||label});
+      edges.push({a,b,k,points,label,at,desc:desc||label,number:ready.get(b)});
     }
     const mid=(a,b)=>(a+b)/2;
     const gap=32, S0=3;
@@ -261,7 +268,8 @@
       }
     }
     for(const [e,active] of labels){
-      const label=step&&ready.get(e.b)>step?'·':e.label;
+      const prefix=e.number&&(!step||e.number===step)?ordinal(e.number)+' ':'';
+      const label=step&&ready.get(e.b)>step?'·':prefix+e.label;
       svgText(label,e.at[0],e.at[1],{'data-edge-label':e.a+'-'+e.b,'paint-order':'stroke','stroke-linejoin':'round',stroke:palette.paper,'stroke-width':4,opacity:active?1:.47});
     }
   }
@@ -277,6 +285,13 @@
     const stage=stages[step-1];
     control('step-title').textContent=stage?'第 '+step+' / '+stages.length+' 步 · '+stage.title:focus==='all'?'全局关系':'上下游依赖';
     caption.textContent=stage?stage[mode]:explain(mode==='decode');
+    const list=control('steps');list.replaceChildren();
+    stages.forEach((entry,i)=>{
+      const li=document.createElement('li'),button=document.createElement('button'),detail=document.createElement('p');
+      button.type='button';button.className='btn btn-ghost';button.textContent=entry.title;button.dataset.step=String(i+1);
+      if(step===i+1)button.setAttribute('aria-current','step');
+      button.addEventListener('click',()=>go(i+1));detail.textContent=entry[mode];li.append(button,detail);list.append(li);
+    });
     draw();
     if(save)window.openai?.setWidgetState?.({modelContent:{visual:'PagedAttention 数据流',mode,focus,step},privateContent:{layoutVersion:3,mode,focus,step}})?.catch(()=>{});
   }

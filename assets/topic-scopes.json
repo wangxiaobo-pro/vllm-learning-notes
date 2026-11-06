@@ -1,0 +1,156 @@
+{
+  "transform": {
+    "kind": "算法教学",
+    "baseline": "固定参数的 mini decoder；不绑定预训练模型版本",
+    "backend": "浏览器内计算，3 层、hidden=8、2 heads、词表=8；结构页 T=3，矩阵页 T=4",
+    "scope": "结构页与矩阵页沿同一计算链展开；生成例子另标当前前缀与预测位置。",
+    "teaching": "权重未训练，数值用于验算；输出 token 不表示模型语言能力。",
+    "width": 960,
+    "pages": ["transformer-structure-explorer.html", "transformer-structure-explorer-matrices.html"]
+  },
+  "hyper-connections": {
+    "kind": "算法教学",
+    "baseline": "HC / mHC 论文语义；动态系数说明参考 vLLM 295c062db8",
+    "backend": "三层 Pre-Norm Decoder；两条残差流作教学示意",
+    "scope": "每个 Attention / FFN 子层各有自己的读出、混合和写回映射。",
+    "teaching": "输入、混合系数和子层函数为小型算例；不等同于 V4.1 delayed-pre 的完整实现。",
+    "width": 1024
+  },
+  "attention-mechanisms": {
+    "kind": "算法与模型对照",
+    "baseline": "各图对应论文或固定模型配置；CSA2 按 V4.1 技术报告与参考实现分开标注",
+    "backend": "MHA / GQA / MLA / CSA2 等 16 幅机制图，具体范围随选择变化",
+    "scope": "关注注意力输入、缓存、索引及输出；不统一假设各算法使用同一设备后端。",
+    "teaching": "小矩阵、窗口、压缩组和 Top-K 为可手算数据；来源见所选图下方。",
+    "width": 960
+  },
+  "model-architecture": {
+    "kind": "源码快照",
+    "baseline": "vLLM 295c062db8 · vLLM-Ascend 94e3e25f8；各模型配置 revision 见所选 Sheet",
+    "backend": "七模型静态 forward；MiniMax DSpark 补充采用 SGLang 17e94c4677",
+    "scope": "张量通常为逻辑形状，未展开 TP / EP 物理分片；组件内标明实际实现来源。",
+    "teaching": "验证候选和示例数值为教学数据；拆开的数学步骤不等于实际 kernel 数量。",
+    "width": 960
+  },
+  "vllm-ascend-startup": {
+    "kind": "源码快照",
+    "baseline": "vLLM 295c062db8 · vLLM-Ascend 94e3e25f8",
+    "backend": "Ascend · TP=2、PP=DP=1 · ModelRunner V1 · 同步调度 · eager",
+    "scope": "从服务入口到 Worker、物理 KV、warmup 与 Scheduler 初始化。",
+    "teaching": "32 层 GQA 教学模型与示例块号；编号表达依赖，不表示两 Worker 串行初始化。",
+    "width": 736
+  },
+  "request-lifecycle": {
+    "kind": "历史版本",
+    "baseline": "vLLM v0.11.0 · V1 引擎",
+    "backend": "单 GPU · UniProcExecutor · 同步调度 · 流式聊天",
+    "scope": "服务已启动；从 HTTP 请求到 SSE、结束判定与 Worker 请求清理。",
+    "teaching": "4 个 prompt tokens、生成 3 tokens；前向输入共 6 个，最后采样 token 尚无自身 KV。",
+    "width": 736
+  },
+  "scheduler": {
+    "kind": "源码快照",
+    "baseline": "vLLM 295c062db8 · V1 Scheduler",
+    "backend": "同步文本生成 · PRIORITY · ModelRunner V1 输出格式",
+    "scope": "同一轮的请求清单、token/input 预算、KV 抢占回滚及结果回报。",
+    "teaching": "请求计数与容量为教学取值；Scheduler 的预记进度不代表设备已经完成计算。",
+    "width": 920
+  },
+  "batching": {
+    "kind": "历史版本与教学对照",
+    "baseline": "连续批处理：vLLM v0.11.0 / V1；静态批处理：算法教学模型",
+    "backend": "同步路径 · FCFS · KV/预算充足 · 每次完整处理 prompt",
+    "scope": "同一组请求的接入、退出、Prefill / Decode 与 KV 引用释放。",
+    "teaching": "不展开抢占、投机解码和前缀命中；6 轮与 4 轮不表示实测加速比。",
+    "width": 1024
+  },
+  "chunked-prefill": {
+    "kind": "历史版本对照",
+    "baseline": "分块：vLLM v0.11.0 / V1；整段：vLLM v0.6.6 / V0",
+    "backend": "单 GPU · 普通全因果注意力 · 分块预算 8 / 整段预算 32",
+    "scope": "相同请求角色比较分块混合与历史 prefill-first；不是同版本配置开关对照。",
+    "teaching": "整段 Prefill 内的观察时段不是多次调度；时间间距不表示实测耗时。",
+    "width": 736
+  },
+  "speculative-decoding": {
+    "kind": "源码与算法对照",
+    "baseline": "vLLM 295c062db8 · vLLM-Ascend 94e3e25f8；草稿配置 revision 见各方法",
+    "backend": "以 Ascend ModelRunner V1 的普通链式路径说明起草和目标验证",
+    "scope": "候选输入来源、隐藏态对齐和贪心接受；支持条件依所选方法与 checkpoint。",
+    "teaching": "K=3、词块和预测结果为教学数据；不将贪心示例推广成随机拒绝采样规则。",
+    "width": 920,
+    "pages": ["index.html", "comparison.html"]
+  },
+  "weight-offload-prefetch": {
+    "kind": "源码快照",
+    "baseline": "vLLM 295c062db8 · vLLM-Ascend 94e3e25f8",
+    "backend": "Ascend ModelRunner V1 · 单 Worker · eager · 普通 ND 权重",
+    "scope": "CPU 权重轮用 NPU 静态槽；事件约束覆盖时机和下一层读取时机。",
+    "teaching": "八层小网络，奇数层使用 2×2 权重；分组 2、每组卸载 1 层、预取步长 2。",
+    "width": 736
+  },
+  "parallelism": {
+    "kind": "源码与数值教学",
+    "baseline": "upstream vLLM 295c062db8；训练 DP 为算法对照",
+    "backend": "GPU 逻辑布局；CP 固定 FlashAttention DCP ag_rs，其他配置见所选模式",
+    "scope": "六种单项与三种组合；通信组、张量轴和输出边界随模式标明。",
+    "teaching": "实际验算的小型网络；省略的 Norm、残差和模型层不补造数值，未测量设备性能。",
+    "width": 960
+  },
+  "communication-primitives": {
+    "kind": "算法教学",
+    "baseline": "集合通信 API 语义；Ring Attention 论文与作者实现 d2ea1af",
+    "backend": "逻辑 ranks 和数组；不指定 NCCL 的 ring/tree 网络实现",
+    "scope": "分清本地操作、逻辑归约依赖和跨 rank 传递；完成后才消费接收结果。",
+    "teaching": "Ring Attention 为 3 ranks 的小算例，不代表另一页的 vLLM DCP 使用该算法。",
+    "width": 960
+  },
+  "eplb-dplb": {
+    "kind": "历史版本",
+    "baseline": "vLLM v0.11.0 · 同步 EPLB 路径",
+    "backend": "单节点 · DP=2、TP=PP=1 · EP 跨同两张 GPU",
+    "scope": "DPLB 请求归属与 EPLB 专家副本放置分开；权重就绪后切换映射。",
+    "teaching": "4 个逻辑专家、6 个槽；窗口/间隔均为 4，不是源码默认值。",
+    "width": 736
+  },
+  "paged-attention": {
+    "kind": "源码快照",
+    "baseline": "vLLM 295c062db8 · vLLM-Ascend 94e3e25f8",
+    "backend": "Ascend V1 · 单卡 · 普通 decoder full attention · 单 KV 组",
+    "scope": "首次 Prefill 与跨页 Decode；从块分配、slot_mapping 到逐层 KV 写入和读取。",
+    "teaching": "block_size=128，块 7→新增块 3；位置 128 写入槽 384，有效长度 129。",
+    "width": 960
+  },
+  "prefix-kv-cache": {
+    "kind": "源码快照对照",
+    "baseline": "vLLM 295c062db8 · SGLang 17e94c4677",
+    "backend": "本地全注意力 · vLLM 单缓存组 / SGLang UnifiedRadixCache",
+    "scope": "查前缀、分配、登记与物理 KV 读写；两套实现保留各自的登记时机。",
+    "teaching": "vLLM 2-token 块、SGLang 1-token 页；哈希、块号和槽位为教学标识。",
+    "width": 736
+  },
+  "kv-offloading": {
+    "kind": "源码快照",
+    "baseline": "vLLM 295c062db8 · vLLM-Ascend 94e3e25f8",
+    "backend": "Ascend V1 native OffloadingConnector · 单 Worker · 单层 CPU 缓存",
+    "scope": "主机控制与 NPU HBM / CPU DRAM 分开；完成回报使存储索引变为 ready。",
+    "teaching": "每块 128 tokens、每 CPU chunk 2 块；仅显示一个 BF16 分量，实际传输整块 KV。",
+    "width": 736
+  },
+  "pd-disaggregation": {
+    "kind": "历史与快照对照",
+    "baseline": "V0：vLLM v0.8.5；V1：vLLM 295c062db8",
+    "backend": "upstream vLLM · Mooncake 直接 PD；不代表 Ascend 连接器或 Mooncake Store",
+    "scope": "V0 由 D READ 缓冲，V1 由 P WRITE 目标 KV；引擎 V0/V1 不是软件主版本号。",
+    "teaching": "64-token 请求和块号为示例；异步声明可加载、传输完成与请求恢复分别展示。",
+    "width": 960
+  },
+  "vllm-ascend-graph": {
+    "kind": "源码快照",
+    "baseline": "vLLM 295c062db8 · Ascend 94e3e25f8 · torch_npu 62b9115",
+    "backend": "Qwen2 dense · TP=1 · BF16 未量化 · FULL 图模式 · qk_norm=False",
+    "scope": "捕获、回放与 FIA 动态参数更新；执行依赖和张量数据依赖分别绘制。",
+    "teaching": "来自静态源码走读；融合命中、tiling 和 kernel 数量仍需具体部署环境验证。",
+    "width": 736
+  }
+}

@@ -38,8 +38,9 @@
   <svg class="wf-diagram" role="img" aria-labelledby="wf-title wf-desc"></svg>
   <div class="text-small text-muted">教学算例 · 一个 token 的 hidden 有两个分量。奇数层计算 h × W，偶数层用单位矩阵保持输入值。</div>
   <details data-focus>
-    <summary class="cursor-interaction">放大 L1 的输出怎样触发 W5 预取</summary>
-    <svg class="wf-diagram wf-focus" role="img" aria-label="L1 的输出同时交给 L2 并为 W5 预取建立顺序依赖"></svg>
+    <summary class="cursor-interaction">放大双流：L1 读完 → W5 预取 → L5 等待并读取</summary>
+    <svg class="wf-diagram wf-focus" role="img" aria-label="计算流与拷贝流通过两个事件保护槽 A；中间层计算可以与预取重叠"></svg>
+    <p class="text-small text-muted">① 旧层读完后才允许覆盖槽；② 拷贝完成后才允许新层读取。虚线是事件依赖，蓝线是计算流内的激活，橙线是 H2D 拷贝。两列不表示真实耗时比例。</p>
   </details>
   <details class="wf-extras">
     <summary class="cursor-interaction">完整流程与源码</summary>
@@ -237,31 +238,43 @@
     if(!panel.open) return;
     const w=canvas.getBoundingClientRect().width;
     if(w<1) return;
-    const mid=w/2, left=w*.25, right=w*.75, card=Math.min(w*.5-12,245);
+    const mid=w/2, gap=32, card=(w-gap-8)/2, left=4+card/2, right=w-4-card/2;
     canvas.replaceChildren();
-    canvas.setAttribute("viewBox","0 0 "+w+" 319"); canvas.setAttribute("height",319);
-    add("desc",{},canvas,"实线是张量数据，虚线是控制依赖。h1 传给 L2，并作为 start_prefetch 的依赖。拷贝流从 CPU 取 W5 填入 A。L5 同时消费 h4 和 W5。");
-    const group=(x,y,width,kind,lines)=>{
-      const height=lines.length*18+12;
-      add("rect",{x:x-width/2,y,width,height,rx:6,fill:"var(--background)",stroke:colors[kind],"stroke-width":1.5},canvas);
-      lines.forEach((line,i)=>add("text",{x,y:y+15+i*18,"dominant-baseline":"middle","text-anchor":"middle",class:i?"text-small":"label"},canvas,line));
+    add("desc",{},canvas,"计算流完成 L1 后记录 fork_event，拷贝流等待该事件再用 W5 覆盖槽 A。L2 到 L4 的计算与 H2D 可以重叠。拷贝流记录 copy_done，计算流的 wait_prefetch 等到它完成后才运行 L5。");
+    const wrap=(value,width)=>{
+      const probe=add("text",{class:"text-small",visibility:"hidden"},canvas),rows=[];let line="";
+      for(const c of value){probe.textContent=line+c;if(line&&probe.getComputedTextLength()>width){rows.push(line);line=c;}else line+=c;}
+      if(line)rows.push(line);probe.remove();return rows;
+    };
+    const prepared=lines=>lines.flatMap(line=>wrap(line,card-16));
+    const group=(x,y,kind,lines,height)=>{
+      add("rect",{x:x-card/2,y,width:card,height,rx:6,fill:"var(--background)",stroke:colors[kind],"stroke-width":1.5},canvas);
+      prepared(lines).forEach((line,i)=>add("text",{x,y:y+17+i*18,"dominant-baseline":"middle","text-anchor":"middle",class:"text-small"},canvas,line));
     };
     const link=(d,kind,control=false)=>{
       add("path",{d,fill:"none",stroke:colors[kind],"stroke-width":1.5,"stroke-dasharray":control?"4 3":"none","marker-end":"url(#wf-arrow-"+kind+")"},canvas);
     };
-    const nodeWidth=Math.min(w-24,243);
-    group(mid,2,nodeWidth,"hidden",["L1.forward 输出","h1 = "+vec(layer(1).output)]);
-    link("M"+(mid-12)+" 50 V60 H"+left+" V78","hidden");
-    link("M"+(mid+12)+" 50 V60 H"+right+" V78","muted",true);
-    group(left,79,card,"hidden",["L2.forward","激活输入 h1"]);
-    group(right,79,card,"muted",["start_prefetch","以 h1 建立顺序依赖","目标层 L5"]);
-    link("M"+left+" 127 V162","hidden");
-    link("M"+right+" 145 V162","muted",true);
-    group(left,163,card,"hidden",["L3、L4 计算","传出 h4 = "+vec(layer(3).output)]);
-    group(right,163,card,"copy",["CPU W5 → 槽 A","等 L1 读完 A 再拷贝","拷贝完成后 W5 可读"]);
-    link("M"+left+" 211 V241 H"+(mid-31)+" V259","hidden");
-    link("M"+right+" 229 V241 H"+(mid+31)+" V259","weight");
-    group(mid,260,nodeWidth,"hidden",["L5.forward 同时读取 h4 和 W5","输出 "+vec(layer(5).output)+" → L6"]);
+    [ [left,"计算流"],[right,"拷贝流"] ].forEach(([x,title])=>add("text",{x,y:17,"text-anchor":"middle",class:"label"},canvas,title));
+    const rows=[
+      [["L1 读完槽 A","h1="+vec(layer(1).output),"start_prefetch","输入：h1","目标：L5","记录 fork_event"],["wait fork_event","① 等旧层读完","才允许覆盖 A"]],
+      [["L2 → L3 → L4","继续计算激活","h4="+vec(layer(3).output)],["CPU 权重 W5","H2D → 静态槽 A","异步提交拷贝"]],
+      [["wait_prefetch","目标层 L5","② 等待事件","copy_done","h4 保留在本流"],["记录 copy_done","事件完成代表","W5 已拷贝到 A"]],
+      [["L5 读 h4 + W5","h5="+vec(layer(5).output),"传给 L6"],["A 当前为 W5","L5 读完后再为","下轮预取 W1"]]
+    ];
+    const boxes=[];let y=35;
+    rows.forEach((row,i)=>{
+      if(i===1){add("text",{x:mid,y:y+12,"text-anchor":"middle",class:"text-small quiet"},canvas,"两支可重叠");y+=35;}
+      const height=Math.max(...row.map(lines=>prepared(lines).length))*18+22;
+      if(i===1)add("rect",{x:1,y:y-9,width:w-2,height:height+18,rx:8,fill:"none",stroke:colors.muted,"stroke-dasharray":"3 4"},canvas);
+      group(left,y,"hidden",row[0],height);group(right,y,i===1?"copy":"muted",row[1],height);
+      boxes.push({y,height});y+=height+40;
+    });
+    boxes.forEach((b,i)=>{if(i<boxes.length-1){link(`M${left} ${b.y+b.height} V${boxes[i+1].y}`,"hidden");if(i<2)link(`M${right} ${b.y+b.height} V${boxes[i+1].y}`,i===1?"copy":"muted",i!==1);}});
+    const a=boxes[0],done=boxes[2];
+    link(`M${left+card/2} ${a.y+a.height/2} H${right-card/2}`,"muted",true);
+    link(`M${right-card/2} ${done.y+done.height/2} H${left+card/2}`,"muted",true);
+    [[a,"①"],[done,"②"]].forEach(([b,n])=>add("text",{x:mid,y:b.y+b.height/2-10,"text-anchor":"middle",class:"text-small"},canvas,n));
+    canvas.setAttribute("viewBox","0 0 "+w+" "+y);canvas.setAttribute("height",y);
   }
   get("[data-focus]").addEventListener("toggle",drawFocus);
   const prev=get("[data-action=prev]"),next=get("[data-action=next]"),overview=get("[data-action=overview]"),play=get("[data-action=play]");

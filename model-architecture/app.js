@@ -3,7 +3,7 @@
   const $=id=>document.getElementById(id), NS='http://www.w3.org/2000/svg';
   const models=window.ARCH_MODELS;
   const modelOrder=['llama','deepseek_v2','deepseek_v41','glm53','kimi_k3','deepseek_v4_pro','minimax'];
-  let model,component,componentId,step=-1,selected=null,timer=null,frame=null,playing=false,first=true,trail=[];
+  let model,component,componentId,step=-1,selected=null,selectedEdge=null,timer=null,frame=null,playing=false,first=true,trail=[];
   const reduced=matchMedia('(prefers-reduced-motion: reduce)');
   const make=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;};
   const svg=(tag,attrs,parent)=>{const e=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs||{}))e.setAttribute(k,v);if(parent)parent.appendChild(e);return e;};
@@ -50,7 +50,9 @@
     $('intro').replaceChildren();(component.intro||[]).forEach(p=>$('intro').append(make('p','',p)));
     $('inputs').textContent=component.inputs;$('outputs').textContent=component.outputs;
     $('steps').replaceChildren();component.steps.forEach((s,i)=>{const li=make('li');li.dataset.step=i;const b=make('strong','',s.title+'：');li.append(b,document.createTextNode(s.text));$('steps').append(li);});
-    $('edges').replaceChildren();component.edges.forEach(e=>{const from=component.nodes.find(n=>n.id===e.from),to=component.nodes.find(n=>n.id===e.to);if(!from||!to)return;const row=make('div','edge-row');row.append(make('span','',from.label),make('code','',`— ${e.label} →`),make('span','',to.label));$('edges').append(row);});
+    $('edges').replaceChildren();$('edge-select').replaceChildren(make('option','','选择一条连线'));$('edge-select').firstChild.value='';
+    component.edges.forEach((e,i)=>{const row=make('button','edge-row',edgeText(i));row.type='button';row.dataset.edgeId=i;row.addEventListener('click',()=>showEdge(i));$('edges').append(row);const option=make('option','',edgeText(i));option.value=i;$('edge-select').append(option);});
+    paintEdgeSelection();
     $('notes').replaceChildren();(component.notes||[]).forEach(n=>$('notes').append(make('li','',n)));$('notes-section').hidden=!(component.notes||[]).length;
     $('sources').replaceChildren();const keys=component.sources||[];(model.sources||[]).filter(s=>keys.includes(s.id)).forEach(source=>{const li=make('li');if(source.url){const a=make('a','',source.label);a.href=source.url;a.target='_blank';a.rel='noopener noreferrer';li.append(a);}else li.append(document.createTextNode(source.label));if(source.local)li.append(make('span','source-local',source.local));$('sources').append(li);});
     $('baseline').textContent=`核对日期：${model.checked} · ${model.revision||'官方配置与参考实现'} · 图形示意不代表实际张量数值或硬件运行。`;
@@ -58,6 +60,14 @@
     if(component.verificationDemo)verification('partial');
     $('node-detail').hidden=true;
   }
+  const edgeName=index=>'E'+String(index+1).padStart(2,'0');
+  function edgeText(index){const e=component.edges[index],from=component.nodes.find(n=>n.id===e.from),to=component.nodes.find(n=>n.id===e.to);return `${edgeName(index)} · 第 ${e.step} 步 · ${from.label} → ${e.label} → ${to.label}${e.optional?'（可选）':''}`;}
+  function paintEdgeSelection(){
+    $('edge-selection').hidden=selectedEdge===null;$('edge-description').textContent=selectedEdge===null?'':edgeText(selectedEdge);$('edge-select').value=selectedEdge===null?'':String(selectedEdge);
+    $('diagram').classList.toggle('edge-pinned',selectedEdge!==null);$('diagram').classList.remove('tracing');
+    document.querySelectorAll('[data-edge-id]').forEach(el=>el.classList.toggle('pinned',selectedEdge!==null&&Number(el.dataset.edgeId)===selectedEdge));
+  }
+  function showEdge(index){stop();selectedEdge=index;paintEdgeSelection();}
   function buildRouter(boxes,W,H){
     const xs=new Set([9,W-9]),ys=new Set([7,H-7]);
     const ports=b=>({top:{p:[b.x+b.w/2,b.y],q:[b.x+b.w/2,b.y-10]},bottom:{p:[b.x+b.w/2,b.y+b.h],q:[b.x+b.w/2,b.y+b.h+10]},left:{p:[b.x,b.y+b.h/2],q:[b.x-10,b.y+b.h/2]},right:{p:[b.x+b.w,b.y+b.h/2],q:[b.x+b.w+10,b.y+b.h/2]}});
@@ -95,6 +105,7 @@
     const container=$('diagram'),W=Math.floor(container.getBoundingClientRect().width),narrow=W<620;
     container.replaceChildren();container.classList.remove('tracing');
     function traceNode(id){
+      if(selectedEdge!==null)return;
       container.classList.toggle('tracing',!!id);
       container.querySelectorAll('.edge,.edge-label').forEach(el=>el.classList.toggle('trace',!!id&&(el.dataset.from===id||el.dataset.to===id)));
     }
@@ -111,25 +122,30 @@
       button.addEventListener('focus',()=>traceNode(n.id));button.addEventListener('blur',()=>traceNode(null));
       rowHeights.set(row,Math.max(rowHeights.get(row)||0,button.getBoundingClientRect().height,104));
     });
-    const rows=[...rowHeights.keys()].sort((a,b)=>a-b),rowY=new Map();let y=24;rows.forEach(r=>{rowY.set(r,y);y+=rowHeights.get(r)+62;});const H=y-38;
+    const rows=[...rowHeights.keys()].sort((a,b)=>a-b),rowY=new Map();let y=24;rows.forEach(r=>{rowY.set(r,y);y+=rowHeights.get(r)+88;});const H=y-38;
     container.style.height=H+'px';const boxes=[];
     nodes.forEach((n,i)=>{const row=narrow?i:n.row,b=buttons.get(n.id),box={id:n.id,x:parseFloat(b.style.left),y:rowY.get(row),w:nodeW,h:rowHeights.get(row)};b.style.top=box.y+'px';b.style.height=box.h+'px';boxes.push(box);});
-    const wires=svg('svg',{class:'wires',viewBox:`0 0 ${W} ${H}`,role:'img','aria-label':'箭头表示带名称的数据依赖'}),defs=svg('defs',{},wires),marker=svg('marker',{id:'arrowhead',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:6,markerHeight:6,orient:'auto'},defs);svg('path',{d:'M1 1 L9 5 L1 9',fill:'none',stroke:'context-stroke','stroke-width':1.5},marker);
+    const wires=svg('svg',{class:'wires',viewBox:`0 0 ${W} ${H}`,role:'group','aria-label':'可选择箭头查看完整数据依赖'}),defs=svg('defs',{},wires),marker=svg('marker',{id:'arrowhead',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:6,markerHeight:6,orient:'auto'},defs);svg('path',{d:'M1 1 L9 5 L1 9',fill:'none',stroke:'context-stroke','stroke-width':1.5},marker);
     container.prepend(wires);
     const route=buildRouter(boxes,W,H),labelPositions=[];
+    $('edge-overflow-list').replaceChildren();$('edge-overflow').hidden=true;
     component.edges.forEach((e,i)=>{
       const a=boxes.find(b=>b.id===e.from),b=boxes.find(b=>b.id===e.to);if(!a||!b)return;
       const points=route(a,b),d=points.map((p,i)=>(i?'L':'M')+p.join(' ')).join(' ');
-      const p=svg('path',{d,class:'edge'+(e.optional?' optional':''),'marker-end':'url(#arrowhead)','data-step':e.step,'data-from':e.from,'data-to':e.to},wires);
+      const attributes={'data-step':e.step,'data-from':e.from,'data-to':e.to,'data-edge-id':i};
+      const p=svg('path',{d,class:'edge'+(e.optional?' optional':''),'marker-end':'url(#arrowhead)',...attributes},wires);
+      const hit=svg('path',{d,class:'edge-hit',...attributes,tabindex:0,role:'button','aria-label':edgeText(i)},wires);
+      hit.addEventListener('click',()=>showEdge(i));hit.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();showEdge(i);}});
       const segments=points.slice(1).map((p,j)=>({a:points[j],b:p,len:Math.abs(p[0]-points[j][0])+Math.abs(p[1]-points[j][1])})).sort((a,b)=>b.len-a.len);
-      const t=svg('text',{x:0,y:0,class:'edge-label','data-from':e.from,'data-to':e.to},wires);let placed=false;
+      const t=svg('text',{x:0,y:0,class:'edge-label',...attributes},wires);t.addEventListener('click',()=>showEdge(i));let placed=false,abbreviated=false;
       const overlaps=(a,b)=>a.x<b.x+b.w+4&&a.x+a.w>b.x-4&&a.y<b.y+b.h+4&&a.y+a.h>b.y-4;
-      for(const label of [`${e.step} · ${e.label}`,String(e.step)]){
-        t.textContent=label;
-        for(const s of segments){
+      const wrap=label=>{const lines=[];let line='';for(const char of label){t.textContent=line+char;if(t.getComputedTextLength()>(narrow?210:245)&&line){lines.push(line);line=char;}else line+=char;}if(line)lines.push(line);return lines;};
+      for(const label of [`${edgeName(i)} · ${e.step} · ${e.label}`,edgeName(i)]){
+        abbreviated=label===edgeName(i);const lines=wrap(label);t.replaceChildren();lines.forEach((line,j)=>svg('tspan',{x:0,dy:j?14:0},t).textContent=line);
+        for(const segment of segments){
           for(const fraction of [.5,.3,.7,.15,.85]){
-            const x=s.a[0]+(s.b[0]-s.a[0])*fraction,yy=s.a[1]+(s.b[1]-s.a[1])*fraction-5;
-            t.setAttribute('x',x);t.setAttribute('y',yy);const b=t.getBBox(),r={x:b.x,y:b.y,w:b.width,h:b.height};
+            const x=segment.a[0]+(segment.b[0]-segment.a[0])*fraction,yy=segment.a[1]+(segment.b[1]-segment.a[1])*fraction-5;
+            t.setAttribute('x',x);t.setAttribute('y',yy);t.querySelectorAll('tspan').forEach(span=>span.setAttribute('x',x));const box=t.getBBox(),r={x:box.x,y:box.y,w:box.width,h:box.height};
             if(r.x<3||r.x+r.w>W-3||r.y<3||r.y+r.h>H-3||boxes.some(box=>overlaps(r,box))||labelPositions.some(box=>overlaps(r,box)))continue;
             labelPositions.push(r);placed=true;break;
           }
@@ -137,9 +153,12 @@
         }
         if(placed)break;
       }
-      if(!placed)t.remove();const title=svg('title',{},p);title.textContent=e.label;
+      if(!placed)t.remove();
+      if(abbreviated||!placed){$('edge-overflow').hidden=false;const reference=make('button','edge-reference',edgeText(i));reference.type='button';reference.dataset.edgeId=i;reference.addEventListener('click',()=>showEdge(i));$('edge-overflow-list').append(reference);}
+      svg('title',{},p).textContent=edgeText(i);
+
     });
-    container.prepend(wires);updateStep(false);
+    container.prepend(wires);updateStep(false);paintEdgeSelection();
   }
   function showNode(node){
     stop();selected=node.id;$('node-title').textContent=node.label;$('node-description').textContent=node.description||node.detail||'';
@@ -171,7 +190,9 @@
     rows.forEach(([token,label,cls])=>{const cell=make('div','token-result '+cls);cell.append(make('strong','',token),make('small','',label));$('token-verification').append(cell);});
     $('verification-explanation').textContent=mode==='all'?'提交 a、b、c、d、e 与目标模型额外生成的 z；更新有效长度后继续下一轮起草。':'提交 a、b 与纠正 token x；c 及后续 d、e 不进入已确认历史。验证中计算出的拒绝后缀 KV 不成为有效上下文，相关长度与状态需按接受前缀修正。';
   }
-  function renderRoute(){stop();step=-1;selected=null;readRoute();renderSheets();renderBreadcrumb();renderText();renderGraph();if(!first)$('component-title').scrollIntoView({block:'start'});first=false;}
+  function renderRoute(){stop();step=-1;selected=null;selectedEdge=null;readRoute();renderSheets();renderBreadcrumb();renderText();renderGraph();if(!first)$('component-title').scrollIntoView({block:'start'});first=false;}
+  $('edge-select').addEventListener('change',event=>showEdge(event.target.value===''?null:Number(event.target.value)));
+  $('close-edge').addEventListener('click',()=>showEdge(null));
   $('component-select').addEventListener('change',e=>navigate(model.id,e.target.value));
   $('all').addEventListener('click',()=>{stop();step=-1;updateStep();});$('prev').addEventListener('click',()=>{stop();step--;updateStep();});$('next').addEventListener('click',()=>{stop();step++;updateStep();});
   $('play').addEventListener('click',()=>{if(playing){stop();return;}if(step<0||step>=component.steps.length-1)step=0;playing=true;$('play').textContent='暂停';$('play').setAttribute('aria-pressed','true');updateStep();playNext();});

@@ -2,6 +2,23 @@
 <html lang="zh-CN" data-visualize-standalone>
 <head>
 <meta charset="utf-8">
+<!-- learning-scope-style:start -->
+<style>
+.learning-scope-shell{box-sizing:border-box;max-width:736px;width:100%;margin:0 auto 14px;font:13px/1.6 system-ui,"Microsoft YaHei",sans-serif;color:#344454}
+.learning-scope{border:1px solid #dce3e9;border-radius:8px;background:#f7f9fb;overflow-wrap:anywhere}
+.learning-scope>summary{display:list-item;list-style:disclosure-closed inside;cursor:pointer;padding:9px 12px;font-size:13px;line-height:1.6;color:inherit}
+.learning-scope[open]>summary{list-style-type:disclosure-open}
+.learning-scope>summary:focus-visible{outline:2px solid #287cb8;outline-offset:3px}
+.learning-scope-kind{font-weight:650;color:#24668f}
+.learning-scope-hint{font-size:11px;opacity:.7;margin-left:6px}
+.learning-scope[open] .learning-scope-hint{display:none}
+.learning-scope dl{display:grid;grid-template-columns:88px minmax(0,1fr);gap:7px 12px;margin:0;padding:3px 12px 13px}
+.learning-scope dt{font-weight:600}.learning-scope dd{margin:0}
+@media(max-width:480px){.learning-scope dl{grid-template-columns:1fr;gap:3px}.learning-scope dd+dt{margin-top:6px}}
+:root[data-theme=dark] .learning-scope-shell{color:#c5d1dc}:root[data-theme=dark] .learning-scope{background:#1b242d;border-color:#384550}:root[data-theme=dark] .learning-scope-kind{color:#9bcaf0}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .learning-scope-shell{color:#c5d1dc}:root:not([data-theme=light]) .learning-scope{background:#1b242d;border-color:#384550}:root:not([data-theme=light]) .learning-scope-kind{color:#9bcaf0}}
+</style>
+<!-- learning-scope-style:end -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com https://persistent.oaistatic.com/plugins/visualize/; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
@@ -10,6 +27,17 @@
 
 </head>
 <body>
+<!-- learning-scope:start -->
+<aside class="learning-scope-shell" aria-label="本页范围与源码版本">
+<details class="learning-scope">
+<summary><span class="learning-scope-kind">源码快照对照</span> 本页范围与源码版本 <span class="learning-scope-hint">展开查看</span></summary>
+<dl><dt>源码基线</dt><dd>vLLM 295c062db8 · SGLang 17e94c4677</dd>
+<dt>后端与配置</dt><dd>本地全注意力 · vLLM 单缓存组 / SGLang UnifiedRadixCache</dd>
+<dt>流程范围</dt><dd>查前缀、分配、登记与物理 KV 读写；两套实现保留各自的登记时机。</dd>
+<dt>教学假设</dt><dd>vLLM 2-token 块、SGLang 1-token 页；哈希、块号和槽位为教学标识。</dd></dl>
+</details>
+</aside>
+<!-- learning-scope:end -->
 <nav class="topic-nav" aria-label="项目导航"><a href="../index.html#kv-cache">返回 KV 缓存与传输目录</a><a href="Prefix-KV-Cache.xlsx" download>下载双工作表 Excel 图解</a></nav>
 <iframe id="codex-visualization" sandbox="allow-scripts" referrerpolicy="no-referrer" title="前缀 KV 缓存：vLLM 哈希表与 SGLang 前缀树" data-srcdoc="&lt;!doctype html&gt;
 &lt;html lang=&quot;zh-CN&quot; data-visualize-standalone&gt;
@@ -1837,6 +1865,9 @@ html&gt;body{padding:0}&lt;/style&gt;
     #prefix-kv-map .kv-frame{min-width:0}
     #prefix-kv-map .kv-tab-content:not([hidden]){display:grid;gap:calc(var(--font-size-base)*.7)}
     #prefix-kv-map .kv-src{color:var(--muted-foreground)}
+    #prefix-kv-map .kv-step-list{display:grid;gap:6px;padding-left:1.8em}
+    #prefix-kv-map .kv-step-list button{color:var(--foreground);text-align:left;white-space:normal;max-width:100%;overflow-wrap:anywhere}
+    #prefix-kv-map .kv-step-list button[aria-current=&quot;step&quot;]{font-weight:600;outline:1px solid var(--kv-hit)}
     #prefix-kv-map .is-traced path{stroke-width:3}
     #prefix-kv-map .is-traced .kv-edge-label{font-weight:500}
   &lt;/style&gt;
@@ -1863,6 +1894,7 @@ html&gt;body{padding:0}&lt;/style&gt;
   &lt;div class=&quot;kv-legend text-small&quot; aria-label=&quot;图例&quot;&gt;&lt;span&gt;&lt;i class=&quot;reuse&quot;&gt;&lt;/i&gt;复用已有 KV&lt;/span&gt;&lt;span&gt;&lt;i class=&quot;write&quot;&gt;&lt;/i&gt;计算新 KV&lt;/span&gt;&lt;span&gt;⇢ 返回结果&lt;/span&gt;&lt;/div&gt;
   &lt;div class=&quot;kv-frame&quot;&gt;&lt;svg class=&quot;kv-figure&quot; role=&quot;img&quot;&gt;&lt;/svg&gt;&lt;/div&gt;
   &lt;div class=&quot;kv-src text-small&quot; data-source&gt;&lt;/div&gt;
+  &lt;nav aria-label=&quot;完整八步流程&quot;&gt;&lt;h3&gt;完整编号流程&lt;/h3&gt;&lt;ol class=&quot;kv-step-list text-small&quot; data-steps&gt;&lt;/ol&gt;&lt;/nav&gt;
   &lt;/section&gt;
 &lt;/div&gt;
 &lt;script&gt;
@@ -1876,6 +1908,8 @@ html&gt;body{padding:0}&lt;/style&gt;
     vllm:[&#x27;全图&#x27;,&#x27;R1 建立缓存&#x27;,&#x27;R2 入队并生成块哈希&#x27;,&#x27;查 h1，AB 命中块 7&#x27;,&#x27;查 h4，CX 未命中&#x27;,&#x27;向调度器返回块 7 和命中长度 2&#x27;,&#x27;分配块 24、31 并登记哈希&#x27;,&#x27;向 Worker 下发块表 [7, 24, 31]&#x27;,&#x27;Worker 读块 7，将 CXEF 写入块 24、31&#x27;],
     sglang:[&#x27;全图&#x27;,&#x27;R1 写入压缩节点 ABCDEF&#x27;,&#x27;调度器取出 R2，准备查树&#x27;,&#x27;匹配 ABC，拆开旧节点&#x27;,&#x27;返回命中长度 3 和 ABC 的节点 ID&#x27;,&#x27;取出 ABC 的旧槽位，为 XEF 分配新槽位&#x27;,&#x27;组装 R2 的六个槽位&#x27;,&#x27;Worker 读取 ABC，写入 XEF 的 KV&#x27;,&#x27;将 XEF 作为新叶插回树中&#x27;]
   };
+  const ordinal = n =&gt; String.fromCodePoint(0x2460+n-1);
+  const actionIds = focus =&gt; (Array.isArray(focus)?focus:[focus]).filter(n=&gt;Number.isInteger(n)&amp;&amp;n&gt;0&amp;&amp;n&lt;actions[engine].length);
   const phaseStarts={vllm:[0,1,2,6],sglang:[0,1,2,5]};
   const descriptions = {
     vllm:&#x27;R1 缓存 ABCDEF。R2 的 ABCXEF 逐块查表，AB 命中块 7，CX 未命中。返回长度 2，调度器分配块 24、31，worker 读取 AB，写入 CXEF。&#x27;,
@@ -1919,7 +1953,14 @@ html&gt;body{padding:0}&lt;/style&gt;
     const d=points.map(([x,y],i)=&gt;(i?&#x27;L&#x27;:&#x27;M&#x27;)+x+&#x27; &#x27;+y).join(&#x27; &#x27;);
     const group=el(&#x27;g&#x27;,{class:phaseClass(on,focus),&#x27;data-pk-edge&#x27;:kind,&#x27;data-pk-label&#x27;:label});
     el(&#x27;path&#x27;,{d,fill:&#x27;none&#x27;,stroke,&#x27;stroke-width&#x27;:kind===&#x27;hit&#x27;||kind===&#x27;new&#x27;?2.1:1.6,&#x27;stroke-dasharray&#x27;:dashed||kind===&#x27;return&#x27;?&#x27;5 4&#x27;:null,&#x27;stroke-linejoin&#x27;:&#x27;round&#x27;,&#x27;stroke-linecap&#x27;:&#x27;round&#x27;,&#x27;marker-end&#x27;:&#x27;url(#pk-tip-&#x27;+kind+&#x27;)&#x27;},null,group);
-    if(label!=null) el(&#x27;text&#x27;,{x:lx,y:ly,&#x27;text-anchor&#x27;:&#x27;middle&#x27;,class:&#x27;kv-edge-label&#x27;},label,group);
+    if(label!=null) {
+      const ids=actionIds(focus), step=cursors[engine];
+      const shown=step?ids.filter(n=&gt;n===step):ids;
+      const caption=String(label).replace(/^[①-⑧]\s*/, &#x27;&#x27;);
+      const numbered=(shown.length?shown.map(ordinal).join(&#x27;·&#x27;)+&#x27; &#x27;:&#x27;&#x27;)+caption;
+      group.dataset.stepIds=ids.join(&#x27;,&#x27;);
+      el(&#x27;text&#x27;,{x:lx,y:ly,&#x27;text-anchor&#x27;:&#x27;middle&#x27;,class:&#x27;kv-edge-label&#x27;},numbered,group);
+    }
     return group;
   }
   function drawVllm(g) {
@@ -2011,9 +2052,9 @@ html&gt;body{padding:0}&lt;/style&gt;
   const allocW = narrow ? Math.min(228, w * 0.64) : leftW;
   const allocH = 84;
   const cAlloc = allocX + allocW / 2;
-  const lookup = overview ? &#x27;① 查 h1、h4&#x27; : step === 3 ? &#x27;查 h1&#x27; : step === 4 ? &#x27;查 h4&#x27; :
+  const lookup = overview ? &#x27;查 h1、h4&#x27; : step === 3 ? &#x27;查 h1&#x27; : step === 4 ? &#x27;查 h4&#x27; :
     reached(4) ? &#x27;查询结束&#x27; : &#x27;待查询&#x27;;
-  const returned = overview ? &#x27;② 块 7 · 2 tokens&#x27; : reached(5) ? &#x27;块 7 · 2 tokens&#x27; : &#x27;等待返回&#x27;;
+  const returned = overview ? &#x27;块 7 · 2 tokens&#x27; : reached(5) ? &#x27;块 7 · 2 tokens&#x27; : &#x27;等待返回&#x27;;
   if (narrow) {
     line([[cR1, 75], [cR1, mapY]], &#x27;data&#x27;, 1, 1, &#x27;先登记，再写 KV&#x27;, cR1, 151);
     line([[cLeft, callerY + callerH], [cLeft, mapY]], &#x27;call&#x27;, 2, [3, 4], lookup, cLeft, mapY - 16);
@@ -2030,7 +2071,7 @@ html&gt;body{padding:0}&lt;/style&gt;
   text(cAlloc, allocY + 43, reached(6) ? &#x27;allocate_slots(R2, 4, …)&#x27; :
     reached(5) ? &#x27;已命中 2 · 还需 4 个位置&#x27; : &#x27;等待命中结果&#x27;, &#x27;sub&#x27;, [2, 3], [5, 6]);
   text(cAlloc, allocY + 66, reached(6) ? &#x27;复用 7 · 新分配 24、31&#x27; : &#x27;新块未分配&#x27;, &#x27;small&#x27;, 3, 6);
-  const reg = overview ? &#x27;③ 登记&#x27; : reached(6) ? &#x27;登记&#x27; : &#x27;待登记&#x27;;
+  const reg = overview ? &#x27;登记&#x27; : reached(6) ? &#x27;登记&#x27; : &#x27;待登记&#x27;;
   if (narrow) {
     const regX = w - pad - 32;
     line([[allocX + allocW, allocY + 48], [regX, allocY + 48], [regX, mapBottom]], &#x27;new&#x27;, 3, 6,
@@ -2062,7 +2103,7 @@ html&gt;body{padding:0}&lt;/style&gt;
   const workY = planY + 137;
   const workerW = Math.min(planW - 12, 365);
   const workerX = (w - workerW) / 2;
-  const dispatch = reached(7) ? (overview ? &#x27;④ &#x27; : &#x27;&#x27;) + &#x27;execute_model · 已算 2 / 调度 4&#x27; : &#x27;等待调度计划&#x27;;
+  const dispatch = reached(7) ? &#x27;execute_model · 已算 2 / 调度 4&#x27; : &#x27;等待调度计划&#x27;;
   line([[w / 2, planY + 85], [w / 2, workY]], &#x27;call&#x27;, 3, 7, dispatch, w / 2, workY - 18);
   card(workerX, workY, workerW, 62, &#x27;Worker · attention forward&#x27;,
     reached(8) ? &#x27;位置 [2,3,4,5] → 计算 CXEF&#x27; : reached(7) ? &#x27;已接收计划 · 等待 forward&#x27; : &#x27;等待执行&#x27;,
@@ -2281,7 +2322,7 @@ function drawSglang(g) {
     for (const b of phaseButtons) b.setAttribute(&#x27;aria-pressed&#x27;, String(Number(b.dataset.phase)===phase));
     for (const b of tabs) {
       const active=b.dataset.engine===engine;
-      b.classList.toggle(&#x27;active&#x27;,active);b.setAttribute(&#x27;aria-selected&#x27;,String(active));
+      b.classList.toggle(&#x27;active&#x27;,active);b.setAttribute(&#x27;aria-selected&#x27;,String(active));b.tabIndex=active?0:-1;
       if(active) root.querySelector(&#x27;[role=&quot;tabpanel&quot;]&#x27;).setAttribute(&#x27;aria-labelledby&#x27;,b.id);
     }
     const source=root.querySelector(&#x27;[data-source]&#x27;);
@@ -2290,6 +2331,13 @@ function drawSglang(g) {
     next.disabled=step&gt;=8;
     play.textContent=playing?&#x27;暂停播放&#x27;:&#x27;播放一次查找&#x27;;
     root.querySelector(&#x27;[data-status]&#x27;).textContent=step?&#x27;第 &#x27;+step+&#x27; / 8 步　&#x27;+actions[engine][step]:&#x27;全图　点「下一步」从 R1 建缓存开始&#x27;;
+    const list=root.querySelector(&#x27;ol[data-steps]&#x27;);list.replaceChildren();
+    actions[engine].slice(1).forEach((title,i)=&gt;{
+      const li=document.createElement(&#x27;li&#x27;),button=document.createElement(&#x27;button&#x27;);
+      button.type=&#x27;button&#x27;;button.className=&#x27;btn btn-ghost&#x27;;button.textContent=title;button.dataset.step=String(i+1);
+      if(step===i+1)button.setAttribute(&#x27;aria-current&#x27;,&#x27;step&#x27;);
+      button.addEventListener(&#x27;click&#x27;,()=&gt;{stopPlayback();go(i+1)});li.append(button);list.append(li);
+    });
     draw(animate);
   }
   function save() {
@@ -2329,13 +2377,17 @@ function drawSglang(g) {
     if(lastWidth &amp;&amp; engine===view &amp;&amp; Object.keys(steps).every(id=&gt;steps[id]===cursors[id]))return;
     stopPlayback();engine=view;Object.assign(cursors,steps);refresh();
   }
-  function syncTab(e) {
-    if(!e.target.closest?.(&#x27;#prefix-kv-map [role=&quot;tab&quot;]&#x27;))return;
-    const selected=tabs.find(b=&gt;b.getAttribute(&#x27;aria-selected&#x27;)===&#x27;true&#x27;);
-    if(selected &amp;&amp; selected.dataset.engine!==engine) {stopPlayback();engine=selected.dataset.engine;refresh();save();}
+  function selectEngine(tab) {
+    stopPlayback();engine=tab.dataset.engine;refresh();save();
   }
-  window.addEventListener(&#x27;click&#x27;,syncTab);
-  window.addEventListener(&#x27;keydown&#x27;,syncTab);
+  tabs.forEach((tab,i)=&gt;{
+    tab.addEventListener(&#x27;click&#x27;,event=&gt;{event.preventDefault();event.stopPropagation();selectEngine(tab)});
+    tab.addEventListener(&#x27;keydown&#x27;,event=&gt;{
+      const targets={ArrowRight:(i+1)%tabs.length,ArrowDown:(i+1)%tabs.length,ArrowLeft:(i+tabs.length-1)%tabs.length,ArrowUp:(i+tabs.length-1)%tabs.length,Home:0,End:tabs.length-1};
+      if(!Object.hasOwn(targets,event.key))return;
+      event.preventDefault();event.stopPropagation();const nextTab=tabs[targets[event.key]];selectEngine(nextTab);nextTab.focus();
+    });
+  });
   window.addEventListener(&#x27;openai:set_globals&#x27;,e=&gt;{
     if(!e.detail?.globals || !(&#x27;widgetState&#x27; in e.detail.globals))return;
     restore(e.detail.globals.widgetState);

@@ -2,6 +2,23 @@
 <html lang="en" data-visualize-standalone>
 <head>
 <meta charset="utf-8">
+<!-- learning-scope-style:start -->
+<style>
+.learning-scope-shell{box-sizing:border-box;max-width:736px;width:100%;margin:0 auto 14px;font:13px/1.6 system-ui,"Microsoft YaHei",sans-serif;color:#344454}
+.learning-scope{border:1px solid #dce3e9;border-radius:8px;background:#f7f9fb;overflow-wrap:anywhere}
+.learning-scope>summary{display:list-item;list-style:disclosure-closed inside;cursor:pointer;padding:9px 12px;font-size:13px;line-height:1.6;color:inherit}
+.learning-scope[open]>summary{list-style-type:disclosure-open}
+.learning-scope>summary:focus-visible{outline:2px solid #287cb8;outline-offset:3px}
+.learning-scope-kind{font-weight:650;color:#24668f}
+.learning-scope-hint{font-size:11px;opacity:.7;margin-left:6px}
+.learning-scope[open] .learning-scope-hint{display:none}
+.learning-scope dl{display:grid;grid-template-columns:88px minmax(0,1fr);gap:7px 12px;margin:0;padding:3px 12px 13px}
+.learning-scope dt{font-weight:600}.learning-scope dd{margin:0}
+@media(max-width:480px){.learning-scope dl{grid-template-columns:1fr;gap:3px}.learning-scope dd+dt{margin-top:6px}}
+:root[data-theme=dark] .learning-scope-shell{color:#c5d1dc}:root[data-theme=dark] .learning-scope{background:#1b242d;border-color:#384550}:root[data-theme=dark] .learning-scope-kind{color:#9bcaf0}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .learning-scope-shell{color:#c5d1dc}:root:not([data-theme=light]) .learning-scope{background:#1b242d;border-color:#384550}:root:not([data-theme=light]) .learning-scope-kind{color:#9bcaf0}}
+</style>
+<!-- learning-scope-style:end -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
@@ -10,6 +27,17 @@
 
 </head>
 <body>
+<!-- learning-scope:start -->
+<aside class="learning-scope-shell" aria-label="本页范围与源码版本">
+<details class="learning-scope">
+<summary><span class="learning-scope-kind">历史版本对照</span> 本页范围与源码版本 <span class="learning-scope-hint">展开查看</span></summary>
+<dl><dt>源码基线</dt><dd>分块：vLLM v0.11.0 / V1；整段：vLLM v0.6.6 / V0</dd>
+<dt>后端与配置</dt><dd>单 GPU · 普通全因果注意力 · 分块预算 8 / 整段预算 32</dd>
+<dt>流程范围</dt><dd>相同请求角色比较分块混合与历史 prefill-first；不是同版本配置开关对照。</dd>
+<dt>教学假设</dt><dd>整段 Prefill 内的观察时段不是多次调度；时间间距不表示实测耗时。</dd></dl>
+</details>
+</aside>
+<!-- learning-scope:end -->
 <iframe id="codex-visualization" sandbox="allow-scripts" referrerpolicy="no-referrer" title="Chunked prefill：分块与不分块调度流程" data-srcdoc="&lt;!doctype html&gt;
 &lt;html lang=&quot;en&quot; data-visualize-standalone&gt;
 &lt;head&gt;
@@ -1827,7 +1855,7 @@ html&gt;body{padding:0}&lt;/style&gt;
     #chunked-prefill-flow .cf-detail { margin:8px 0 16px; min-height:24px; overflow-wrap:anywhere; }
     #chunked-prefill-flow .cf-sequence { display:grid; gap:14px; margin:12px 0 16px; }
     #chunked-prefill-flow .cf-sequence[hidden] { display:none; }
-    #chunked-prefill-flow .cf-seq-row { display:grid; grid-template-columns:44px minmax(0,1fr); gap:8px; }
+    #chunked-prefill-flow .cf-seq-row { display:grid; grid-template-columns:94px minmax(0,1fr); gap:8px; }
     #chunked-prefill-flow .cf-seq-items { display:grid; gap:5px; }
     #chunked-prefill-flow .cf-notes { margin-top:16px; overflow-wrap:anywhere; }
     #chunked-prefill-flow .cf-notes summary { color:var(--muted-foreground); }
@@ -1844,8 +1872,8 @@ html&gt;body{padding:0}&lt;/style&gt;
   &lt;div class=&quot;viz-controls cf-mode&quot;&gt;
     &lt;label class=&quot;form-label&quot; for=&quot;cf-mode&quot;&gt;调度策略
       &lt;select class=&quot;form-select&quot; id=&quot;cf-mode&quot;&gt;
-        &lt;option value=&quot;chunked&quot;&gt;分块：混合 prefill / decode&lt;/option&gt;
-        &lt;option value=&quot;whole&quot;&gt;不分块：prefill 优先&lt;/option&gt;
+        &lt;option value=&quot;chunked&quot;&gt;V1 分块混合 · 预算 8&lt;/option&gt;
+        &lt;option value=&quot;whole&quot;&gt;V0 整段优先 · 预算 32&lt;/option&gt;
       &lt;/select&gt;
     &lt;/label&gt;
   &lt;/div&gt;
@@ -1874,12 +1902,12 @@ html&gt;body{padding:0}&lt;/style&gt;
       &lt;dt&gt;初始&lt;/dt&gt;&lt;dd id=&quot;cf-initial-note&quot;&gt;B / C 已在 RUNNING，最新输出为 b0 / c0，尚未作为模型输入处理；K_B / K_C 是此前已有 KV，不含 b0 / c0。&lt;/dd&gt;
       &lt;dt&gt;模型&lt;/dt&gt;&lt;dd&gt;普通自回归文本生成、全因果注意力、单 GPU 示意；无前缀命中、无推测解码、无抢占，KV 容量充足。&lt;/dd&gt;
       &lt;dt&gt;分块&lt;/dt&gt;&lt;dd&gt;v0.11.0 / V1：输入预算 8；无额外长 prefill 阈值。RUNNING 顺序 B → C → A，因此每轮留给 A 6 tokens。&lt;/dd&gt;
-      &lt;dt&gt;不分块&lt;/dt&gt;&lt;dd&gt;v0.6.6 / V0 历史 prefill-first 策略：预算 32，max_model_len = 32。第二项按本次示例改为 B 的 18 tokens 一次进入，A / C 等待；第 1～3 轮展示同一次执行，第 4 轮才是下一次调度。不是将 18 tokens 分成三次各 6，也不是仅切换同一 V1 配置开关。&lt;/dd&gt;
-      &lt;dt&gt;可比性&lt;/dt&gt;&lt;dd&gt;第一项沿用 A 为长请求；第二项按本次示例使用 B 为长请求。两项调度策略与预算不同。第二项的三个观察时段只表示占用和等待，不表示固定耗时或 token 处理速率。&lt;/dd&gt;
-      &lt;dt&gt;饥饿&lt;/dt&gt;&lt;dd&gt;第二项第 1～3 轮中 A / C 停在 a0 / c0，KV 不增长；B 完成后，第 4 轮才恢复。持续到来的高优先级 prefill 还可能延长等待。&lt;/dd&gt;
+      &lt;dt&gt;不分块&lt;/dt&gt;&lt;dd&gt;v0.6.6 / V0 历史 prefill-first 策略：预算 32，max_model_len = 32。A 的 18 tokens 一次进入，B / C 等待；调度 1 内分三个观察点，调度 2 才执行 Decode。不是将 18 tokens 分成三次各 6，也不是仅切换同一 V1 配置开关。&lt;/dd&gt;
+      &lt;dt&gt;可比性&lt;/dt&gt;&lt;dd&gt;两项均用 A 的 18-token prompt 与 B / C 的 Decode。版本、调度策略与预算不同，不是同一 V1 开关的性能对比。整段侧的三个观察点属于同一次调度，不表示固定耗时或 token 处理速率。&lt;/dd&gt;
+      &lt;dt&gt;饥饿&lt;/dt&gt;&lt;dd&gt;整段侧调度 1 中 B / C 停在 b0 / c0，KV 不增长；A 完成后，调度 2 才恢复。持续到来的高优先级 prefill 还可能延长等待。&lt;/dd&gt;
       &lt;dt&gt;计数&lt;/dt&gt;&lt;dd&gt;V1 的 num_computed_tokens 在安排后预先推进；图中 KV 只在执行步骤后增长。采样产生的 token 到下一次作为输入执行时才有自己的 KV。&lt;/dd&gt;
       &lt;dt&gt;缓存&lt;/dt&gt;&lt;dd&gt;条带表示逻辑 token 的 KV，不表示物理 block 大小。各请求 KV 独立；后续 EOS / 长度上限结束时释放请求占用。&lt;/dd&gt;
-      &lt;dt&gt;验证&lt;/dt&gt;&lt;dd&gt;源码语义与页面状态检查；未运行模型或硬件测速。本次修改按要求不查看截图。&lt;/dd&gt;
+      &lt;dt&gt;验证&lt;/dt&gt;&lt;dd&gt;源码语义与页面交互检查；数值为教学示例，未运行模型或硬件测速。&lt;/dd&gt;
       &lt;dt&gt;V0 对照&lt;/dt&gt;&lt;dd&gt;&lt;a href=&quot;https://docs.vllm.ai/en/v0.6.6/usage/performance.html#chunked-prefill&quot; target=&quot;_blank&quot; rel=&quot;noreferrer&quot;&gt;prefill 优先说明&lt;/a&gt; · &lt;a href=&quot;https://github.com/vllm-project/vllm/blob/v0.6.6/vllm/core/scheduler.py#L1072-L1088&quot; target=&quot;_blank&quot; rel=&quot;noreferrer&quot;&gt;整段 prefill 时跳过 decode&lt;/a&gt;&lt;/dd&gt;
       &lt;dt&gt;依据&lt;/dt&gt;&lt;dd&gt;&lt;a href=&quot;https://docs.vllm.ai/en/v0.11.0/configuration/optimization.html#chunked-prefill&quot; target=&quot;_blank&quot; rel=&quot;noreferrer&quot;&gt;官方说明&lt;/a&gt; · &lt;a href=&quot;https://github.com/vllm-project/vllm/blob/v0.11.0/vllm/v1/core/sched/scheduler.py#L179-L224&quot; target=&quot;_blank&quot; rel=&quot;noreferrer&quot;&gt;Scheduler&lt;/a&gt; · &lt;a href=&quot;https://github.com/vllm-project/vllm/blob/v0.11.0/vllm/v1/engine/core.py#L272-L288&quot; target=&quot;_blank&quot; rel=&quot;noreferrer&quot;&gt;EngineCore&lt;/a&gt; · &lt;a href=&quot;https://github.com/vllm-project/vllm/blob/v0.11.0/vllm/v1/worker/gpu_model_runner.py#L1060-L1104&quot; target=&quot;_blank&quot; rel=&quot;noreferrer&quot;&gt;输出判定&lt;/a&gt; · &lt;a href=&quot;https://github.com/vllm-project/vllm/blob/v0.11.0/vllm/v1/attention/backends/flash_attn.py#L484-L539&quot; target=&quot;_blank&quot; rel=&quot;noreferrer&quot;&gt;KV / attention&lt;/a&gt;&lt;/dd&gt;
     &lt;/dl&gt;
@@ -1896,7 +1924,7 @@ html&gt;body{padding:0}&lt;/style&gt;
       {r:3,before:12,after:18,input:&#x27;p13–p18&#x27;,aOutput:&#x27;y1&#x27;,bcBefore:2,bcAfter:3,bcInput:2,bcOutput:3},
       {r:4,before:18,after:19,input:&#x27;y1&#x27;,aOutput:&#x27;y2&#x27;,bcBefore:3,bcAfter:4,bcInput:3,bcOutput:4}
     ]},
-    whole: {budget:32,label:&#x27;不分块&#x27;,info:&#x27;第 1～3 轮：同一次 B Prefill 的连续观察时段；第 4 轮：下一次调度，开始 Decode。观察轮次不表示实际调度次数或耗时。&#x27;,rounds:[
+    whole: {budget:32,label:&#x27;V0 整段优先&#x27;,info:&#x27;vLLM v0.6.6 / V0 · 预算 32，max_model_len=32。调度 1 一次提交 A 的完整 Prefill，内部有三个观察点；调度 2 才执行 Decode。观察点不表示耗时。&#x27;,rounds:[
       {r:1,before:0,after:0,input:&#x27;p1–p18&#x27;,aOutput:null,bcBefore:0,bcAfter:0,bcInput:null,bcOutput:null},
       {r:2,before:0,after:0,input:&#x27;p1–p18&#x27;,aOutput:null,bcBefore:0,bcAfter:0,bcInput:null,bcOutput:null},
       {r:3,before:0,after:18,input:&#x27;p1–p18&#x27;,aOutput:&#x27;y1&#x27;,bcBefore:0,bcAfter:0,bcInput:null,bcOutput:null},
@@ -1906,6 +1934,8 @@ html&gt;body{padding:0}&lt;/style&gt;
   const ns=&#x27;http://www.w3.org/2000/svg&#x27;;
   const sessionId=Date.now().toString(36)+Math.random().toString(36).slice(2);
   let mode=&#x27;whole&#x27;,selected=-1;
+  const wholeRound=r=&gt;r&lt;4?&#x27;调度 1 · 观察 &#x27;+r:&#x27;调度 2&#x27;;
+  const roundLabel=r=&gt;mode===&#x27;whole&#x27;?wholeRound(r):&#x27;调度 &#x27;+r;
   const config=()=&gt;configs[mode];
   const rounds=()=&gt;config().rounds;
   function describeSteps(q) {
@@ -2031,24 +2061,24 @@ html&gt;body{padding:0}&lt;/style&gt;
   function describeWholeSteps(q) {
     const data={
       1:[
-        [&#x27;CPU 一次提交 B 的整段 Prefill&#x27;,&#x27;Scheduler → B[p1–p18] 的执行计划 → ModelRunner&#x27;,&#x27;18 个 prompt token 一次提交；A / C 的 a0 / c0 未进入这个 batch。&#x27;],
-        [&#x27;GPU 开始 B 的 Prefill&#x27;,&#x27;GPU 开始同一次整段 Prefill → A / C 等待&#x27;,&#x27;B 的 Prefill 正在执行；没有切出一个 6-token chunk，也没有给 A / C 执行机会。&#x27;],
-        [&#x27;B 仍占用；Decode 等待&#x27;,&#x27;B 尚未返回 → A / C 仍停在 a0 / c0&#x27;,&#x27;第 1 个观察时段结束，整段 Prefill 仍未完成；没有新的 token 返回。&#x27;]
+        [&#x27;CPU 一次提交 A 的整段 Prefill&#x27;,&#x27;Scheduler → A[p1–p18] 的执行计划 → ModelRunner&#x27;,&#x27;18 个 prompt token 一次提交；B / C 的 b0 / c0 未进入这个 batch。&#x27;],
+        [&#x27;GPU 开始 A 的 Prefill&#x27;,&#x27;GPU 开始同一次整段 Prefill → B / C 等待&#x27;,&#x27;A 的 Prefill 正在执行；没有切出一个 6-token chunk，也没有给 B / C 执行机会。&#x27;],
+        [&#x27;A 仍占用；Decode 等待&#x27;,&#x27;A 尚未返回 → B / C 仍停在 b0 / c0&#x27;,&#x27;观察点 1 结束，整段 Prefill 仍未完成；没有新的 token 返回。&#x27;]
       ],
       2:[
-        [&#x27;沿用同一次执行&#x27;,&#x27;B 的 Prefill 继续 → 不重新提交 batch&#x27;,&#x27;进入第 2 个观察时段；仍是第 1 轮提交的整段 Prefill。&#x27;],
-        [&#x27;GPU 持续执行 B 的 Prefill&#x27;,&#x27;GPU 继续计算 B → A / C 仍无执行机会&#x27;,&#x27;B 继续占用；A / C 的 token 与 KV 均保持原样。&#x27;],
-        [&#x27;Decode 继续等待&#x27;,&#x27;B 尚未返回 → A / C 继续等待&#x27;,&#x27;第 2 个观察时段结束仍无新输出；不是完成了第二个 chunk。&#x27;]
+        [&#x27;沿用同一次执行&#x27;,&#x27;A 的 Prefill 继续 → 不重新提交 batch&#x27;,&#x27;进入观察点 2；仍是调度 1 提交的整段 Prefill。&#x27;],
+        [&#x27;GPU 持续执行 A 的 Prefill&#x27;,&#x27;GPU 继续计算 A → B / C 仍无执行机会&#x27;,&#x27;A 继续占用；B / C 的 token 与 KV 均保持原样。&#x27;],
+        [&#x27;Decode 继续等待&#x27;,&#x27;A 尚未返回 → B / C 继续等待&#x27;,&#x27;观察点 2 结束仍无新输出；不是完成了第二个 chunk。&#x27;]
       ],
       3:[
-        [&#x27;同一次 Prefill 进入完成阶段&#x27;,&#x27;原 Prefill 继续 → A / C 等待完成&#x27;,&#x27;第 3 个观察时段仍没有重新调度，也未插入 A / C 的 Decode。&#x27;],
-        [&#x27;B 的 Prefill 完成，采样 y1&#x27;,&#x27;GPU 完成 B 的 18-token Prefill → KV=18 → 采样 y1&#x27;,&#x27;B 的整段 Prefill 完成，写入 18 个 prompt token 的 KV，并采样首 token y1；A / C 仍未执行。&#x27;],
-        [&#x27;B 返回首 token；下一轮才能 Decode&#x27;,&#x27;ModelRunner → B 的 y1 → LLMEngine&#x27;,&#x27;B 返回 y1；A / C 仍停在 a0 / c0。第 4 轮才调度 Decode。&#x27;]
+        [&#x27;同一次 Prefill 进入完成阶段&#x27;,&#x27;原 Prefill 继续 → B / C 等待完成&#x27;,&#x27;观察点 3 仍没有重新调度，也未插入 B / C 的 Decode。&#x27;],
+        [&#x27;A 的 Prefill 完成，采样 y1&#x27;,&#x27;GPU 完成 A 的 18-token Prefill → KV=18 → 采样 y1&#x27;,&#x27;A 的整段 Prefill 完成，写入 18 个 prompt token 的 KV，并采样首 token y1；B / C 仍未执行。&#x27;],
+        [&#x27;A 返回首 token；下一轮才能 Decode&#x27;,&#x27;ModelRunner → A 的 y1 → LLMEngine&#x27;,&#x27;A 返回 y1；B / C 仍停在 b0 / c0。调度 2 才调度 Decode。&#x27;]
       ],
       4:[
-        [&#x27;CPU 开始调度 Decode&#x27;,&#x27;Scheduler → A[a0] + B[y1] + C[c0] → ModelRunner&#x27;,&#x27;B 的整段 Prefill 已完成；现在 A / B / C 各安排 1 个 Decode 输入。&#x27;],
-        [&#x27;GPU 执行三条 Decode&#x27;,&#x27;GPU 计算 a0 / y1 / c0 → 各写入 1 个 KV → 采样&#x27;,&#x27;A / C 的 KV 各增加 1；B 的 KV 从 18 增到 19，并分别采样 a1 / y2 / c1。&#x27;],
-        [&#x27;返回输出，Decode 恢复&#x27;,&#x27;ModelRunner → a1 / y2 / c1 → LLMEngine&#x27;,&#x27;A：a0 → a1；B：y1 → y2；C：c0 → c1。三个请求都已推进一次 Decode。&#x27;]
+        [&#x27;CPU 开始调度 Decode&#x27;,&#x27;Scheduler → B[b0] + A[y1] + C[c0] → ModelRunner&#x27;,&#x27;A 的整段 Prefill 已完成；现在 A / B / C 各安排 1 个 Decode 输入。&#x27;],
+        [&#x27;GPU 执行三条 Decode&#x27;,&#x27;GPU 计算 b0 / y1 / c0 → 各写入 1 个 KV → 采样&#x27;,&#x27;B / C 的 KV 各增加 1；A 的 KV 从 18 增到 19，并分别采样 b1 / y2 / c1。&#x27;],
+        [&#x27;返回输出，Decode 恢复&#x27;,&#x27;ModelRunner → b1 / y2 / c1 → LLMEngine&#x27;,&#x27;B：b0 → b1；A：y1 → y2；C：c0 → c1。三个请求都已推进一次 Decode。&#x27;]
       ]
     };
     return data[q.r].map(([title,short,detail],phase)=&gt;({round:q.r,phase,title,short,detail}));
@@ -2063,33 +2093,33 @@ html&gt;body{padding:0}&lt;/style&gt;
   }
   function renderWholeTimeline() {
     const {s}=state(),timeline=$(&#x27;cf-timeline&#x27;);timeline.replaceChildren();
-    timeline.setAttribute(&#x27;aria-label&#x27;,&#x27;第1、2、3轮：同一次B整段Prefill持续占用，A/C等待。第4轮：A/B/C开始Decode。&#x27;);
+    timeline.setAttribute(&#x27;aria-label&#x27;,&#x27;调度 1 的观察点 1、2、3：同一次A整段Prefill持续占用，B/C等待。调度 2：A/B/C开始Decode。&#x27;);
     for(const q of rounds()){
       const row=html(&#x27;div&#x27;,&#x27;cf-round&#x27;);row.dataset.active=String(!s||s.round===q.r);
-      const bar=html(&#x27;div&#x27;,&#x27;cf-bars&#x27;);bar.style.gridTemplateColumns=&#x27;minmax(0,1fr)&#x27;;
-      bar.append(html(&#x27;span&#x27;,&#x27;cf-segment text-small &#x27;+(q.r&lt;4?&#x27;cf-prefill&#x27;:&#x27;cf-decode&#x27;),q.r&lt;4?`B · Prefill ${q.r===1?&#x27;开始&#x27;:q.r===2?&#x27;持续占用&#x27;:&#x27;完成&#x27;}`:&#x27;A / B / C · Decode&#x27;));
-      row.append(html(&#x27;span&#x27;,&#x27;cf-round-label text-small&#x27;,`轮 ${q.r}`),bar,html(&#x27;span&#x27;,&#x27;text-small&#x27;,`B：${q.aOutput||&#x27;无&#x27;}`));
-      row.append(html(&#x27;div&#x27;,&#x27;cf-round-note text-small&#x27;,q.r&lt;4?`A：a0 等待 ｜ C：c0 等待${q.r===3?&#x27; ｜ B 返回 y1&#x27;:&#x27; ｜ 无新 token&#x27;}`:&#x27;A：a0 → a1　B：y1 → y2　C：c0 → c1&#x27;));
+      const bar=html(&#x27;div&#x27;,&#x27;cf-bars&#x27;);bar.style.gridTemplateColumns=&#x27;minmax(0,1fr)&#x27;;row.style.gridTemplateColumns=&#x27;94px minmax(0,1fr) 50px&#x27;;
+      bar.append(html(&#x27;span&#x27;,&#x27;cf-segment text-small &#x27;+(q.r&lt;4?&#x27;cf-prefill&#x27;:&#x27;cf-decode&#x27;),q.r&lt;4?`A · Prefill ${q.r===1?&#x27;开始&#x27;:q.r===2?&#x27;持续占用&#x27;:&#x27;完成&#x27;}`:&#x27;A / B / C · Decode&#x27;));
+      row.append(html(&#x27;span&#x27;,&#x27;cf-round-label text-small&#x27;,wholeRound(q.r)),bar,html(&#x27;span&#x27;,&#x27;text-small&#x27;,`A：${q.aOutput||&#x27;无&#x27;}`));
+      row.append(html(&#x27;div&#x27;,&#x27;cf-round-note text-small&#x27;,q.r&lt;4?`B：b0 等待 ｜ C：c0 等待${q.r===3?&#x27; ｜ A 返回 y1&#x27;:&#x27; ｜ 无新 token&#x27;}`:&#x27;B：b0 → b1　A：y1 → y2　C：c0 → c1&#x27;));
       timeline.append(row);
     }
   }
   function renderWholeTracks() {
     const {s,q,phase,busy,wholeKV,returned,bcKV,bcReturned}=wholeView();
-    $(&#x27;cf-track-title&#x27;).textContent=s?&#x27;当前状态 · B 占用期间，A / C 的 token 和 KV 不变&#x27;:&#x27;完整变化 · B 占用第 1～3 轮；A / C 第 4 轮才继续生成&#x27;;
+    $(&#x27;cf-track-title&#x27;).textContent=s?&#x27;当前状态 · A 占用期间，B / C 的 token 和 KV 不变&#x27;:&#x27;完整变化 · A 占用调度 1 的三个观察点；B / C 调度 2 才继续生成&#x27;;
     $(&#x27;cf-tracks&#x27;).replaceChildren();
     for(const id of [&#x27;A&#x27;,&#x27;B&#x27;,&#x27;C&#x27;]){
       const row=html(&#x27;div&#x27;,&#x27;cf-track&#x27;);row.dataset.request=id;
       const content=html(&#x27;div&#x27;),tokens=html(&#x27;div&#x27;,&#x27;cf-token-row&#x27;);let values,detail;
-      if(id===&#x27;B&#x27;){
+      if(id===&#x27;A&#x27;){
         values=Array.from({length:returned},(_,i)=&gt;&#x27;y&#x27;+(i+1));
-        detail=!s?&#x27;18 tokens 整段 Prefill 持续第 1～3 轮；轮 3 返回 y1，轮 4 返回 y2&#x27;:busy?&#x27;同一次整段 Prefill 执行中；完成后 prompt KV 为 18&#x27;:`已写入 KV ${wholeKV}；${phase===0?&#x27;待执行&#x27;:phase===1?&#x27;已完成计算，待返回&#x27;:q.aOutput?&#x27;已返回 &#x27;+q.aOutput:&#x27;尚无有效输出&#x27;}`;
+        detail=!s?&#x27;18 tokens 整段 Prefill 持续调度 1 的三个观察点；调度 1 完成后返回 y1，调度 2 返回 y2&#x27;:busy?&#x27;同一次整段 Prefill 执行中；完成后 prompt KV 为 18&#x27;:`已写入 KV ${wholeKV}；${phase===0?&#x27;待执行&#x27;:phase===1?&#x27;已完成计算，待返回&#x27;:q.aOutput?&#x27;已返回 &#x27;+q.aOutput:&#x27;尚无有效输出&#x27;}`;
       }else{
         const prefix=id.toLowerCase(),n=!s?1:bcReturned;
         values=Array.from({length:n+1},(_,i)=&gt;prefix+i);
-        detail=!s?`轮 1～3 停在 ${prefix}0，KV 不变；轮 4 才生成 ${prefix}1`:q.r&lt;4?`${prefix}0 等待 B，未执行；KV = K_${id}，没有增长`:`${prefix}0 → ${prefix}1（${phase===0?&#x27;待计算&#x27;:phase===1?&#x27;已采样，待返回&#x27;:&#x27;已返回&#x27;}）；KV = K_${id}＋${bcKV}`;
+        detail=!s?`调度 1 内 停在 ${prefix}0，KV 不变；调度 2 才生成 ${prefix}1`:q.r&lt;4?`${prefix}0 等待 A，未执行；KV = K_${id}，没有增长`:`${prefix}0 → ${prefix}1（${phase===0?&#x27;待计算&#x27;:phase===1?&#x27;已采样，待返回&#x27;:&#x27;已返回&#x27;}）；KV = K_${id}＋${bcKV}`;
       }
-      if(values.length)values.forEach((v,i)=&gt;{if(i)tokens.append(html(&#x27;span&#x27;,&#x27;text-muted&#x27;,&#x27;→&#x27;));tokens.append(html(&#x27;span&#x27;,&#x27;cf-token&#x27;+(id===&#x27;B&#x27;?&#x27; a&#x27;:&#x27;&#x27;),v));});else tokens.append(html(&#x27;span&#x27;,&#x27;text-small&#x27;,&#x27;尚无已返回 token&#x27;));
-      if(s&amp;&amp;q.r&lt;4&amp;&amp;id!==&#x27;B&#x27;)tokens.append(html(&#x27;span&#x27;,&#x27;text-small&#x27;,&#x27;暂停 / 等待 B&#x27;));
+      if(values.length)values.forEach((v,i)=&gt;{if(i)tokens.append(html(&#x27;span&#x27;,&#x27;text-muted&#x27;,&#x27;→&#x27;));tokens.append(html(&#x27;span&#x27;,&#x27;cf-token&#x27;+(id===&#x27;A&#x27;?&#x27; a&#x27;:&#x27;&#x27;),v));});else tokens.append(html(&#x27;span&#x27;,&#x27;text-small&#x27;,&#x27;尚无已返回 token&#x27;));
+      if(s&amp;&amp;q.r&lt;4&amp;&amp;id!==&#x27;A&#x27;)tokens.append(html(&#x27;span&#x27;,&#x27;text-small&#x27;,&#x27;暂停 / 等待 A&#x27;));
       content.append(tokens,html(&#x27;div&#x27;,&#x27;cf-track-detail text-small&#x27;,detail));row.append(html(&#x27;span&#x27;,&#x27;&#x27;,id),content);$(&#x27;cf-tracks&#x27;).append(row);
     }
   }
@@ -2097,8 +2127,8 @@ html&gt;body{padding:0}&lt;/style&gt;
     const svg=$(&#x27;cf-diagram&#x27;),width=Math.max(260,root.getBoundingClientRect().width),compact=width&lt;590,h=compact?600:304;
     svg.setAttribute(&#x27;viewBox&#x27;,`0 0 ${width} ${h}`);svg.style.height=h+&#x27;px&#x27;;svg.replaceChildren();
     const {s,q,phase,busy,wholeKV,bcKV}=wholeView();
-    svg.append(el(&#x27;title&#x27;,{id:&#x27;cf-svg-title&#x27;},&#x27;B 的整段 Prefill 占用前三个观察轮次，第四轮恢复 Decode&#x27;));
-    svg.append(el(&#x27;desc&#x27;,{id:&#x27;cf-svg-desc&#x27;},s?s.detail:&#x27;CPU 只提交一次 B 的 18-token Prefill；GPU 持续执行，完成后才能调度 A/B/C Decode。&#x27;));
+    svg.append(el(&#x27;title&#x27;,{id:&#x27;cf-svg-title&#x27;},&#x27;A 的整段 Prefill 占用调度 1 的三个观察点，调度 2 恢复 Decode&#x27;));
+    svg.append(el(&#x27;desc&#x27;,{id:&#x27;cf-svg-desc&#x27;},s?s.detail:&#x27;CPU 只提交一次 A 的 18-token Prefill；GPU 持续执行，完成后才能调度 A/B/C Decode。&#x27;));
     const defs=el(&#x27;defs&#x27;);
     for(const kind of [&#x27;normal&#x27;,&#x27;active&#x27;]){const m=el(&#x27;marker&#x27;,{id:&#x27;cf-arrow-&#x27;+kind,viewBox:&#x27;0 0 8 8&#x27;,refX:7,refY:4,markerWidth:6,markerHeight:6,orient:&#x27;auto-start-reverse&#x27;});m.append(el(&#x27;path&#x27;,{d:&#x27;M 1 1 L 7 4 L 1 7&#x27;,fill:&#x27;none&#x27;,stroke:kind===&#x27;active&#x27;?&#x27;var(--viz-series-1)&#x27;:&#x27;var(--muted-foreground)&#x27;,&#x27;stroke-width&#x27;:1.3}));defs.append(m);}svg.append(defs);
     const nw=compact?width-16:(width-126)/2,cpu={x:8,y:16,w:nw,h:258},gpu={x:compact?8:width-8-nw,y:compact?330:16,w:nw,h:258};
@@ -2106,21 +2136,21 @@ html&gt;body{padding:0}&lt;/style&gt;
     [cpu,gpu].forEach((box,i)=&gt;svg.append(el(&#x27;rect&#x27;,{x:box.x,y:box.y,width:box.w,height:box.h,rx:8,class:&#x27;node&#x27;+(s&amp;&amp;(i===0?(plan||output):(!plan&amp;&amp;!output))?&#x27; active&#x27;:&#x27;&#x27;)})));
     textAt(svg,cpu.x+14,cpu.y+27,&#x27;CPU · LLMEngine / Scheduler&#x27;,{&#x27;font-weight&#x27;:500});
     textAt(svg,gpu.x+14,gpu.y+27,&#x27;Worker · ModelRunner / GPU&#x27;,{&#x27;font-weight&#x27;:500});
-    const cpuLines=!s?[&#x27;B 一次提交 p1–p18&#x27;,&#x27;轮 1～3：等待整段完成&#x27;,&#x27;A：a0 等待 → 轮 4 才有 a1&#x27;,&#x27;C：c0 等待 → 轮 4 才有 c1&#x27;,&#x27;轮 4：调度三条 Decode&#x27;]:q.r&lt;4?[`第 ${q.r} 轮 · B 的 Prefill`,q.r===1?&#x27;B 输入：p1–p18，一次提交&#x27;:&#x27;同一次执行，未重新提交&#x27;,&#x27;A：a0 未安排，等待&#x27;,&#x27;C：c0 未安排，等待&#x27;,q.r===3&amp;&amp;phase===2?&#x27;B 返回：y1&#x27;:&#x27;B 尚未返回输出&#x27;]:[
-      &#x27;第 4 轮 · 开始 Decode&#x27;,&#x27;A 输入：a0 → a1&#x27;,&#x27;B 输入：y1 → y2&#x27;,&#x27;C 输入：c0 → c1&#x27;,phase===2?&#x27;返回：a1 / y2 / c1&#x27;:&#x27;本轮输出尚未返回&#x27;
+    const cpuLines=!s?[&#x27;A 一次提交 p1–p18&#x27;,&#x27;调度 1 内：等待整段完成&#x27;,&#x27;B：b0 等待 → 调度 2 才有 b1&#x27;,&#x27;C：c0 等待 → 调度 2 才有 c1&#x27;,&#x27;调度 2：调度三条 Decode&#x27;]:q.r&lt;4?[`${wholeRound(q.r)} · A Prefill`,q.r===1?&#x27;A 输入：p1–p18，一次提交&#x27;:&#x27;同一次执行，未重新提交&#x27;,&#x27;B：b0 未安排，等待&#x27;,&#x27;C：c0 未安排，等待&#x27;,q.r===3&amp;&amp;phase===2?&#x27;A 返回：y1&#x27;:&#x27;A 尚未返回输出&#x27;]:[
+      &#x27;调度 2 · 开始 Decode&#x27;,&#x27;B 输入：b0 → b1&#x27;,&#x27;A 输入：y1 → y2&#x27;,&#x27;C 输入：c0 → c1&#x27;,phase===2?&#x27;返回：b1 / y2 / c1&#x27;:&#x27;本轮输出尚未返回&#x27;
     ];
     lines(svg,cpu.x+14,cpu.y+65,cpuLines);
     textAt(svg,cpu.x+14,cpu.y+211,&#x27;每次调度预算 32 tokens&#x27;,{class:&#x27;secondary text-small&#x27;});
-    textAt(svg,cpu.x+14,cpu.y+237,&#x27;前三轮不是三次调度&#x27;,{class:&#x27;secondary text-small&#x27;});
+    textAt(svg,cpu.x+14,cpu.y+237,&#x27;三个观察点共用调度 1&#x27;,{class:&#x27;secondary text-small&#x27;});
     if(!s||phase===1)textAt(svg,gpu.x+14,gpu.y+50,&#x27;计算步骤 &#x27;+(!s?&#x27;2 · 5 · 8 · 11&#x27;:s.n),{class:&#x27;secondary text-small&#x27;});
-    const gpuLines=!s?[&#x27;B[ p1–p18 ] 整段 Prefill&#x27;,&#x27;完成后，三条 Decode 才开始&#x27;]:q.r&lt;4?[q.r===3&amp;&amp;phase&gt;=1?&#x27;B 整段 Prefill 已完成&#x27;:q.r===1&amp;&amp;phase===0?&#x27;等待 B 的整段输入执行&#x27;:&#x27;B 整段 Prefill 持续执行&#x27;,&#x27;A / C 未执行，KV 不变&#x27;]:[&#x27;Decode 输入：a0 / y1 / c0&#x27;,&#x27;每个请求只增加 1 个 KV&#x27;];
+    const gpuLines=!s?[&#x27;A[ p1–p18 ] 整段 Prefill&#x27;,&#x27;完成后，三条 Decode 才开始&#x27;]:q.r&lt;4?[q.r===3&amp;&amp;phase&gt;=1?&#x27;A 整段 Prefill 已完成&#x27;:q.r===1&amp;&amp;phase===0?&#x27;等待 A 的整段输入执行&#x27;:&#x27;A 整段 Prefill 持续执行&#x27;,&#x27;B / C 未执行，KV 不变&#x27;]:[&#x27;Decode 输入：b0 / y1 / c0&#x27;,&#x27;每个请求只增加 1 个 KV&#x27;];
     lines(svg,gpu.x+14,gpu.y+77,gpuLines);
     const bw=(gpu.w-28-18*2)/19;
     for(let i=0;i&lt;19;i++)svg.append(el(&#x27;rect&#x27;,{x:gpu.x+14+i*(bw+2),y:gpu.y+118,width:bw,height:20,rx:1,class:busy&amp;&amp;i&lt;18?&#x27;kv-new&#x27;:i&gt;=wholeKV?&#x27;kv-empty&#x27;:i===18?&#x27;kv-decode&#x27;:&#x27;kv-old&#x27;,...(busy?{opacity:.45}:{})}));
-    textAt(svg,gpu.x+14,gpu.y+161,!s?&#x27;B KV：计算中 → 18 → 19&#x27;:busy?&#x27;B KV：计算中，完成后为 18&#x27;:`B 已写入 KV：${wholeKV}`,{&#x27;font-weight&#x27;:500});
-    textAt(svg,gpu.x+14,gpu.y+185,!s?&#x27;A KV：K_A 等待 → K_A＋1&#x27;:`A KV：K_A＋${bcKV}`);
+    textAt(svg,gpu.x+14,gpu.y+161,!s?&#x27;A KV：计算中 → 18 → 19&#x27;:busy?&#x27;A KV：计算中，完成后为 18&#x27;:`A 已写入 KV：${wholeKV}`,{&#x27;font-weight&#x27;:500});
+    textAt(svg,gpu.x+14,gpu.y+185,!s?&#x27;B KV：K_B 等待 → K_B＋1&#x27;:`B KV：K_B＋${bcKV}`);
     textAt(svg,gpu.x+14,gpu.y+209,!s?&#x27;C KV：K_C 等待 → K_C＋1&#x27;:`C KV：K_C＋${bcKV}`);
-    textAt(svg,gpu.x+14,gpu.y+237,!s?&#x27;首 token y1 在第 3 轮末返回&#x27;:busy?&#x27;尚无新 token 返回&#x27;:q.r===1?&#x27;尚未开始 GPU 计算&#x27;:q.r===3?&#x27;采样 y1；A / C 仍等待&#x27;:phase===0?&#x27;等待执行，KV 尚未增加&#x27;:&#x27;采样：a1 / y2 / c1&#x27;,{class:&#x27;secondary text-small&#x27;});
+    textAt(svg,gpu.x+14,gpu.y+237,!s?&#x27;首 token y1 在调度 1 结束时返回&#x27;:busy?&#x27;尚无新 token 返回&#x27;:q.r===1?&#x27;尚未开始 GPU 计算&#x27;:q.r===3?&#x27;采样 y1；B / C 仍等待&#x27;:phase===0?&#x27;等待执行，KV 尚未增加&#x27;:&#x27;采样：b1 / y2 / c1&#x27;,{class:&#x27;secondary text-small&#x27;});
     for(const p of [0,2]){
       const active=p===0?plan:output,label=!s?(p===0?&#x27;1·10&#x27;:&#x27;9·12&#x27;):active?String(s.n):&#x27;&#x27;;
       let d,tx,ty,anchor;
@@ -2132,17 +2162,17 @@ html&gt;body{padding:0}&lt;/style&gt;
   }
   function render() {
     const {s}=state();$(&#x27;cf-mode&#x27;).value=mode;
-    $(&#x27;cf-example&#x27;).textContent=mode===&#x27;whole&#x27;?&#x27;教学实例：B 提示词 18 tokens；A / C 从已生成的 a0 / c0 等待继续 Decode&#x27;:&#x27;教学实例：A 提示词 18 tokens；B / C 从已生成的 b0 / c0 继续 decode&#x27;;
-    $(&#x27;cf-prefill-label&#x27;).textContent=mode===&#x27;whole&#x27;?&#x27;B 的 prefill&#x27;:&#x27;A 的 prefill&#x27;;
-    $(&#x27;cf-output-label&#x27;).textContent=mode===&#x27;whole&#x27;?&#x27;右列：本观察轮次结束后的 B 输出&#x27;:&#x27;右列：每轮结束后的 A 输出&#x27;;
-    $(&#x27;cf-initial-note&#x27;).textContent=mode===&#x27;whole&#x27;?&#x27;B 是新来的 18-token prompt；A / C 已在 RUNNING，最新输出 a0 / c0 尚未作为输入执行。K_A / K_C 是已有历史 KV，不含 a0 / c0。&#x27;:&#x27;B / C 已在 RUNNING，最新输出为 b0 / c0，尚未作为模型输入处理；K_B / K_C 是此前已有 KV，不含 b0 / c0。&#x27;;
+    $(&#x27;cf-example&#x27;).textContent=&#x27;教学实例：A 提示词 18 tokens；B / C 从已生成的 b0 / c0 继续 Decode&#x27;;
+    $(&#x27;cf-prefill-label&#x27;).textContent=&#x27;A 的 prefill&#x27;;
+    $(&#x27;cf-output-label&#x27;).textContent=mode===&#x27;whole&#x27;?&#x27;右列：观察点 / 调度结束后的 A 输出&#x27;:&#x27;右列：每轮结束后的 A 输出&#x27;;
+    $(&#x27;cf-initial-note&#x27;).textContent=&#x27;A 是新来的 18-token prompt；B / C 已在 RUNNING，最新输出 b0 / c0 尚未作为输入执行；K_B / K_C 是已有历史 KV，不含 b0 / c0。&#x27;;
     $(&#x27;cf-mode-info&#x27;).textContent=config().info;
     $(&#x27;cf-budget&#x27;).textContent=mode===&#x27;whole&#x27;?&#x27;每次调度预算 ≤ 32 tokens&#x27;:`输入预算 ≤ ${config().budget} tokens / 轮`;
-    $(&#x27;cf-status&#x27;).textContent=s?`${s.n} / ${steps().length} · 第 ${s.round} 轮 · ${s.title}`:mode===&#x27;chunked&#x27;?&#x27;全局 · A 分三块；B / C 每轮持续生成&#x27;:&#x27;全局 · 第 1～3 轮 B Prefill 占用；第 4 轮开始 Decode&#x27;;
+    $(&#x27;cf-status&#x27;).textContent=s?`${s.n} / ${steps().length} · ${roundLabel(s.round)} · ${s.title}`:mode===&#x27;chunked&#x27;?&#x27;全局 · A 分三块；B / C 每轮持续生成&#x27;:&#x27;全局 · 调度 1：A 整段 Prefill；调度 2：A / B / C Decode&#x27;;
     $(&#x27;cf-global&#x27;).setAttribute(&#x27;aria-pressed&#x27;,String(selected&lt;0));$(&#x27;cf-prev&#x27;).disabled=selected&lt;=0;$(&#x27;cf-next&#x27;).disabled=selected===steps().length-1;$(&#x27;cf-next&#x27;).textContent=selected&lt;0?&#x27;开始逐步查看&#x27;:&#x27;下一步&#x27;;
-    $(&#x27;cf-detail&#x27;).textContent=s?s.detail:mode===&#x27;chunked&#x27;?&#x27;分块让 B / C 每轮获得执行机会：b0 → b1 → b2 → b3 → b4。&#x27;:&#x27;B 的整段 Prefill 持续占用：第 1、2、3 轮 A / C 都等待，第 4 轮才各生成一个新 token。&#x27;;
+    $(&#x27;cf-detail&#x27;).textContent=s?s.detail:mode===&#x27;chunked&#x27;?&#x27;分块让 B / C 每轮获得执行机会：b0 → b1 → b2 → b3 → b4。&#x27;:&#x27;调度 1 一次执行 A 的 18-token Prefill；三个观察点内 B / C 均等待。调度 2 才处理 y1 / b0 / c0，并生成下一 token。&#x27;;
     renderTimeline();renderTracks();$(&#x27;cf-sequence&#x27;).hidden=selected&gt;=0;
-    if(selected&lt;0){$(&#x27;cf-sequence&#x27;).replaceChildren();for(const q of rounds()){const row=html(&#x27;div&#x27;,&#x27;cf-seq-row text-small&#x27;),group=html(&#x27;div&#x27;,&#x27;cf-seq-items&#x27;);for(const s of steps().filter(x=&gt;x.round===q.r))group.append(html(&#x27;div&#x27;,&#x27;&#x27;,`${s.n}. ${s.short}`));row.append(html(&#x27;span&#x27;,&#x27;text-muted&#x27;,`轮 ${q.r}`),group);$(&#x27;cf-sequence&#x27;).append(row);}}
+    if(selected&lt;0){$(&#x27;cf-sequence&#x27;).replaceChildren();for(const q of rounds()){const row=html(&#x27;div&#x27;,&#x27;cf-seq-row text-small&#x27;),group=html(&#x27;div&#x27;,&#x27;cf-seq-items&#x27;);for(const s of steps().filter(x=&gt;x.round===q.r))group.append(html(&#x27;div&#x27;,&#x27;&#x27;,`${s.n}. ${s.short}`));row.append(html(&#x27;span&#x27;,&#x27;text-muted&#x27;,roundLabel(q.r)),group);$(&#x27;cf-sequence&#x27;).append(row);}}
     draw();
   }
   function save(){if(window.openai?.setWidgetState)Promise.resolve(window.openai.setWidgetState({modelContent:{topic:&#x27;chunked prefill&#x27;,mode:config().label,step:selected&lt;0?&#x27;全局关系&#x27;:steps()[selected].n,round:selected&lt;0?null:steps()[selected].round},privateContent:{mode,step:selected,sessionId}})).catch(()=&gt;{});}

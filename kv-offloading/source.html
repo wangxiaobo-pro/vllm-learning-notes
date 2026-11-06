@@ -16,7 +16,7 @@
   <details id="km-record">
     <summary class="cursor-interaction">块映射与源码</summary>
     <ol id="km-list"></ol>
-    <p class="text-small text-muted">普通全注意力 · 128 token / NPU 块 · 2 块 / CPU chunk · 假设 A 结束后旧设备块已被复用。全局图并列展示 A 写出和 B 回载时的块位置。数值与块号为教学示例，流程按本地源码静态核对。</p>
+    <p class="text-small text-muted">普通全注意力 · 128 token / NPU 块 · 2 块 / CPU chunk · 假设 A 结束后旧设备块已被复用。主机 Worker 提交/查询 NPU 事件；Scheduler 管理索引，二者均在 CPU 侧。全局图并列展示 A 写出和 B 回载时的块位置。数值与块号为教学示例，流程按本地源码静态核对。</p>
   </details>
 </section>
 <style>
@@ -47,7 +47,7 @@
   const steps=[
     ['A 生成两块 KV','前 128 个 token 写入 D7，后 128 个写入 D11。调度器已为写出作业预留 H3，前向结束时 Worker 将作业排队。','prepare_store_kv',jobs+'worker.py#L259-L271'],
     ['D7、D11 写入 H3','Worker 通常在下一轮开头提交写出作业。D2H 等模型流写完，将两块 KV 依次复制到 H3 的两个子块。A 的设备副本仍然可用。','submit_store / swap_blocks_batch',native+'#L192-L221'],
-    ['H3 成为可复用副本','Worker 查询到写出结束事件并上报。调度器调用 complete_store，前缀键现在可以命中 H3。','complete_store',upstream+'v1/kv_offload/cpu/manager.py#L365-L381'],
+    ['H3 成为可复用副本','主机 Worker 查询 NPU 写出结束事件，回报 completed_jobs；Scheduler 消费回报并调用 complete_store，将 H3 标为 ready，前缀键才可命中。','complete_store',upstream+'v1/kv_offload/cpu/manager.py#L365-L381'],
     ['B 命中 CPU，预留 D4、D9','设 D7、D11 已被其他数据复用。B 在设备缓存命中 0 个 token，CPU 命中 256 个。调度器引用 H3、分配新块并下发 load 作业，B 等待 KV。','update_state_after_alloc / prepare_load',jobs+'scheduler.py#L1243-L1274'],
     ['H3 回载到 D4、D9','Worker 提交 H2D。H3 的子块 0 写入 D4，子块 1 写入 D9。K 与 V 分别复制，块号改变，每个 token 的 K/V 数值保持一致。','submit_load / transfer_async',native+'#L359-L376'],
     ['B 收到 KV','回载事件完成后，Worker 上报 completed_jobs 和 finished_recving(B)。调度器解除 H3 的读引用，并记录 B 可以在后续调度中恢复。','get_finished',jobs+'worker.py#L273-L308'],
@@ -108,12 +108,19 @@
   }
   function scheduler(b,compact) {
     card(b,'ctrl',[3,4,6]);
-    const x=b.x+b.w/2, y=b.y;
-    txt(x,y+22,'EngineCore',{'font-weight':500});
-    txt(x,y+42,'调度器 · 前缀索引',smallText);
-    txt(x,y+66,!step||step>=3?'前缀键 → H3':'前缀键 · 待写完',smallText);
-    txt(x,y+86,step && step<4?'B 尚未到达':step===4||step===5?'B 等待回载':step>=6?'B 已收到 KV':'B 命中 256 token',{...smallText,fill:c.muted});
-    if(!compact) txt(x,y+107,'索引中保存块号', {...smallText,fill:c.muted});
+    const x=b.x+b.w/2,y=b.y;
+    txt(x,y+22,'EngineCore · Scheduler',{'font-weight':500});
+    txt(x,y+44,step&&step<3?'等待 completed_jobs':step===6?'complete_load → 解除读引用':step===4||step===5?'prepare_load → 下发 load job':'complete_store → H3 ready',smallText);
+    txt(x,y+65,!step||step>=3?'前缀键 → H3（可命中）':'前缀键 → H3（等待写完）',{...smallText,fill:c.muted});
+    txt(x,y+85,step===4||step===5?'B：WAITING_FOR_REMOTE_KVS':step>=6?'B：后续调度可恢复':'索引状态由主机更新',{...smallText,fill:c.muted});
+  }
+  function worker(b) {
+    card(b,'ctrl',[2,3,4,5,6]);
+    const x=b.x+b.w/2,y=b.y;
+    txt(x,y+22,'Worker · 主机 Python',{'font-weight':500});
+    txt(x,y+44,'submit_store / submit_load',smallText);
+    txt(x,y+65,'查询 NPU end_event.query()',smallText);
+    txt(x,y+85,step===3?'写出事件完成 → completed_jobs':step===6?'回载完成 → finished_recving(B)':'提交传输；轮询事件完成',{...smallText,fill:c.muted});
   }
   function compute(b,compact) {
     card(b,'local',[7]);
@@ -143,48 +150,52 @@
     }
   }
   function draw(animate=false) {
-    const W=svg.parentElement.clientWidth;
-    if(!W)return;
-    const narrow=W<520;
-    const H=narrow?521:481;
-    svg.replaceChildren(); svg.setAttribute('viewBox','0 0 '+W+' '+H); svg.style.height=H+'px';
-    item('title',{id:'km-svg-title'},'KV 块的设备结构及复制方向');
-    item('desc',{id:'km-svg-desc'},step?steps[step-1].join('。').split('https:')[0]:'NPU 中 A 的设备块 D7 和 D11 经 D2H 进入一个主存槽 H3，H3 的两个子块再经 H2D 回载到 NPU 中 B 的新设备块 D4 和 D9。');
-    let A,B,C,S,F;
-    const rect=(x,y,w,h)=>({x,y,w,h});
-    const gap=W>=650?122:94;
-    if(!narrow) {
-      const pane=(W-gap-12)/2, w=pane-22;
-      frame(4,4,pane,471,'NPU · Worker / HBM');
-      frame(W-pane-4,4,pane,384,'主机 · CPU / DRAM');
-      A=rect(15,49,w,124); B=rect(15,256,w,124); F=rect(15,409,w,53);
-      C=rect(W-pane+7,49,w,124); S=rect(C.x,256,w,124);
-    } else {
-      frame(3,3,W-6,258,'NPU · Worker / HBM');
-      frame(3,342,W-6,174,'主机 · CPU / DRAM',true);
-      const w=(W-34)/2, l=12, r=W-12-w;
-      A=rect(l,119,w,124); B=rect(r,119,w,124); F=rect(r,44,w,45);
-      C=rect(l,354,w,124); S=rect(r,354,w,124);
-      txt(A.x+A.w/2,62,'A 写出 / B 回载',{...smallText,fill:c.muted});
-      txt(A.x+A.w/2,81,'两次请求的块位置',{...smallText,fill:c.muted});
+    const W=svg.parentElement.clientWidth;if(!W)return;
+    const narrow=W<560,H=narrow?864:735;
+    svg.replaceChildren();svg.setAttribute('viewBox','0 0 '+W+' '+H);svg.style.height=H+'px';
+    item('title',{id:'km-svg-title'},'主机控制、NPU HBM 与 CPU DRAM 的 KV 写出和回载');
+    item('desc',{id:'km-svg-desc'},step?steps[step-1].join('。').split('https:')[0]:'Worker 在主机提交传输并查询 NPU 事件；完成作业回报 Scheduler 后，CPU 前缀才标记为 ready。D7、D11 写入 H3，之后 H3 回载到 D4、D9。');
+    const rect=(x,y,w,h)=>({x,y,w,h});let A,B,C,F,T,S;
+    if(narrow){
+      const w=(W-34)/2;
+      frame(3,3,W-6,264,'NPU · HBM 与设备计算');
+      A=rect(12,51,w,124);B=rect(W-12-w,51,w,124);F=rect(B.x,204,w,45);
+      frame(3,326,W-6,174,'主存 · CPU DRAM');
+      C=rect(15,363,W-30,124);
+      frame(3,536,W-6,321,'主机控制 · CPU 进程');
+      T=rect(15,574,W-30,101);S=rect(15,745,W-30,101);
+    }else{
+      const gap=116,pane=(W-gap-12)/2,w=pane-22;
+      frame(4,4,pane,480,'NPU · HBM 与设备计算');
+      A=rect(15,48,w,124);B=rect(15,260,w,124);F=rect(15,417,w,53);
+      frame(W-pane-4,4,pane,188,'主存 · CPU DRAM');C=rect(W-pane+7,48,w,124);
+      frame(4,530,W-8,194,'主机控制 · CPU 进程');
+      const cw=(W-132)/2;T=rect(15,587,cw,118);S=rect(W-15-cw,587,cw,118);
     }
-    addrTable(A,'a',narrow); addrTable(B,'b',narrow); addrTable(C,'h',narrow); scheduler(S,narrow); compute(F,narrow);
-    if(!narrow) {
-      const l=A.x+A.w, r=C.x, m=(l+r)/2;
-      edge([[l,88],[r,88]],'copy',2,'D2H 写出',[m,88],animate);
-      edge([[r,148],[m,148],[m,281],[l,281]],'copy',5,'H2D 回载',[m,211],animate);
-      edge([[r,321],[l,321]],'ctrl',4,'回载计划',[m,321],animate);
-      edge([[l,360],[r,360]],'ctrl',6,'接收完成',[m,360],animate);
-      const cx=B.x+B.w/2;
-      edge([[cx,380],[cx,408]],'local',7,'',null,animate);
-    } else {
-      const left=A.x+A.w*.38, turn=C.x+C.w*.86, dest=B.x+B.w*.14;
-      const alloc=B.x+B.w*.5, done=B.x+B.w*.84;
-      edge([[left,243],[left,C.y-1]],'copy',2,'D2H',[left,292],animate);
-      edge([[turn,C.y],[turn,316],[dest,316],[dest,244]],'copy',5,'H2D',[(turn+dest)/2,316],animate);
-      edge([[alloc,S.y],[alloc,244]],'ctrl',4,'分配',[alloc,278],animate);
-      edge([[done,243],[done,S.y-1]],'ctrl',6,'完成',[done,313],animate);
-      edge([[B.x+B.w/2,119],[B.x+B.w/2,90]],'local',7,'',null,animate);
+    addrTable(A,'a',narrow);addrTable(B,'b',narrow);addrTable(C,'h',narrow);compute(F,narrow);worker(T);scheduler(S,narrow);
+    if(narrow){
+      const ax=A.x+A.w*.35,cLeft=C.x+C.w*.22,cRight=C.x+C.w*.73,bx=B.x+B.w*.7;
+      edge([[ax,A.y+A.h],[ax,299],[cLeft,299],[cLeft,C.y]],'copy',2,'D2H',[ax,287],animate);
+      edge([[cRight,C.y],[cRight,314],[bx,314],[bx,B.y+B.h]],'copy',5,'H2D',[bx,298],animate);
+      edge([[B.x+B.w/2,B.y+B.h],[B.x+B.w/2,F.y]],'local',7,'',null,animate);
+      const mid=W/2;
+      edge([[mid-62,S.y],[mid-62,T.y+T.h]],'ctrl',4,'load job',[mid-62,710],animate);
+      const reports=!step?[3,6]:step===6?[6]:[3];
+      reports.forEach((n,i)=>edge([[mid+62,T.y+T.h],[mid+62,S.y]],'ctrl',n,n===3?'completed_jobs':'收妥 B',[mid+62,698+i*26],animate));
+    }else{
+      const l=A.x+A.w,r=C.x,m=(l+r)/2;
+      edge([[l,93],[r,93]],'copy',2,'D2H 写出',[m,93],animate);
+      edge([[r,148],[m,148],[m,300],[l,300]],'copy',5,'H2D 回载',[m,240],animate);
+      edge([[B.x+B.w/2,B.y+B.h],[B.x+B.w/2,F.y]],'local',7,'',null,animate);
+      const mid=(T.x+T.w+S.x)/2;
+      edge([[S.x,616],[T.x+T.w,616]],'ctrl',4,'load job',[mid,616],animate);
+      const reports=!step?[3,6]:step===6?[6]:[3];
+      reports.forEach((n,i)=>edge([[T.x+T.w,666+i*25],[S.x,666+i*25]],'ctrl',n,n===3?'作业完成':'收妥 B',[mid,666+i*25],animate));
+      txt(C.x+C.w/2,233,'③ 就绪条件：',{...smallText,fill:c.muted});
+      txt(C.x+C.w/2,254,'事件完成 → Worker 回报',smallText);
+      txt(C.x+C.w/2,275,'→ complete_store → ready',smallText);
+      txt(C.x+C.w/2,318,'CPU 字节写入结束',{...smallText,fill:c.muted});
+      txt(C.x+C.w/2,339,'与索引可命中分开表示',{...smallText,fill:c.muted});
     }
   }
   function stop() { if(timer!==null) clearTimeout(timer); timer=null; get('play').textContent='播放流程'; }

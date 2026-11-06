@@ -63,7 +63,8 @@ h2 { margin: 0; font-size: 13px; font-weight: 650; }
 .flow:hover { background: var(--hover); }
 .flow:focus-visible { position: relative; outline-offset: -3px; border-radius: 6px; }
 .flow-copy { flex: 1; min-width: 0; }
-.flow-title { display: block; font-size: 13px; font-weight: 600; }
+.flow-title { display: inline; font-size: 13px; font-weight: 600; }
+.scope-badge { display: inline-block; margin: 2px 0 2px 8px; padding: 1px 6px; border: 1px solid var(--line); border-radius: 4px; color: var(--accent); font-size: 10px; line-height: 1.6; }
 .flow:hover .flow-title { color: var(--accent); }
 .flow-description { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
 .flow-tag { flex-shrink: 0; color: var(--muted); font-size: 10px; padding: 2px 7px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; }

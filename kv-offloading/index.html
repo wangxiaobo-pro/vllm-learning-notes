@@ -2,6 +2,23 @@
 <html lang="zh-CN" data-visualize-standalone>
 <head>
 <meta charset="utf-8">
+<!-- learning-scope-style:start -->
+<style>
+.learning-scope-shell{box-sizing:border-box;max-width:736px;width:100%;margin:0 auto 14px;font:13px/1.6 system-ui,"Microsoft YaHei",sans-serif;color:#344454}
+.learning-scope{border:1px solid #dce3e9;border-radius:8px;background:#f7f9fb;overflow-wrap:anywhere}
+.learning-scope>summary{display:list-item;list-style:disclosure-closed inside;cursor:pointer;padding:9px 12px;font-size:13px;line-height:1.6;color:inherit}
+.learning-scope[open]>summary{list-style-type:disclosure-open}
+.learning-scope>summary:focus-visible{outline:2px solid #287cb8;outline-offset:3px}
+.learning-scope-kind{font-weight:650;color:#24668f}
+.learning-scope-hint{font-size:11px;opacity:.7;margin-left:6px}
+.learning-scope[open] .learning-scope-hint{display:none}
+.learning-scope dl{display:grid;grid-template-columns:88px minmax(0,1fr);gap:7px 12px;margin:0;padding:3px 12px 13px}
+.learning-scope dt{font-weight:600}.learning-scope dd{margin:0}
+@media(max-width:480px){.learning-scope dl{grid-template-columns:1fr;gap:3px}.learning-scope dd+dt{margin-top:6px}}
+:root[data-theme=dark] .learning-scope-shell{color:#c5d1dc}:root[data-theme=dark] .learning-scope{background:#1b242d;border-color:#384550}:root[data-theme=dark] .learning-scope-kind{color:#9bcaf0}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .learning-scope-shell{color:#c5d1dc}:root:not([data-theme=light]) .learning-scope{background:#1b242d;border-color:#384550}:root:not([data-theme=light]) .learning-scope-kind{color:#9bcaf0}}
+</style>
+<!-- learning-scope-style:end -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com https://persistent.oaistatic.com/plugins/visualize/; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
@@ -10,6 +27,17 @@
 
 </head>
 <body>
+<!-- learning-scope:start -->
+<aside class="learning-scope-shell" aria-label="本页范围与源码版本">
+<details class="learning-scope">
+<summary><span class="learning-scope-kind">源码快照</span> 本页范围与源码版本 <span class="learning-scope-hint">展开查看</span></summary>
+<dl><dt>源码基线</dt><dd>vLLM 295c062db8 · vLLM-Ascend 94e3e25f8</dd>
+<dt>后端与配置</dt><dd>Ascend V1 native OffloadingConnector · 单 Worker · 单层 CPU 缓存</dd>
+<dt>流程范围</dt><dd>主机控制与 NPU HBM / CPU DRAM 分开；完成回报使存储索引变为 ready。</dd>
+<dt>教学假设</dt><dd>每块 128 tokens、每 CPU chunk 2 块；仅显示一个 BF16 分量，实际传输整块 KV。</dd></dl>
+</details>
+</aside>
+<!-- learning-scope:end -->
 <iframe id="codex-visualization" sandbox="allow-scripts" referrerpolicy="no-referrer" title="KV Offloading 的设备结构" data-srcdoc="&lt;!doctype html&gt;
 &lt;html lang=&quot;zh-CN&quot; data-visualize-standalone&gt;
 &lt;head&gt;
@@ -1830,7 +1858,7 @@ html&gt;body{padding:0}&lt;/style&gt;
   &lt;details id=&quot;km-record&quot;&gt;
     &lt;summary class=&quot;cursor-interaction&quot;&gt;块映射与源码&lt;/summary&gt;
     &lt;ol id=&quot;km-list&quot;&gt;&lt;/ol&gt;
-    &lt;p class=&quot;text-small text-muted&quot;&gt;普通全注意力 · 128 token / NPU 块 · 2 块 / CPU chunk · 假设 A 结束后旧设备块已被复用。全局图并列展示 A 写出和 B 回载时的块位置。数值与块号为教学示例，流程按本地源码静态核对。&lt;/p&gt;
+    &lt;p class=&quot;text-small text-muted&quot;&gt;普通全注意力 · 128 token / NPU 块 · 2 块 / CPU chunk · 假设 A 结束后旧设备块已被复用。主机 Worker 提交/查询 NPU 事件；Scheduler 管理索引，二者均在 CPU 侧。全局图并列展示 A 写出和 B 回载时的块位置。数值与块号为教学示例，流程按本地源码静态核对。&lt;/p&gt;
   &lt;/details&gt;
 &lt;/section&gt;
 &lt;style&gt;
@@ -1861,7 +1889,7 @@ html&gt;body{padding:0}&lt;/style&gt;
   const steps=[
     [&#x27;A 生成两块 KV&#x27;,&#x27;前 128 个 token 写入 D7，后 128 个写入 D11。调度器已为写出作业预留 H3，前向结束时 Worker 将作业排队。&#x27;,&#x27;prepare_store_kv&#x27;,jobs+&#x27;worker.py#L259-L271&#x27;],
     [&#x27;D7、D11 写入 H3&#x27;,&#x27;Worker 通常在下一轮开头提交写出作业。D2H 等模型流写完，将两块 KV 依次复制到 H3 的两个子块。A 的设备副本仍然可用。&#x27;,&#x27;submit_store / swap_blocks_batch&#x27;,native+&#x27;#L192-L221&#x27;],
-    [&#x27;H3 成为可复用副本&#x27;,&#x27;Worker 查询到写出结束事件并上报。调度器调用 complete_store，前缀键现在可以命中 H3。&#x27;,&#x27;complete_store&#x27;,upstream+&#x27;v1/kv_offload/cpu/manager.py#L365-L381&#x27;],
+    [&#x27;H3 成为可复用副本&#x27;,&#x27;主机 Worker 查询 NPU 写出结束事件，回报 completed_jobs；Scheduler 消费回报并调用 complete_store，将 H3 标为 ready，前缀键才可命中。&#x27;,&#x27;complete_store&#x27;,upstream+&#x27;v1/kv_offload/cpu/manager.py#L365-L381&#x27;],
     [&#x27;B 命中 CPU，预留 D4、D9&#x27;,&#x27;设 D7、D11 已被其他数据复用。B 在设备缓存命中 0 个 token，CPU 命中 256 个。调度器引用 H3、分配新块并下发 load 作业，B 等待 KV。&#x27;,&#x27;update_state_after_alloc / prepare_load&#x27;,jobs+&#x27;scheduler.py#L1243-L1274&#x27;],
     [&#x27;H3 回载到 D4、D9&#x27;,&#x27;Worker 提交 H2D。H3 的子块 0 写入 D4，子块 1 写入 D9。K 与 V 分别复制，块号改变，每个 token 的 K/V 数值保持一致。&#x27;,&#x27;submit_load / transfer_async&#x27;,native+&#x27;#L359-L376&#x27;],
     [&#x27;B 收到 KV&#x27;,&#x27;回载事件完成后，Worker 上报 completed_jobs 和 finished_recving(B)。调度器解除 H3 的读引用，并记录 B 可以在后续调度中恢复。&#x27;,&#x27;get_finished&#x27;,jobs+&#x27;worker.py#L273-L308&#x27;],
@@ -1922,12 +1950,19 @@ html&gt;body{padding:0}&lt;/style&gt;
   }
   function scheduler(b,compact) {
     card(b,&#x27;ctrl&#x27;,[3,4,6]);
-    const x=b.x+b.w/2, y=b.y;
-    txt(x,y+22,&#x27;EngineCore&#x27;,{&#x27;font-weight&#x27;:500});
-    txt(x,y+42,&#x27;调度器 · 前缀索引&#x27;,smallText);
-    txt(x,y+66,!step||step&gt;=3?&#x27;前缀键 → H3&#x27;:&#x27;前缀键 · 待写完&#x27;,smallText);
-    txt(x,y+86,step &amp;&amp; step&lt;4?&#x27;B 尚未到达&#x27;:step===4||step===5?&#x27;B 等待回载&#x27;:step&gt;=6?&#x27;B 已收到 KV&#x27;:&#x27;B 命中 256 token&#x27;,{...smallText,fill:c.muted});
-    if(!compact) txt(x,y+107,&#x27;索引中保存块号&#x27;, {...smallText,fill:c.muted});
+    const x=b.x+b.w/2,y=b.y;
+    txt(x,y+22,&#x27;EngineCore · Scheduler&#x27;,{&#x27;font-weight&#x27;:500});
+    txt(x,y+44,step&amp;&amp;step&lt;3?&#x27;等待 completed_jobs&#x27;:step===6?&#x27;complete_load → 解除读引用&#x27;:step===4||step===5?&#x27;prepare_load → 下发 load job&#x27;:&#x27;complete_store → H3 ready&#x27;,smallText);
+    txt(x,y+65,!step||step&gt;=3?&#x27;前缀键 → H3（可命中）&#x27;:&#x27;前缀键 → H3（等待写完）&#x27;,{...smallText,fill:c.muted});
+    txt(x,y+85,step===4||step===5?&#x27;B：WAITING_FOR_REMOTE_KVS&#x27;:step&gt;=6?&#x27;B：后续调度可恢复&#x27;:&#x27;索引状态由主机更新&#x27;,{...smallText,fill:c.muted});
+  }
+  function worker(b) {
+    card(b,&#x27;ctrl&#x27;,[2,3,4,5,6]);
+    const x=b.x+b.w/2,y=b.y;
+    txt(x,y+22,&#x27;Worker · 主机 Python&#x27;,{&#x27;font-weight&#x27;:500});
+    txt(x,y+44,&#x27;submit_store / submit_load&#x27;,smallText);
+    txt(x,y+65,&#x27;查询 NPU end_event.query()&#x27;,smallText);
+    txt(x,y+85,step===3?&#x27;写出事件完成 → completed_jobs&#x27;:step===6?&#x27;回载完成 → finished_recving(B)&#x27;:&#x27;提交传输；轮询事件完成&#x27;,{...smallText,fill:c.muted});
   }
   function compute(b,compact) {
     card(b,&#x27;local&#x27;,[7]);
@@ -1957,48 +1992,52 @@ html&gt;body{padding:0}&lt;/style&gt;
     }
   }
   function draw(animate=false) {
-    const W=svg.parentElement.clientWidth;
-    if(!W)return;
-    const narrow=W&lt;520;
-    const H=narrow?521:481;
-    svg.replaceChildren(); svg.setAttribute(&#x27;viewBox&#x27;,&#x27;0 0 &#x27;+W+&#x27; &#x27;+H); svg.style.height=H+&#x27;px&#x27;;
-    item(&#x27;title&#x27;,{id:&#x27;km-svg-title&#x27;},&#x27;KV 块的设备结构及复制方向&#x27;);
-    item(&#x27;desc&#x27;,{id:&#x27;km-svg-desc&#x27;},step?steps[step-1].join(&#x27;。&#x27;).split(&#x27;https:&#x27;)[0]:&#x27;NPU 中 A 的设备块 D7 和 D11 经 D2H 进入一个主存槽 H3，H3 的两个子块再经 H2D 回载到 NPU 中 B 的新设备块 D4 和 D9。&#x27;);
-    let A,B,C,S,F;
-    const rect=(x,y,w,h)=&gt;({x,y,w,h});
-    const gap=W&gt;=650?122:94;
-    if(!narrow) {
-      const pane=(W-gap-12)/2, w=pane-22;
-      frame(4,4,pane,471,&#x27;NPU · Worker / HBM&#x27;);
-      frame(W-pane-4,4,pane,384,&#x27;主机 · CPU / DRAM&#x27;);
-      A=rect(15,49,w,124); B=rect(15,256,w,124); F=rect(15,409,w,53);
-      C=rect(W-pane+7,49,w,124); S=rect(C.x,256,w,124);
-    } else {
-      frame(3,3,W-6,258,&#x27;NPU · Worker / HBM&#x27;);
-      frame(3,342,W-6,174,&#x27;主机 · CPU / DRAM&#x27;,true);
-      const w=(W-34)/2, l=12, r=W-12-w;
-      A=rect(l,119,w,124); B=rect(r,119,w,124); F=rect(r,44,w,45);
-      C=rect(l,354,w,124); S=rect(r,354,w,124);
-      txt(A.x+A.w/2,62,&#x27;A 写出 / B 回载&#x27;,{...smallText,fill:c.muted});
-      txt(A.x+A.w/2,81,&#x27;两次请求的块位置&#x27;,{...smallText,fill:c.muted});
+    const W=svg.parentElement.clientWidth;if(!W)return;
+    const narrow=W&lt;560,H=narrow?864:735;
+    svg.replaceChildren();svg.setAttribute(&#x27;viewBox&#x27;,&#x27;0 0 &#x27;+W+&#x27; &#x27;+H);svg.style.height=H+&#x27;px&#x27;;
+    item(&#x27;title&#x27;,{id:&#x27;km-svg-title&#x27;},&#x27;主机控制、NPU HBM 与 CPU DRAM 的 KV 写出和回载&#x27;);
+    item(&#x27;desc&#x27;,{id:&#x27;km-svg-desc&#x27;},step?steps[step-1].join(&#x27;。&#x27;).split(&#x27;https:&#x27;)[0]:&#x27;Worker 在主机提交传输并查询 NPU 事件；完成作业回报 Scheduler 后，CPU 前缀才标记为 ready。D7、D11 写入 H3，之后 H3 回载到 D4、D9。&#x27;);
+    const rect=(x,y,w,h)=&gt;({x,y,w,h});let A,B,C,F,T,S;
+    if(narrow){
+      const w=(W-34)/2;
+      frame(3,3,W-6,264,&#x27;NPU · HBM 与设备计算&#x27;);
+      A=rect(12,51,w,124);B=rect(W-12-w,51,w,124);F=rect(B.x,204,w,45);
+      frame(3,326,W-6,174,&#x27;主存 · CPU DRAM&#x27;);
+      C=rect(15,363,W-30,124);
+      frame(3,536,W-6,321,&#x27;主机控制 · CPU 进程&#x27;);
+      T=rect(15,574,W-30,101);S=rect(15,745,W-30,101);
+    }else{
+      const gap=116,pane=(W-gap-12)/2,w=pane-22;
+      frame(4,4,pane,480,&#x27;NPU · HBM 与设备计算&#x27;);
+      A=rect(15,48,w,124);B=rect(15,260,w,124);F=rect(15,417,w,53);
+      frame(W-pane-4,4,pane,188,&#x27;主存 · CPU DRAM&#x27;);C=rect(W-pane+7,48,w,124);
+      frame(4,530,W-8,194,&#x27;主机控制 · CPU 进程&#x27;);
+      const cw=(W-132)/2;T=rect(15,587,cw,118);S=rect(W-15-cw,587,cw,118);
     }
-    addrTable(A,&#x27;a&#x27;,narrow); addrTable(B,&#x27;b&#x27;,narrow); addrTable(C,&#x27;h&#x27;,narrow); scheduler(S,narrow); compute(F,narrow);
-    if(!narrow) {
-      const l=A.x+A.w, r=C.x, m=(l+r)/2;
-      edge([[l,88],[r,88]],&#x27;copy&#x27;,2,&#x27;D2H 写出&#x27;,[m,88],animate);
-      edge([[r,148],[m,148],[m,281],[l,281]],&#x27;copy&#x27;,5,&#x27;H2D 回载&#x27;,[m,211],animate);
-      edge([[r,321],[l,321]],&#x27;ctrl&#x27;,4,&#x27;回载计划&#x27;,[m,321],animate);
-      edge([[l,360],[r,360]],&#x27;ctrl&#x27;,6,&#x27;接收完成&#x27;,[m,360],animate);
-      const cx=B.x+B.w/2;
-      edge([[cx,380],[cx,408]],&#x27;local&#x27;,7,&#x27;&#x27;,null,animate);
-    } else {
-      const left=A.x+A.w*.38, turn=C.x+C.w*.86, dest=B.x+B.w*.14;
-      const alloc=B.x+B.w*.5, done=B.x+B.w*.84;
-      edge([[left,243],[left,C.y-1]],&#x27;copy&#x27;,2,&#x27;D2H&#x27;,[left,292],animate);
-      edge([[turn,C.y],[turn,316],[dest,316],[dest,244]],&#x27;copy&#x27;,5,&#x27;H2D&#x27;,[(turn+dest)/2,316],animate);
-      edge([[alloc,S.y],[alloc,244]],&#x27;ctrl&#x27;,4,&#x27;分配&#x27;,[alloc,278],animate);
-      edge([[done,243],[done,S.y-1]],&#x27;ctrl&#x27;,6,&#x27;完成&#x27;,[done,313],animate);
-      edge([[B.x+B.w/2,119],[B.x+B.w/2,90]],&#x27;local&#x27;,7,&#x27;&#x27;,null,animate);
+    addrTable(A,&#x27;a&#x27;,narrow);addrTable(B,&#x27;b&#x27;,narrow);addrTable(C,&#x27;h&#x27;,narrow);compute(F,narrow);worker(T);scheduler(S,narrow);
+    if(narrow){
+      const ax=A.x+A.w*.35,cLeft=C.x+C.w*.22,cRight=C.x+C.w*.73,bx=B.x+B.w*.7;
+      edge([[ax,A.y+A.h],[ax,299],[cLeft,299],[cLeft,C.y]],&#x27;copy&#x27;,2,&#x27;D2H&#x27;,[ax,287],animate);
+      edge([[cRight,C.y],[cRight,314],[bx,314],[bx,B.y+B.h]],&#x27;copy&#x27;,5,&#x27;H2D&#x27;,[bx,298],animate);
+      edge([[B.x+B.w/2,B.y+B.h],[B.x+B.w/2,F.y]],&#x27;local&#x27;,7,&#x27;&#x27;,null,animate);
+      const mid=W/2;
+      edge([[mid-62,S.y],[mid-62,T.y+T.h]],&#x27;ctrl&#x27;,4,&#x27;load job&#x27;,[mid-62,710],animate);
+      const reports=!step?[3,6]:step===6?[6]:[3];
+      reports.forEach((n,i)=&gt;edge([[mid+62,T.y+T.h],[mid+62,S.y]],&#x27;ctrl&#x27;,n,n===3?&#x27;completed_jobs&#x27;:&#x27;收妥 B&#x27;,[mid+62,698+i*26],animate));
+    }else{
+      const l=A.x+A.w,r=C.x,m=(l+r)/2;
+      edge([[l,93],[r,93]],&#x27;copy&#x27;,2,&#x27;D2H 写出&#x27;,[m,93],animate);
+      edge([[r,148],[m,148],[m,300],[l,300]],&#x27;copy&#x27;,5,&#x27;H2D 回载&#x27;,[m,240],animate);
+      edge([[B.x+B.w/2,B.y+B.h],[B.x+B.w/2,F.y]],&#x27;local&#x27;,7,&#x27;&#x27;,null,animate);
+      const mid=(T.x+T.w+S.x)/2;
+      edge([[S.x,616],[T.x+T.w,616]],&#x27;ctrl&#x27;,4,&#x27;load job&#x27;,[mid,616],animate);
+      const reports=!step?[3,6]:step===6?[6]:[3];
+      reports.forEach((n,i)=&gt;edge([[T.x+T.w,666+i*25],[S.x,666+i*25]],&#x27;ctrl&#x27;,n,n===3?&#x27;作业完成&#x27;:&#x27;收妥 B&#x27;,[mid,666+i*25],animate));
+      txt(C.x+C.w/2,233,&#x27;③ 就绪条件：&#x27;,{...smallText,fill:c.muted});
+      txt(C.x+C.w/2,254,&#x27;事件完成 → Worker 回报&#x27;,smallText);
+      txt(C.x+C.w/2,275,&#x27;→ complete_store → ready&#x27;,smallText);
+      txt(C.x+C.w/2,318,&#x27;CPU 字节写入结束&#x27;,{...smallText,fill:c.muted});
+      txt(C.x+C.w/2,339,&#x27;与索引可命中分开表示&#x27;,{...smallText,fill:c.muted});
     }
   }
   function stop() { if(timer!==null) clearTimeout(timer); timer=null; get(&#x27;play&#x27;).textContent=&#x27;播放流程&#x27;; }

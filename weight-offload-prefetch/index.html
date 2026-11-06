@@ -2,6 +2,23 @@
 <html lang="zh-CN" data-visualize-standalone>
 <head>
 <meta charset="utf-8">
+<!-- learning-scope-style:start -->
+<style>
+.learning-scope-shell{box-sizing:border-box;max-width:736px;width:100%;margin:0 auto 14px;font:13px/1.6 system-ui,"Microsoft YaHei",sans-serif;color:#344454}
+.learning-scope{border:1px solid #dce3e9;border-radius:8px;background:#f7f9fb;overflow-wrap:anywhere}
+.learning-scope>summary{display:list-item;list-style:disclosure-closed inside;cursor:pointer;padding:9px 12px;font-size:13px;line-height:1.6;color:inherit}
+.learning-scope[open]>summary{list-style-type:disclosure-open}
+.learning-scope>summary:focus-visible{outline:2px solid #287cb8;outline-offset:3px}
+.learning-scope-kind{font-weight:650;color:#24668f}
+.learning-scope-hint{font-size:11px;opacity:.7;margin-left:6px}
+.learning-scope[open] .learning-scope-hint{display:none}
+.learning-scope dl{display:grid;grid-template-columns:88px minmax(0,1fr);gap:7px 12px;margin:0;padding:3px 12px 13px}
+.learning-scope dt{font-weight:600}.learning-scope dd{margin:0}
+@media(max-width:480px){.learning-scope dl{grid-template-columns:1fr;gap:3px}.learning-scope dd+dt{margin-top:6px}}
+:root[data-theme=dark] .learning-scope-shell{color:#c5d1dc}:root[data-theme=dark] .learning-scope{background:#1b242d;border-color:#384550}:root[data-theme=dark] .learning-scope-kind{color:#9bcaf0}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .learning-scope-shell{color:#c5d1dc}:root:not([data-theme=light]) .learning-scope{background:#1b242d;border-color:#384550}:root:not([data-theme=light]) .learning-scope-kind{color:#9bcaf0}}
+</style>
+<!-- learning-scope-style:end -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com https://persistent.oaistatic.com/plugins/visualize/; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
@@ -10,6 +27,17 @@
 
 </head>
 <body>
+<!-- learning-scope:start -->
+<aside class="learning-scope-shell" aria-label="本页范围与源码版本">
+<details class="learning-scope">
+<summary><span class="learning-scope-kind">源码快照</span> 本页范围与源码版本 <span class="learning-scope-hint">展开查看</span></summary>
+<dl><dt>源码基线</dt><dd>vLLM 295c062db8 · vLLM-Ascend 94e3e25f8</dd>
+<dt>后端与配置</dt><dd>Ascend ModelRunner V1 · 单 Worker · eager · 普通 ND 权重</dd>
+<dt>流程范围</dt><dd>CPU 权重轮用 NPU 静态槽；事件约束覆盖时机和下一层读取时机。</dd>
+<dt>教学假设</dt><dd>八层小网络，奇数层使用 2×2 权重；分组 2、每组卸载 1 层、预取步长 2。</dd></dl>
+</details>
+</aside>
+<!-- learning-scope:end -->
 <iframe id="codex-visualization" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" title="权重 CPU Offload / Prefetch" data-srcdoc="&lt;!doctype html&gt;
 &lt;html lang=&quot;zh-CN&quot; data-visualize-standalone&gt;
 &lt;head&gt;
@@ -1852,8 +1880,9 @@ html&gt;body{padding:0}&lt;/style&gt;
   &lt;svg class=&quot;wf-diagram&quot; role=&quot;img&quot; aria-labelledby=&quot;wf-title wf-desc&quot;&gt;&lt;/svg&gt;
   &lt;div class=&quot;text-small text-muted&quot;&gt;教学算例 · 一个 token 的 hidden 有两个分量。奇数层计算 h × W，偶数层用单位矩阵保持输入值。&lt;/div&gt;
   &lt;details data-focus&gt;
-    &lt;summary class=&quot;cursor-interaction&quot;&gt;放大 L1 的输出怎样触发 W5 预取&lt;/summary&gt;
-    &lt;svg class=&quot;wf-diagram wf-focus&quot; role=&quot;img&quot; aria-label=&quot;L1 的输出同时交给 L2 并为 W5 预取建立顺序依赖&quot;&gt;&lt;/svg&gt;
+    &lt;summary class=&quot;cursor-interaction&quot;&gt;放大双流：L1 读完 → W5 预取 → L5 等待并读取&lt;/summary&gt;
+    &lt;svg class=&quot;wf-diagram wf-focus&quot; role=&quot;img&quot; aria-label=&quot;计算流与拷贝流通过两个事件保护槽 A；中间层计算可以与预取重叠&quot;&gt;&lt;/svg&gt;
+    &lt;p class=&quot;text-small text-muted&quot;&gt;① 旧层读完后才允许覆盖槽；② 拷贝完成后才允许新层读取。虚线是事件依赖，蓝线是计算流内的激活，橙线是 H2D 拷贝。两列不表示真实耗时比例。&lt;/p&gt;
   &lt;/details&gt;
   &lt;details class=&quot;wf-extras&quot;&gt;
     &lt;summary class=&quot;cursor-interaction&quot;&gt;完整流程与源码&lt;/summary&gt;
@@ -2051,31 +2080,43 @@ html&gt;body{padding:0}&lt;/style&gt;
     if(!panel.open) return;
     const w=canvas.getBoundingClientRect().width;
     if(w&lt;1) return;
-    const mid=w/2, left=w*.25, right=w*.75, card=Math.min(w*.5-12,245);
+    const mid=w/2, gap=32, card=(w-gap-8)/2, left=4+card/2, right=w-4-card/2;
     canvas.replaceChildren();
-    canvas.setAttribute(&quot;viewBox&quot;,&quot;0 0 &quot;+w+&quot; 319&quot;); canvas.setAttribute(&quot;height&quot;,319);
-    add(&quot;desc&quot;,{},canvas,&quot;实线是张量数据，虚线是控制依赖。h1 传给 L2，并作为 start_prefetch 的依赖。拷贝流从 CPU 取 W5 填入 A。L5 同时消费 h4 和 W5。&quot;);
-    const group=(x,y,width,kind,lines)=&gt;{
-      const height=lines.length*18+12;
-      add(&quot;rect&quot;,{x:x-width/2,y,width,height,rx:6,fill:&quot;var(--background)&quot;,stroke:colors[kind],&quot;stroke-width&quot;:1.5},canvas);
-      lines.forEach((line,i)=&gt;add(&quot;text&quot;,{x,y:y+15+i*18,&quot;dominant-baseline&quot;:&quot;middle&quot;,&quot;text-anchor&quot;:&quot;middle&quot;,class:i?&quot;text-small&quot;:&quot;label&quot;},canvas,line));
+    add(&quot;desc&quot;,{},canvas,&quot;计算流完成 L1 后记录 fork_event，拷贝流等待该事件再用 W5 覆盖槽 A。L2 到 L4 的计算与 H2D 可以重叠。拷贝流记录 copy_done，计算流的 wait_prefetch 等到它完成后才运行 L5。&quot;);
+    const wrap=(value,width)=&gt;{
+      const probe=add(&quot;text&quot;,{class:&quot;text-small&quot;,visibility:&quot;hidden&quot;},canvas),rows=[];let line=&quot;&quot;;
+      for(const c of value){probe.textContent=line+c;if(line&amp;&amp;probe.getComputedTextLength()&gt;width){rows.push(line);line=c;}else line+=c;}
+      if(line)rows.push(line);probe.remove();return rows;
+    };
+    const prepared=lines=&gt;lines.flatMap(line=&gt;wrap(line,card-16));
+    const group=(x,y,kind,lines,height)=&gt;{
+      add(&quot;rect&quot;,{x:x-card/2,y,width:card,height,rx:6,fill:&quot;var(--background)&quot;,stroke:colors[kind],&quot;stroke-width&quot;:1.5},canvas);
+      prepared(lines).forEach((line,i)=&gt;add(&quot;text&quot;,{x,y:y+17+i*18,&quot;dominant-baseline&quot;:&quot;middle&quot;,&quot;text-anchor&quot;:&quot;middle&quot;,class:&quot;text-small&quot;},canvas,line));
     };
     const link=(d,kind,control=false)=&gt;{
       add(&quot;path&quot;,{d,fill:&quot;none&quot;,stroke:colors[kind],&quot;stroke-width&quot;:1.5,&quot;stroke-dasharray&quot;:control?&quot;4 3&quot;:&quot;none&quot;,&quot;marker-end&quot;:&quot;url(#wf-arrow-&quot;+kind+&quot;)&quot;},canvas);
     };
-    const nodeWidth=Math.min(w-24,243);
-    group(mid,2,nodeWidth,&quot;hidden&quot;,[&quot;L1.forward 输出&quot;,&quot;h1 = &quot;+vec(layer(1).output)]);
-    link(&quot;M&quot;+(mid-12)+&quot; 50 V60 H&quot;+left+&quot; V78&quot;,&quot;hidden&quot;);
-    link(&quot;M&quot;+(mid+12)+&quot; 50 V60 H&quot;+right+&quot; V78&quot;,&quot;muted&quot;,true);
-    group(left,79,card,&quot;hidden&quot;,[&quot;L2.forward&quot;,&quot;激活输入 h1&quot;]);
-    group(right,79,card,&quot;muted&quot;,[&quot;start_prefetch&quot;,&quot;以 h1 建立顺序依赖&quot;,&quot;目标层 L5&quot;]);
-    link(&quot;M&quot;+left+&quot; 127 V162&quot;,&quot;hidden&quot;);
-    link(&quot;M&quot;+right+&quot; 145 V162&quot;,&quot;muted&quot;,true);
-    group(left,163,card,&quot;hidden&quot;,[&quot;L3、L4 计算&quot;,&quot;传出 h4 = &quot;+vec(layer(3).output)]);
-    group(right,163,card,&quot;copy&quot;,[&quot;CPU W5 → 槽 A&quot;,&quot;等 L1 读完 A 再拷贝&quot;,&quot;拷贝完成后 W5 可读&quot;]);
-    link(&quot;M&quot;+left+&quot; 211 V241 H&quot;+(mid-31)+&quot; V259&quot;,&quot;hidden&quot;);
-    link(&quot;M&quot;+right+&quot; 229 V241 H&quot;+(mid+31)+&quot; V259&quot;,&quot;weight&quot;);
-    group(mid,260,nodeWidth,&quot;hidden&quot;,[&quot;L5.forward 同时读取 h4 和 W5&quot;,&quot;输出 &quot;+vec(layer(5).output)+&quot; → L6&quot;]);
+    [ [left,&quot;计算流&quot;],[right,&quot;拷贝流&quot;] ].forEach(([x,title])=&gt;add(&quot;text&quot;,{x,y:17,&quot;text-anchor&quot;:&quot;middle&quot;,class:&quot;label&quot;},canvas,title));
+    const rows=[
+      [[&quot;L1 读完槽 A&quot;,&quot;h1=&quot;+vec(layer(1).output),&quot;start_prefetch&quot;,&quot;输入：h1&quot;,&quot;目标：L5&quot;,&quot;记录 fork_event&quot;],[&quot;wait fork_event&quot;,&quot;① 等旧层读完&quot;,&quot;才允许覆盖 A&quot;]],
+      [[&quot;L2 → L3 → L4&quot;,&quot;继续计算激活&quot;,&quot;h4=&quot;+vec(layer(3).output)],[&quot;CPU 权重 W5&quot;,&quot;H2D → 静态槽 A&quot;,&quot;异步提交拷贝&quot;]],
+      [[&quot;wait_prefetch&quot;,&quot;目标层 L5&quot;,&quot;② 等待事件&quot;,&quot;copy_done&quot;,&quot;h4 保留在本流&quot;],[&quot;记录 copy_done&quot;,&quot;事件完成代表&quot;,&quot;W5 已拷贝到 A&quot;]],
+      [[&quot;L5 读 h4 + W5&quot;,&quot;h5=&quot;+vec(layer(5).output),&quot;传给 L6&quot;],[&quot;A 当前为 W5&quot;,&quot;L5 读完后再为&quot;,&quot;下轮预取 W1&quot;]]
+    ];
+    const boxes=[];let y=35;
+    rows.forEach((row,i)=&gt;{
+      if(i===1){add(&quot;text&quot;,{x:mid,y:y+12,&quot;text-anchor&quot;:&quot;middle&quot;,class:&quot;text-small quiet&quot;},canvas,&quot;两支可重叠&quot;);y+=35;}
+      const height=Math.max(...row.map(lines=&gt;prepared(lines).length))*18+22;
+      if(i===1)add(&quot;rect&quot;,{x:1,y:y-9,width:w-2,height:height+18,rx:8,fill:&quot;none&quot;,stroke:colors.muted,&quot;stroke-dasharray&quot;:&quot;3 4&quot;},canvas);
+      group(left,y,&quot;hidden&quot;,row[0],height);group(right,y,i===1?&quot;copy&quot;:&quot;muted&quot;,row[1],height);
+      boxes.push({y,height});y+=height+40;
+    });
+    boxes.forEach((b,i)=&gt;{if(i&lt;boxes.length-1){link(`M${left} ${b.y+b.height} V${boxes[i+1].y}`,&quot;hidden&quot;);if(i&lt;2)link(`M${right} ${b.y+b.height} V${boxes[i+1].y}`,i===1?&quot;copy&quot;:&quot;muted&quot;,i!==1);}});
+    const a=boxes[0],done=boxes[2];
+    link(`M${left+card/2} ${a.y+a.height/2} H${right-card/2}`,&quot;muted&quot;,true);
+    link(`M${right-card/2} ${done.y+done.height/2} H${left+card/2}`,&quot;muted&quot;,true);
+    [[a,&quot;①&quot;],[done,&quot;②&quot;]].forEach(([b,n])=&gt;add(&quot;text&quot;,{x:mid,y:b.y+b.height/2-10,&quot;text-anchor&quot;:&quot;middle&quot;,class:&quot;text-small&quot;},canvas,n));
+    canvas.setAttribute(&quot;viewBox&quot;,&quot;0 0 &quot;+w+&quot; &quot;+y);canvas.setAttribute(&quot;height&quot;,y);
   }
   get(&quot;[data-focus]&quot;).addEventListener(&quot;toggle&quot;,drawFocus);
   const prev=get(&quot;[data-action=prev]&quot;),next=get(&quot;[data-action=next]&quot;),overview=get(&quot;[data-action=overview]&quot;),play=get(&quot;[data-action=play]&quot;);

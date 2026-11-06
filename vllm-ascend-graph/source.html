@@ -37,6 +37,8 @@
 #ascend-op-detail .od-chart .stage-active { stroke:var(--viz-series-1); stroke-width:2; }
 #ascend-op-detail .od-chart .record-line { stroke:var(--viz-series-1); }
 #ascend-op-detail .od-chart .task-line { stroke:var(--viz-series-3); }
+#ascend-op-detail .od-chart .execution { stroke-dasharray:2 5; }
+#ascend-op-detail .od-chart .tensor { stroke:var(--viz-series-1); stroke-width:1.7; }
 @media(max-width:480px){#ascend-op-detail .od-top {padding-right:0;}}
 </style>
 <div id="ascend-op-detail">
@@ -104,6 +106,9 @@ graph.replay()
     <span class="text-small tabular-nums" id="od-count">12 组</span>
   </div>
   <div class="od-smallgap" id="od-status" aria-live="polite"></div>
+  <h3 class="od-gap">先追数据：写入缓存与 FIA 的三路输入</h3>
+  <div class="text-small od-smallgap">实线表示本地数据依赖，箭头不表示跨卡传输；下方算子长图的点线表示执行先后。Q 直接交给 FIA，只有 K/V 写入缓存。</div>
+  <div class="od-smallgap" id="od-attention-inputs"></div>
   <div class="od-gap" id="od-operators"></div>
   <div class="od-legend text-small od-gap">
     <span><i class="od-swatch existing" aria-hidden="true"></i>模型 / CustomOp 已有融合</span>
@@ -332,6 +337,45 @@ return: output[0], output[3], output[2]
    el('od-stage-detail').textContent=stage<0?'同形状、可换内容的两次输入：首次逐项录制；后续更新输入并整图执行。':stages[stage];
    drawTwoRuns();
  }
+ function drawAttentionInputs(){
+   const w=Math.floor(el('od-attention-inputs').getBoundingClientRect().width);if(!w)return;
+   const svg=base('attentioninputs',w),wide=w>=600;
+   const panels=[
+     {title:'① 写缓存：本轮 K/V 按 slot_mapping 落到目标槽',inputs:[
+       ['本层投影与 RoPE','K 经 RoPE；V 保持不变','K,V：[T,8,128]'],
+       ['Worker 准备本轮 metadata','slot_mapping：[T]','token 行 → 本卡 KV 槽']
+     ],action:['reshape_and_cache','只写 key / value；不写 Q','持久 K/V cache 按槽更新'],output:['同一份持久 KV cache','原有历史 + 本轮 K/V','已写槽供下方 FIA 读取']},
+     {title:'② 读 Attention：三路输入共同决定本轮输出',inputs:[
+       ['本层 RoPE 输出 Q','Q：[T,32,128]','直接参与 QKᵀ，不经过缓存写入'],
+       ['① 的同一份 KV cache','已有历史 + 本轮 K/V','读取 block_table 指定的块'],
+       ['Worker 准备本轮 metadata','block_table；Q/KV lengths','选择有效块与有效 token 范围']
+     ],action:['FIA Attention','Q + KV cache + 表 / 长度','图内 event wait 满足后执行'],output:['Attention 输出 O','[T,32,128] → [T,4096]','交给本层 o_proj']}
+   ];
+   let y=24;
+   panels.forEach((p,pi)=>{
+     y+=text(svg,p.title,2,y,w-4,false,'weight')+18;
+     const gap=18,n=p.inputs.length,nw=wide?(w-8-gap*(n-1))/n:w-64;
+     const sourceH=Math.max(...p.inputs.map(d=>bh(nw,...d))),inputs=[];
+     p.inputs.forEach((d,i)=>{
+       const b={x:wide?4+i*(nw+gap):52,y:wide?y:y+i*(sourceH+18),w:nw,h:sourceH};
+       inputs.push(b);box(svg,b,...d,'view');
+     });
+     const sourcesBottom=Math.max(...inputs.map(b=>b.y+b.h));
+     const aw=wide?Math.min(w-8,370):w-64,ax=wide?(w-aw)/2:52;
+     const action={x:ax,y:sourcesBottom+50,w:aw,h:bh(aw,...p.action)};
+     inputs.forEach((b,i)=>{
+       const target=action.x+action.w*(i+1)/(n+1);
+       if(wide)path(svg,`M${b.x+b.w/2},${b.y+b.h}V${sourcesBottom+20+i*8}H${target}V${action.y}`,'line tensor');
+       else path(svg,`M${b.x},${b.y+b.h/2}H${8+i*14}V${sourcesBottom+16+i*9}H${target}V${action.y}`,'line tensor');
+     });
+     box(svg,action,...p.action,pi?'event':'normal');
+     const output={x:ax,y:action.y+action.h+32,w:aw,h:bh(aw,...p.output)};
+     path(svg,`M${ax+aw/2},${action.y+action.h}V${output.y}`,'line tensor');
+     box(svg,output,...p.output,'existing');y=output.y+output.h+34;
+     if(pi===1){y+=text(svg,'事件是执行条件：update_stream 更新 FIA 参数并 record → 图内 wait/reset → FIA。它不生产 Q/K/V。',2,y,w-4,true,'secondary')+12;}
+   });
+   finish(svg,w,y,'od-attention-inputs');
+ }
  function drawOperators(){
    const w=Math.floor(el('od-operators').getBoundingClientRect().width);if(!w)return;
    const svg=base('operators',w), narrow=w<600, hostW=narrow?0:Math.min(205,w*.28), dx=narrow?18:hostW+42, nw=w-dx-65;
@@ -363,7 +407,7 @@ return: output[0], output[3], output[2]
    const attnTop=attnLabelY-18,attnBottom=boxes[6].y+boxes[6].h+10;
    svg.append(S('rect',{x:dx-7,y:attnTop,width:nw+14,height:attnBottom-attnTop,rx:6,class:'group'}));
    // Device order is distinct from the CPU call-to-implementation arrows.
-   boxes.forEach((b,i)=>{if(i<boxes.length-1){const next=boxes[i+1];path(svg,`M${b.x+b.w/2},${b.y+b.h}V${next.y}`);}});
+    boxes.forEach((b,i)=>{if(i<boxes.length-1){const next=boxes[i+1];path(svg,`M${b.x+b.w/2},${b.y+b.h}V${next.y}`,'line execution');}});
    // r1 bypasses the attention branch; r2 bypasses the MLP branch.
    const rail=w-14, a=boxes[0], b=boxes[8], c=boxes[11];
    const returnY=bottom+46, returnH=bh(nw,'返回两个引用（无相加）','(m, r₂)','下一层开头才执行 m + r₂');
@@ -375,6 +419,10 @@ return: output[0], output[3], output[2]
    const vRail=w-39, vs=boxes[2], vt=boxes[4];
    path(svg,`M${vs.x+vs.w},${vs.y+vs.h/2}H${vRail}V${vt.y+vt.h/2}H${vt.x+vt.w}`,'line');
    label(svg,'V',vRail-7,vs.y+vs.h/2+30,20,true);
+    // Q is a separate FIA input; cache writes only consume K/V and slots.
+    const qRail=w-53,qs=boxes[3],qt=boxes[6];
+    path(svg,`M${qs.x+qs.w},${qs.y+qs.h/2}H${qRail}V${qt.y+qt.h/2}H${qt.x+qt.w}`,'line tensor');
+    label(svg,'Q',qRail-5,qs.y+qs.h/2+27,18,true);
    if(!narrow){
      if(mode==='capture')boxes.forEach((b,i)=>{
        let cy=b.y+30;text(svg,ops[i].call,2,cy,hostW,true);
@@ -458,7 +506,7 @@ return: output[0], output[3], output[2]
    el('od-next').textContent=current<0?'逐算子查看':'下一步';el('od-count').textContent=current<0?'12 组':`${current+1} / 12`;
    el('od-status').textContent=current<0?(mode==='capture'?'主机执行 callable；捕获流上的设备任务及依赖被记录，暂不执行。':'新 token 写入原地址；图中计算执行，FIA 参数按本轮 metadata 更新。'):ops[current].detail;
    const op=ops[current<0?0:current];el('od-code-label').textContent=(current<0?'示例 1：':'当前 '+(current+1)+'：')+op.title;el('od-code').textContent=op.code;el('od-source').textContent=op.src;
-   drawOperators();
+   drawAttentionInputs();drawOperators();
  }
  function restore(state){const s=state?.privateContent;if(![2,3].includes(s?.version))return;mode=s.mode==='replay'?'replay':'capture';current=Number.isInteger(s.current)?Math.max(-1,Math.min(11,s.current)):-1;stage=Number.isInteger(s.stage)?Math.max(-1,Math.min(6,s.stage)):-1;update();updateStages();}
  el('od-both').addEventListener('click',()=>{stage=-1;updateStages();save();});
@@ -476,7 +524,7 @@ return: output[0], output[3], output[2]
  const list=el('od-source-list');ops.forEach((op,i)=>{const li=document.createElement('li'),b=document.createElement('button'),d=document.createElement('div'),c=document.createElement('code');b.className='btn btn-ghost';b.type='button';b.textContent=op.title;b.addEventListener('click',()=>{current=i;el('od-code-details').open=true;update();save();});d.textContent=op.detail;c.className='text-small od-sources';c.textContent=op.src;li.append(b,d,c);list.append(li);});
  window.addEventListener('openai:set_globals',e=>{if(e.detail?.globals?.widgetState)restore(e.detail.globals.widgetState);});
  el('od-runs-expanded').after(el('od-layers-expanded'));
- new ResizeObserver(()=>{const w=Math.floor(root.getBoundingClientRect().width);if(w!==previousWidth){previousWidth=w;drawCallLayers();drawUpdateCalls();drawTwoRuns();drawOperators();drawStorage();drawFusion();}}).observe(root);
+ new ResizeObserver(()=>{const w=Math.floor(root.getBoundingClientRect().width);if(w!==previousWidth){previousWidth=w;drawCallLayers();drawUpdateCalls();drawTwoRuns();drawAttentionInputs();drawOperators();drawStorage();drawFusion();}}).observe(root);
  drawCallLayers();drawUpdateCalls();update();updateStages();drawStorage();drawFusion();restore(window.openai?.widgetState);
 })();
 </script>

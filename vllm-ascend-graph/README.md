@@ -9,6 +9,7 @@
 - 左栏从 Host 逐算子调用走到图里待执行的设备任务；右栏从整图提交和动态 FIA 参数更新走到 NPU 任务执行。
 - 保留原图的两栏结构，并区分已有算子融合、条件性 FX 图改写与 ACL Graph replay 各自改变的执行过程。
 - 从 Qwen2 的 Norm、QKV、RoPE、Attention、输出投影和 MLP 追踪数据；逻辑张量操作与设备任务分别标明。
+- 展开单层时，先用两阶段输入图区分 K/V 与 slot_mapping 写缓存、Q 与持久 KV 及 block_table/lengths 进入 FIA；算子长图以点线表示执行先后，并保留 Q、V、residual 的数据旁路。
 - 以 AddRMSNorm 为例，展开 Python CustomOp、Dispatcher、C++ 适配、`GetWorkspaceSize`、`OpCommand` 和 ACLNN 执行入口；与普通 replay 的运行时入口对照。
 - 最大阅读宽度为 736px，水平居中。
 
