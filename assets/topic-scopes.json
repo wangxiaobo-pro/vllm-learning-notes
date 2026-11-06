@@ -6,7 +6,10 @@
     "scope": "结构页与矩阵页沿同一计算链展开；生成例子另标当前前缀与预测位置。",
     "teaching": "权重未训练，数值用于验算；输出 token 不表示模型语言能力。",
     "width": 960,
-    "pages": ["transformer-structure-explorer.html", "transformer-structure-explorer-matrices.html"]
+    "pages": [
+      "transformer-structure-explorer.html",
+      "transformer-structure-explorer-matrices.html"
+    ]
   },
   "hyper-connections": {
     "kind": "算法教学",
@@ -79,7 +82,10 @@
     "scope": "候选输入来源、隐藏态对齐和贪心接受；支持条件依所选方法与 checkpoint。",
     "teaching": "K=3、词块和预测结果为教学数据；不将贪心示例推广成随机拒绝采样规则。",
     "width": 920,
-    "pages": ["index.html", "comparison.html"]
+    "pages": [
+      "index.html",
+      "comparison.html"
+    ]
   },
   "weight-offload-prefetch": {
     "kind": "源码快照",
@@ -152,5 +158,85 @@
     "scope": "捕获、回放与 FIA 动态参数更新；执行依赖和张量数据依赖分别绘制。",
     "teaching": "来自静态源码走读；融合命中、tiling 和 kernel 数量仍需具体部署环境验证。",
     "width": 736
+  },
+  "rope-position": {
+    "kind": "基础知识",
+    "baseline": "RoFormer 论文；二维与四维旋转数学",
+    "backend": "浏览器数值演算，不绑定模型后端",
+    "scope": "旋转、相对位置、多频率及显式 p/s 位置插值。",
+    "teaching": "固定小向量；位置插值不代表所有 RoPE 扩展。",
+    "width": 960
+  },
+  "sampling": {
+    "kind": "基础知识",
+    "baseline": "概率数学与 Hugging Face generation 文档",
+    "backend": "固定顺序的教学采样器，不声称等同所有后端",
+    "scope": "temperature → top-k → top-p → 归一化 → 逆 CDF。",
+    "teaching": "小词表与可控随机数；greedy 单独处理。",
+    "width": 960
+  },
+  "quantization": {
+    "kind": "基础知识",
+    "baseline": "线性均匀量化数学；PyTorch 量化 API",
+    "backend": "浏览器纯数值演算，不调用量化 kernel",
+    "scope": "对称 / affine、per-tensor / channel / group 与自动 / 手动参数。",
+    "teaching": "小矩阵；不将 RTN 算例等同于 GPTQ、AWQ 或完整量化部署。",
+    "width": 960
+  },
+  "memory-budget": {
+    "kind": "基础知识",
+    "baseline": "字节与容量算术；布局参考 vLLM 295c062db8",
+    "backend": "单设备、无共享前缀、无 TP/PP；KV 16 bit",
+    "scope": "权重、KV 单位开销、块对齐、并发、预留与容量判断。",
+    "teaching": "7B/32层/4×4096 tokens；MLA 为单个 576 维压缩向量示意。",
+    "width": 960
+  },
+  "inference-performance": {
+    "kind": "基础知识",
+    "baseline": "vLLM benchmark 指标文档；NVIDIA 性能背景文档",
+    "backend": "客户端观测与单个 GEMM 理论模型",
+    "scope": "逐请求延迟、共同窗口吞吐、算术强度及理想耗时下界。",
+    "teaching": "时间戳、算力和带宽都是教学输入，没有硬件测速。",
+    "width": 960
+  },
+  "async-scheduling": {
+    "kind": "源码快照",
+    "baseline": "vLLM 295c062db8 · V1",
+    "backend": "GPU MRV1 · TP=PP=DP=1 · 无推测解码/结构化输出/LoRA",
+    "scope": "EngineCore 批次队列、AsyncScheduler 占位与 Worker 采样回报。",
+    "teaching": "3-token prompt 生成 2 tokens；观察点不代表固定时间或性能倍数。",
+    "width": 960
+  },
+  "modelrunner-inputs": {
+    "kind": "源码快照",
+    "baseline": "vLLM 295c062db8 · V1",
+    "backend": "GPU MRV1 · 单卡 eager · 同步 · FullAttention",
+    "scope": "持久请求缓存 / 批次行、输入打包、GPU metadata 与采样回写。",
+    "teaching": "A/B/C 三请求；block=4 为缩放教学尺寸，不是 GPU kernel 支持声明。",
+    "width": 960
+  },
+  "structured-output": {
+    "kind": "源码快照",
+    "baseline": "vLLM 295c062db8 · V1",
+    "backend": "GPU MRV1 · 单卡同步 · xgrammar 接口 · greedy",
+    "scope": "语法准备、CPU bitmask、GPU 屏蔽 logits、采样与 matcher 推进。",
+    "teaching": "六 token 教学词表，简化语言仅接受字符串 A/B；未运行 xgrammar 编译器。",
+    "width": 960
+  },
+  "multi-lora": {
+    "kind": "源码快照",
+    "baseline": "vLLM 295c062db8 · V1",
+    "backend": "GPU MRV1 · 单卡同步 · ReplicatedLinearWithLoRA · 无量化",
+    "scope": "CPU cache / GPU active slots、token 行映射及 base + LoRA 增量。",
+    "teaching": "两个 rank=1 适配器、3 请求/4 token 行；2×2 矩阵仅显示有效元素。",
+    "width": 960
+  },
+  "hybrid-kv-cache": {
+    "kind": "源码快照",
+    "baseline": "vLLM 295c062db8 · V1",
+    "backend": "CPU KV 管理 · Full + SWA 两组 · GPU MRV1 消费边界",
+    "scope": "同池分配 / 窗口释放（APC 关）与共同前缀命中（APC 开）分场景。",
+    "teaching": "block=4 为缩放教学尺寸；块号、hash 和物理数值为示意。",
+    "width": 960
   }
 }

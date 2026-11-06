@@ -131,6 +131,18 @@ body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !importan
                 <span class="flow-copy"><span class="flow-title">模型架构图谱：七模型 Forward</span><span class="scope-badge" title="vLLM 295c062db8 · vLLM-Ascend 94e3e25f8；各模型配置 revision 见所选 Sheet">源码快照</span><span class="flow-description">从 Llama、DeepSeek V2 学起，切换七个模型 Sheet，点击组件追踪输入、内部计算、输出与验证。</span></span>
                 <span class="flow-tag">组件图谱</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
+              <li><a class="flow" href="rope-position/index.html" data-keywords="RoPE 位置编码 position rotation 旋转 插值 相对位置">
+                <span class="flow-copy"><span class="flow-title">RoPE 与位置编码</span><span class="scope-badge" title="RoFormer 论文；二维与四维旋转数学">基础知识</span><span class="flow-description">从二维旋转、多频率到位置插值，验算相对位置怎样进入 Q/K 点积。</span></span>
+                <span class="flow-tag">数值演算</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
+              <li><a class="flow" href="sampling/index.html" data-keywords="sampling logits softmax temperature top-k top-p greedy 采样 贪心">
+                <span class="flow-copy"><span class="flow-title">从 logits 到采样 token</span><span class="scope-badge" title="概率数学与 Hugging Face generation 文档">基础知识</span><span class="flow-description">逐步调整温度、top-k、top-p 和随机数，查看候选与概率如何变化。</span></span>
+                <span class="flow-tag">数值演算</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
+              <li><a class="flow" href="quantization/index.html" data-keywords="量化 quantization scale zero-point symmetric affine channel group INT4 INT8">
+                <span class="flow-copy"><span class="flow-title">量化：scale、zero-point 与误差</span><span class="scope-badge" title="线性均匀量化数学；PyTorch 量化 API">基础知识</span><span class="flow-description">从范围和分组生成量化参数，观察整数编码、反量化与裁剪误差。</span></span>
+                <span class="flow-tag">数值演算</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
             </ul>
           </details>
           <details class="module" id="engine" data-label="引擎与调度" open>
@@ -155,6 +167,18 @@ body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !importan
               <li><a class="flow" href="chunked-prefill/index.html" data-keywords="vLLM V0 V1 Chunked Prefill 分块 预填充 混合调度 prefill-first Decode token 预算 KV">
                 <span class="flow-copy"><span class="flow-title">Chunked Prefill</span><span class="scope-badge" title="分块：vLLM v0.11.0 / V1；整段：vLLM v0.6.6 / V0">历史版本对照</span><span class="flow-description">对照 V1 分块混合调度与 V0 历史 prefill 优先，追踪 KV 和输出变化。</span></span>
                 <span class="flow-tag">交互动画</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
+              <li><a class="flow" href="async-scheduling/index.html" data-keywords="vLLM async scheduling 异步 调度 placeholder batch queue 占位">
+                <span class="flow-copy"><span class="flow-title">异步调度：计划与完成分开</span><span class="scope-badge" title="vLLM 295c062db8 · V1">源码快照</span><span class="flow-description">对照同步与异步两轮执行，追踪输出占位、在途批次和真实 token 回报。</span></span>
+                <span class="flow-tag">源码流程</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
+              <li><a class="flow" href="modelrunner-inputs/index.html" data-keywords="vLLM ModelRunner InputBatch persistent batch packed tokens positions slot_mapping">
+                <span class="flow-copy"><span class="flow-title">ModelRunner 输入打包</span><span class="scope-badge" title="vLLM 295c062db8 · V1">源码快照</span><span class="flow-description">从请求加入、退出和压紧到 packed tokens、positions、块表和写入槽。</span></span>
+                <span class="flow-tag">源码流程</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
+              <li><a class="flow" href="structured-output/index.html" data-keywords="vLLM structured output JSON schema grammar xgrammar bitmask 结构化 输出">
+                <span class="flow-copy"><span class="flow-title">结构化输出：语法约束与采样</span><span class="scope-badge" title="vLLM 295c062db8 · V1">源码快照</span><span class="flow-description">从 schema 与合法 token 集合到 logits mask，再由真实输出推进语法状态。</span></span>
+                <span class="flow-tag">源码流程</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
             </ul>
           </details>
@@ -194,6 +218,14 @@ body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !importan
                 <span class="flow-copy"><span class="flow-title">vLLM PD 分离</span><span class="scope-badge" title="V0：vLLM v0.8.5；V1：vLLM 295c062db8">历史与快照对照</span><span class="flow-description">对照 V0 / V1，观察 P、D 两侧的缓存匹配、KV 传输与请求恢复。</span></span>
                 <span class="flow-tag">交互动画</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
+              <li><a class="flow" href="memory-budget/index.html" data-keywords="显存 内存 memory budget MHA GQA MLA KV GiB 并发">
+                <span class="flow-copy"><span class="flow-title">推理显存预算</span><span class="scope-badge" title="字节与容量算术；布局参考 vLLM 295c062db8">基础知识</span><span class="flow-description">计算权重、块对齐后的 KV、运行空间与理想并发上界。</span></span>
+                <span class="flow-tag">数值演算</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
+              <li><a class="flow" href="hybrid-kv-cache/index.html" data-keywords="vLLM hybrid KV cache FullAttention SWA BlockPool coordinator 混合 缓存">
+                <span class="flow-copy"><span class="flow-title">混合 KV：多组块表与共享块池</span><span class="scope-badge" title="vLLM 295c062db8 · V1">源码快照</span><span class="flow-description">对照 Full/SWA 分配、窗口释放和前缀查询，查看共同可恢复边界。</span></span>
+                <span class="flow-tag">源码流程</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
             </ul>
           </details>
           <details class="module" id="optimization" data-label="性能优化" open>
@@ -210,6 +242,14 @@ body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !importan
               <li><a class="flow" href="weight-offload-prefetch/index.html" data-keywords="vLLM Ascend CPU Offload Prefetch 权重卸载 权重预取 H2D NPU 静态槽 hidden 激活">
                 <span class="flow-copy"><span class="flow-title">权重 CPU Offload / Prefetch</span><span class="scope-badge" title="vLLM 295c062db8 · vLLM-Ascend 94e3e25f8">源码快照</span><span class="flow-description">沿 CPU 权重和上游激活两条路径，查看它们怎样进入同一层并产生下游输入。</span></span>
                 <span class="flow-tag">设备结构图</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
+              <li><a class="flow" href="inference-performance/index.html" data-keywords="性能 performance TTFT TPOT ITL throughput roofline FLOPs 带宽 GEMM">
+                <span class="flow-copy"><span class="flow-title">推理性能指标与理论下界</span><span class="scope-badge" title="vLLM benchmark 指标文档；NVIDIA 性能背景文档">基础知识</span><span class="flow-description">用时间戳算 TTFT、TPOT 和吞吐，再比较单个 GEMM 的计算与带宽约束。</span></span>
+                <span class="flow-tag">数值演算</span><span class="flow-arrow" aria-hidden="true">↗</span>
+              </a></li>
+              <li><a class="flow" href="multi-lora/index.html" data-keywords="vLLM Multi LoRA adapter slot mapping shrink expand 多适配器">
+                <span class="flow-copy"><span class="flow-title">Multi-LoRA：按 token 行选择适配器</span><span class="scope-badge" title="vLLM 295c062db8 · V1">源码快照</span><span class="flow-description">追踪 CPU 权重、GPU 槽位、行映射，以及 shrink/expand 产生的增量。</span></span>
+                <span class="flow-tag">源码流程</span><span class="flow-arrow" aria-hidden="true">↗</span>
               </a></li>
             </ul>
           </details>

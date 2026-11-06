@@ -1,0 +1,1187 @@
+{
+  "title": "GPU MRV1 输入打包与回写调用链",
+  "defaultVariant": "gpu-mrv1",
+  "variants": [
+    {
+      "id": "gpu-mrv1",
+      "title": "单卡 GPU MRV1 · 同步 eager",
+      "scope": "普通文本、FullAttention、TP/PP/CP=1，无 async/spec/connector/LoRA；图中行序为未触发后端重排的案例。block=4 为缩放教学值。execute 与 sample 是两个外部阶段。",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
+        }
+      },
+      "nodes": [
+        {
+          "id": "execute",
+          "parent": null,
+          "number": "1",
+          "kind": "边界",
+          "title": "GPUModelRunner.execute_model()",
+          "summary": "Worker 的本轮执行入口。",
+          "input": "SchedulerOutput；上轮持久批次。",
+          "changes": "更新 CPU 请求状态并准备本轮 GPU 输入；保存执行中间状态。",
+          "output": "普通生成路径返回 None，logits 等保存在 execute_model_state。",
+          "resume": "调用方随后调用 sample_tokens；它不是 execute_model 的子调用。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4105,
+              "label": "实际实现",
+              "end": 4144
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4443,
+              "label": "实际实现",
+              "end": 4462
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第1步",
+              "action": {
+                "step": 1,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            },
+            {
+              "label": "change：第1步",
+              "action": {
+                "step": 1,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "update",
+          "parent": "execute",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "GPUModelRunner._update_states()",
+          "summary": "把调度增量合并进 requests 与 InputBatch。",
+          "input": "新请求、cached 请求增量、finished IDs、scheduled counts。",
+          "changes": "删除 finished；更新 computed/block IDs；加入行并压紧。",
+          "output": "同步路径完成后的持久批次。",
+          "resume": "execute_model 按压紧后的 req_ids 收集 scheduled counts。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4144,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1195,
+              "label": "实际实现",
+              "end": 1220
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1440,
+              "label": "实际实现",
+              "end": 1519
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第2步",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            },
+            {
+              "label": "change：第2步",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "remove",
+          "parent": "update",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "InputBatch.remove_request()",
+          "summary": "B 完成后移除其批次行。",
+          "input": "req_id=B，row=1。",
+          "changes": "删除 req_id_to_index；行设 None；块表 clear_row。",
+          "output": "B 的原行号；request 字典的删除由 _update_states 执行。",
+          "resume": "_update_states 处理后续增量，最终 condense。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1219,
+              "label": "调用位置",
+              "end": 1220
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_input_batch.py",
+              "line": 525,
+              "label": "实际实现",
+              "end": 544
+            }
+          ],
+          "targets": [
+            {
+              "label": "change：第2步",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "clear-group",
+          "parent": "remove",
+          "number": "1.1.1.1",
+          "kind": "调用",
+          "title": "MultiGroupBlockTable.clear_row()",
+          "summary": "逐 KV group 清空 B 的块表行。",
+          "input": "row=1。",
+          "changes": "对每张 BlockTable 执行 clear_row。",
+          "output": "None；只改变地址元数据。",
+          "resume": "回到 InputBatch.remove_request；不会调用 Scheduler 的 free。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_input_batch.py",
+              "line": 543,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/block_table.py",
+              "line": 364,
+              "label": "实际实现",
+              "end": 366
+            }
+          ],
+          "targets": [
+            {
+              "label": "change：第2步",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "clear-row",
+          "parent": "clear-group",
+          "number": "1.1.1.1.1",
+          "kind": "调用",
+          "title": "BlockTable.clear_row()",
+          "summary": "清零 CPU 块表有效区间。",
+          "input": "B 对应行的 num_blocks_per_row。",
+          "changes": "有效区间写0；该行块数设0。",
+          "output": "None。",
+          "resume": "返回 MultiGroupBlockTable 的逐组循环。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/block_table.py",
+              "line": 366,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/block_table.py",
+              "line": 179,
+              "label": "实际实现",
+              "end": 183
+            }
+          ],
+          "targets": [
+            {
+              "label": "change：第2步",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "add",
+          "parent": "update",
+          "number": "1.1.2",
+          "kind": "调用",
+          "title": "InputBatch.add_request()",
+          "summary": "把 C 的 CachedRequestState 放入批次。",
+          "input": "C tokens=[31,32,33]，computed=0，blocks=[9]。",
+          "changes": "创建 req_id→row；写 token 行、计数、采样参数和块表。",
+          "output": "C 的行号2。",
+          "resume": "_update_states 加完请求后执行 condense。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1508,
+              "label": "调用位置",
+              "end": 1512
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_input_batch.py",
+              "line": 347,
+              "label": "实际实现",
+              "end": 395
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第3步",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "add-group",
+          "parent": "add",
+          "number": "1.1.2.1",
+          "kind": "调用",
+          "title": "MultiGroupBlockTable.add_row()",
+          "summary": "按组把请求 block IDs 写入行。",
+          "input": "C 的分组 block_ids 与 row=2。",
+          "changes": "逐组调用 BlockTable.add_row。",
+          "output": "None。",
+          "resume": "回 InputBatch.add_request 继续采样状态初始化。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_input_batch.py",
+              "line": 395,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/block_table.py",
+              "line": 360,
+              "label": "实际实现",
+              "end": 362
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第3步",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "add-row",
+          "parent": "add-group",
+          "number": "1.1.2.1.1",
+          "kind": "调用",
+          "title": "BlockTable.add_row()",
+          "summary": "先重置行长度，再调用 append_row。",
+          "input": "[9]，row=2。",
+          "changes": "num_blocks_per_row[2]=0。",
+          "output": "append 后 C 块表为[9]。",
+          "resume": "返回逐组 add_row 循环。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/block_table.py",
+              "line": 362,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/block_table.py",
+              "line": 175,
+              "label": "实际实现",
+              "end": 177
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第3步",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "append-row",
+          "parent": "add-row",
+          "number": "1.1.2.1.1.1",
+          "kind": "调用",
+          "title": "BlockTable.append_row()",
+          "summary": "落地 CPU block table 的连续片段。",
+          "input": "[9]，start=0，无 kernel block 拆分。",
+          "changes": "块数加1，并写 block_table.np[row,0:1]。",
+          "output": "None。",
+          "resume": "返回 BlockTable.add_row。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/block_table.py",
+              "line": 177,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/block_table.py",
+              "line": 157,
+              "label": "实际实现",
+              "end": 173
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第3步",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "condense",
+          "parent": "update",
+          "number": "1.1.3",
+          "kind": "调用",
+          "title": "InputBatch.condense()",
+          "summary": "用最后活动行填补中间空洞。",
+          "input": "change：[A,None,C]；normal：[A,B,C]。",
+          "changes": "change 中 C 从2搬到1，token/计数/块表保持同一请求对齐。",
+          "output": "连续活动行：[A,C] 或[A,B,C]。",
+          "resume": "回 _update_states 的后端重排检查；本例选择不触发重排的行序。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1515,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_input_batch.py",
+              "line": 700,
+              "label": "实际实现",
+              "end": 779
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第3步",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            },
+            {
+              "label": "change：第3步",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "move-group",
+          "parent": "condense",
+          "number": "1.1.3.1",
+          "kind": "调用",
+          "title": "MultiGroupBlockTable.move_row()",
+          "summary": "C 的各组块表与 token 行一起搬迁。",
+          "input": "src=2，tgt=1。",
+          "changes": "遍历块表并调用 move_row。",
+          "output": "None。",
+          "resume": "回 condense 移动其余请求采样状态。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_input_batch.py",
+              "line": 779,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/block_table.py",
+              "line": 368,
+              "label": "实际实现",
+              "end": 370
+            }
+          ],
+          "targets": [
+            {
+              "label": "change：第3步",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "move-row",
+          "parent": "move-group",
+          "number": "1.1.3.1.1",
+          "kind": "调用",
+          "title": "BlockTable.move_row()",
+          "summary": "复制有效块号，并清空旧行。",
+          "input": "C 的[9]，src=2→tgt=1。",
+          "changes": "行1写[9]；行2旧数据及有效块数清0。",
+          "output": "None。",
+          "resume": "返回分组 move_row 循环。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/block_table.py",
+              "line": 370,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/block_table.py",
+              "line": 185,
+              "label": "实际实现",
+              "end": 194
+            }
+          ],
+          "targets": [
+            {
+              "label": "change：第3步",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "prepare",
+          "parent": "execute",
+          "number": "1.2",
+          "kind": "调用",
+          "title": "GPUModelRunner._prepare_inputs()",
+          "summary": "把持久行裁出本轮紧凑 token 批。",
+          "input": "压紧后的 row order 与各行 scheduled count。",
+          "changes": "提交块表、gather IDs、构造 offsets/positions/seq_lens/slots。",
+          "output": "logits_indices 及可选推测解码元数据；设备缓冲已更新。",
+          "resume": "execute_model 构建 Attention metadata。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4180,
+              "label": "调用位置",
+              "end": 4188
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1943,
+              "label": "实际实现",
+              "end": 2003
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2052,
+              "label": "实际实现",
+              "end": 2072
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2150,
+              "label": "实际实现",
+              "end": 2178
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第4步",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            },
+            {
+              "label": "change：第4步",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "commit",
+          "parent": "prepare",
+          "number": "1.2.1",
+          "kind": "调用",
+          "title": "MultiGroupBlockTable.commit_block_table()",
+          "summary": "本函数开头先提交有效请求的块表。",
+          "input": "num_reqs 与 CPU block IDs。",
+          "changes": "逐组调用 BlockTable.commit_block_table。",
+          "output": "GPU 块表元数据。",
+          "resume": "回 _prepare_inputs 生成 token buffers；图第5步按依赖合并展示传输。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1963,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/block_table.py",
+              "line": 385,
+              "label": "实际实现",
+              "end": 387
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第5步",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            },
+            {
+              "label": "change：第5步",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "cumsum",
+          "parent": "prepare",
+          "number": "1.2.2",
+          "kind": "调用",
+          "title": "GPUModelRunner._get_cumsum_and_arange()",
+          "summary": "生成每个请求的累计结束位置和局部 token 下标。",
+          "input": "counts=[2,1,3] 或[1,1]。",
+          "changes": "cumsum；repeat 每个请求的起始累计值；与 arange 相减。",
+          "output": "cumsum=[2,3,6] / [1,2]；local=[0,1,0,0,1,2] / [0,0]。",
+          "resume": "_prepare_inputs 用 computed[row]+local 得到 positions，接着 gather token。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1971,
+              "label": "调用位置",
+              "end": 1973
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1718,
+              "label": "实际实现",
+              "end": 1742
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第4步",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            },
+            {
+              "label": "change：第4步",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "gather",
+          "parent": "prepare",
+          "number": "1.2.3",
+          "kind": "动作",
+          "title": "torch.index_select()（CPU gather）",
+          "summary": "按 flattened token 行索引收集本轮 IDs。",
+          "input": "token_indices=position+row×CPU 行 stride。",
+          "changes": "写 self.input_ids.cpu[:total]；不改变持久 token 行。",
+          "output": "normal [13,14,25,31,32,33]；change [15,34]。",
+          "resume": "_prepare_inputs 继续更新 offsets 与 GPU 元数据。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1976,
+              "label": "实际实现",
+              "end": 2003
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第4步",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            },
+            {
+              "label": "change：第4步",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "slot-group",
+          "parent": "prepare",
+          "number": "1.2.4",
+          "kind": "调用",
+          "title": "MultiGroupBlockTable.compute_slot_mapping()",
+          "summary": "逐组计算每个 token 的 KV slot。",
+          "input": "GPU query_start_loc、positions、num_reqs。",
+          "changes": "对每个 BlockTable 调用 compute_slot_mapping。",
+          "output": "按组的 slot_mapping 缓冲。",
+          "resume": "回 _prepare_inputs，随后准备 input IDs。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2167,
+              "label": "调用位置",
+              "end": 2171
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/block_table.py",
+              "line": 376,
+              "label": "实际实现",
+              "end": 383
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第6步",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            },
+            {
+              "label": "change：第6步",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "slot-block",
+          "parent": "slot-group",
+          "number": "1.2.4.1",
+          "kind": "调用",
+          "title": "BlockTable.compute_slot_mapping()",
+          "summary": "选择 TOKEN_TO_KV_SLOT 路径并调用 kernel 对象。",
+          "input": "块表、positions、query offsets、CP=1、无块拆分。",
+          "changes": "启动 _COMPUTE_SLOT_MAPPING_KERNEL。",
+          "output": "该组 GPU slot buffer。",
+          "resume": "回 MultiGroupBlockTable 的逐组循环。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/block_table.py",
+              "line": 383,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/block_table.py",
+              "line": 201,
+              "label": "实际实现",
+              "end": 225
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第6步",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            },
+            {
+              "label": "change：第6步",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "slot-kernel",
+          "parent": "slot-block",
+          "number": "1.2.4.1.1",
+          "kind": "提交",
+          "title": "ComputeSlotMappingKernel.__call__() / kernel()",
+          "summary": "kernel launcher 对象的 launch spec 与 Triton 实现边界。",
+          "input": "每个请求的 packed 区间与 GPU 块表。",
+          "changes": "按 position 求逻辑页、块内 offset；slot=block×4+offset。",
+          "output": "normal [10,11,28,36,37,38]；change [24,39]。",
+          "resume": "设备结果被 Attention metadata 引用；CPU 返回不意味着已测量 kernel 耗时。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/block_table.py",
+              "line": 214,
+              "label": "调用位置",
+              "end": 225
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/block_table.py",
+              "line": 519,
+              "label": "launch spec",
+              "end": 545
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/block_table.py",
+              "line": 445,
+              "label": "Triton 实现",
+              "end": 478
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第6步",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            },
+            {
+              "label": "change：第6步",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "input-copy",
+          "parent": "prepare",
+          "number": "1.2.5",
+          "kind": "调用",
+          "title": "GPUModelRunner._prepare_input_ids()",
+          "summary": "同步路径从 CPU 准备好的 IDs 复制到 GPU。",
+          "input": "total_num_scheduled_tokens；prev_sampled_token_ids=None。",
+          "changes": "input_ids.copy_to_gpu(total)。",
+          "output": "GPU input IDs。",
+          "resume": "回 _prepare_inputs 继续确定 logits indices。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2174,
+              "label": "调用位置",
+              "end": 2178
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1759,
+              "label": "实际实现",
+              "end": 1786
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第5步",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            },
+            {
+              "label": "change：第5步",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "metadata",
+          "parent": "execute",
+          "number": "1.3",
+          "kind": "调用",
+          "title": "GPUModelRunner._build_attention_metadata()",
+          "summary": "建立跨后端公共 Attention metadata 并分派 builder。",
+          "input": "query_start_loc、seq_lens、block table、slot_mapping。",
+          "changes": "构造 CommonAttentionMetadata；按 attention group 调用 backend builder。",
+          "output": "按层名组织的 attn_metadata。",
+          "resume": "execute_model 将其放入 forward context，随后 _model_forward。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4317,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2272,
+              "label": "实际实现",
+              "end": 2288
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2421,
+              "label": "实际实现",
+              "end": 2438
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2524,
+              "label": "后端分派边界",
+              "end": 2528
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第7步",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            },
+            {
+              "label": "change：第7步",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "forward",
+          "parent": "execute",
+          "number": "1.4",
+          "kind": "边界",
+          "title": "GPUModelRunner._model_forward()",
+          "summary": "把 input IDs 与 positions 交给实际模型。",
+          "input": "GPU input_ids、positions；Attention 从 forward context 读取 metadata。",
+          "changes": "调用 self.model；模型内部与权重计算不在本页展开。",
+          "output": "hidden_states 等模型输出。",
+          "resume": "execute_model 取最后 token hidden states 算 logits，并保存 ExecuteModelState。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4383,
+              "label": "调用位置",
+              "end": 4389
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 3786,
+              "label": "实际实现",
+              "end": 3817
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第7步",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            },
+            {
+              "label": "change：第7步",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "save",
+          "parent": "execute",
+          "number": "1.5",
+          "kind": "返回",
+          "title": "保存 ExecuteModelState 并返回",
+          "summary": "这是 execute_model 的普通生成路径返回续点。",
+          "input": "logits、hidden_states、scheduler_output 等。",
+          "changes": "写 self.execute_model_state。",
+          "output": "None。",
+          "resume": "外部调用 sample_tokens，不能把 sample_tokens 画成 execute_model 内部同步调用。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4443,
+              "label": "实际实现",
+              "end": 4462
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第8步",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            },
+            {
+              "label": "change：第8步",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "sample",
+          "parent": null,
+          "number": "2",
+          "kind": "边界",
+          "title": "GPUModelRunner.sample_tokens()",
+          "summary": "下一执行阶段取出 execute_model_state 并采样。",
+          "input": "保留的 logits 等状态；本例无 grammar/spec。",
+          "changes": "调用 _sample；随后同步 bookkeeping。",
+          "output": "ModelRunnerOutput 交回 Worker/Executor。",
+          "resume": "EngineCore/Scheduler 消费模型输出；下轮调度器再下发 computed 计数。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4480,
+              "label": "实际实现",
+              "end": 4516
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4653,
+              "label": "实际实现",
+              "end": 4662
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第8步",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            },
+            {
+              "label": "change：第8步",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "bookkeep",
+          "parent": "sample",
+          "number": "2.1",
+          "kind": "调用",
+          "title": "GPUModelRunner._bookkeeping_sync()",
+          "summary": "同步路径回写 sampled token IDs。",
+          "input": "SamplerOutput；本页给定 normal=[15,26,34]、change=[16,35]。",
+          "changes": "追加 token_ids_cpu、更新 num_tokens_no_spec、追加 CachedRequestState.output_token_ids。",
+          "output": "请求顺序和采样结果等 bookkeeping 数据。",
+          "resume": "sample_tokens 组装 ModelRunnerOutput；num_computed_tokens_cpu 等下一轮 _update_states。",
+          "note": "可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4653,
+              "label": "调用位置",
+              "end": 4662
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 3634,
+              "label": "实际实现",
+              "end": 3656
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 3738,
+              "label": "实际实现",
+              "end": 3752
+            }
+          ],
+          "targets": [
+            {
+              "label": "normal：第9步",
+              "action": {
+                "step": 9,
+                "params": {
+                  "scenario": "normal"
+                }
+              }
+            },
+            {
+              "label": "change：第9步",
+              "action": {
+                "step": 9,
+                "params": {
+                  "scenario": "change"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

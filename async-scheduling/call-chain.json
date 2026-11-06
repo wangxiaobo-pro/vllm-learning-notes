@@ -1,0 +1,1822 @@
+{
+  "title": "异步与同步调度的真实调用链",
+  "defaultVariant": "async",
+  "variants": [
+    {
+      "id": "async",
+      "title": "异步：两批队列与占位回写",
+      "scope": "GPU MRV1、UniProcExecutor、TP=PP=DP=1；async_scheduling=True；无结构化/推测/LoRA/抢占。",
+      "entry": "engine",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM 295c062db8"
+        }
+      },
+      "nodes": [
+        {
+          "id": "engine",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "EngineCore.step_with_batch_queue()",
+          "summary": "CPU可继续安排下一批，按最老future回收结果。",
+          "input": "A的prompt=[7,8,9]，max_tokens=2；队列容量2。",
+          "changes": "本函数每次可能只入队，也可能取出最老结果；图用跨多次调用的9个观察点。",
+          "output": "最多两批逻辑在途；最终输出[11,22]。",
+          "resume": "返回主循环；下一次继续调度或消费队首。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 684,
+              "label": "实际实现",
+              "end": 797
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第3步：R1提交",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：R2先行",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            },
+            {
+              "label": "跳到第6步：R1回报",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "schedule",
+          "parent": "engine",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "Scheduler.schedule()（AsyncScheduler继承）",
+          "summary": "计算可调度输入并打包SchedulerOutput。",
+          "input": "R1需要3个prompt输入；R2的真实ID尚未回报。",
+          "changes": "使用known+输出占位−computed求需处理位置；分配足够KV。",
+          "output": "R1计划3，R2计划1。",
+          "resume": "回到step_with_batch_queue，交给execute_model。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 711,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 580,
+              "label": "实际实现",
+              "end": 1556
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第2步：R1计划",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：R2计划",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "need",
+          "parent": "schedule",
+          "number": "1.1.1",
+          "kind": "动作",
+          "title": "RUNNING：位置需求与输出上限检查",
+          "summary": "占位只允许规划位置，不提供token值。",
+          "input": "R1调度后known=3、computed=3、placeholders=1。",
+          "changes": "需求=3+1−3=1；输出上限guard阻止不必要的第三轮。",
+          "output": "R2调度1个输入位置。",
+          "resume": "继续RUNNING分配与SchedulerOutput打包。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 653,
+              "label": "分支与需求计算",
+              "end": 696
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第4步：只知道下一输入的位置",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "after",
+          "parent": "schedule",
+          "number": "1.1.2",
+          "kind": "调用",
+          "title": "AsyncScheduler._update_after_schedule()",
+          "summary": "父类预记计数，再增加预期输出数量。",
+          "input": "本轮scheduled tokens为3或1，无draft。",
+          "changes": "调用父类后，为非prefill chunk增加一个输出占位。",
+          "output": "两轮提交后computed=4、in_flight=4、placeholders=2。",
+          "resume": "返回schedule，再返回SchedulerOutput。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1555,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/async_scheduler.py",
+              "line": 25,
+              "label": "实际实现",
+              "end": 57
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第2步：首次预记",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：两轮预记",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "after-base",
+          "parent": "after",
+          "number": "1.1.2.1",
+          "kind": "调用",
+          "title": "Scheduler._update_after_schedule()",
+          "summary": "computed是已安排前沿，in_flight是未回报输入。",
+          "input": "scheduler_output.num_scheduled_tokens[A]=3或1。",
+          "changes": "同时累加computed与in_flight；更新is_prefill_chunk。",
+          "output": "R1后3/3；R2后4/4。",
+          "resume": "返回AsyncScheduler覆盖方法，追加输出占位。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/async_scheduler.py",
+              "line": 26,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1616,
+              "label": "实际实现",
+              "end": 1648
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第2步：预记3个输入",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：再预记1个输入",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "placeholder",
+          "parent": "after",
+          "number": "1.1.2.2",
+          "kind": "动作",
+          "title": "增加num_output_placeholders",
+          "summary": "预期输出数量与Worker的-1影子不是同一对象。",
+          "input": "本轮不是中间prefill chunk；每轮采样1个输出。",
+          "changes": "placeholders += 1，不向CPU填写未知ID。",
+          "output": "R1后1，R2后2。",
+          "resume": "返回schedule；下一轮需求可以使用此计数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/async_scheduler.py",
+              "line": 32,
+              "label": "占位更新动作",
+              "end": 50
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第4步：计数2，真实ID仍未知",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "execute",
+          "parent": "engine",
+          "number": "1.2",
+          "kind": "提交",
+          "title": "UniProcExecutor.execute_model(non_block=True)",
+          "summary": "派发模型执行并获得future句柄。",
+          "input": "SchedulerOutput携带输入数量、位置与请求元数据。",
+          "changes": "调用collective_rpc(\"execute_model\")；本页固定单进程Executor。",
+          "output": "执行future；GPU完成与host返回不是同一时刻。",
+          "resume": "回到EngineCore，继续独立采样派发。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 713,
+              "label": "调用位置",
+              "end": 715
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 119,
+              "label": "实际实现",
+              "end": 132
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第3步：派发R1",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：派发R2",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "worker",
+          "parent": "execute",
+          "number": "1.2.1",
+          "kind": "边界",
+          "title": "UniProcExecutor → Worker.execute_model()",
+          "summary": "单进程run_method调用Worker；GPU执行仍异步。",
+          "input": "execute_model RPC名和SchedulerOutput。",
+          "changes": "UniProcExecutor调用driver_worker；Worker转交model_runner。",
+          "output": "普通生成MRV1返回None，前向结果暂存在runner。",
+          "resume": "返回Executor，EngineCore继续sample_tokens。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 122,
+              "label": "调用位置",
+              "end": 127
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 90,
+              "label": "实际实现",
+              "end": 117
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_worker.py",
+              "line": 1293,
+              "label": "调用位置",
+              "end": 1295
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第3步：派发后的逻辑快照",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ],
+          "note": "这里展开固定UniProcExecutor；不把其他Executor的跨进程RPC细节套进此树。"
+        },
+        {
+          "id": "runner",
+          "parent": "worker",
+          "number": "1.2.1.1",
+          "kind": "调用",
+          "title": "GPUModelRunner.execute_model()",
+          "summary": "准备输入并发起前向，将logits留给采样。",
+          "input": "本轮输入数R1=3、R2=1。",
+          "changes": "调用_prepare_inputs，前向后保存ExecuteModelState。",
+          "output": "返回None；不是已返回生成token。",
+          "resume": "Worker返回，后续sample_tokens消费execute_model_state。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_worker.py",
+              "line": 1293,
+              "label": "调用位置",
+              "end": 1295
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4105,
+              "label": "实际实现",
+              "end": 4114
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4443,
+              "label": "保存状态并返回",
+              "end": 4462
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第3步：R1派发",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：R2已排队",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "inputs",
+          "parent": "runner",
+          "number": "1.2.1.1.1",
+          "kind": "调用",
+          "title": "GPUModelRunner._prepare_inputs()",
+          "summary": "打包本轮token位置并准备真实设备输入。",
+          "input": "SchedulerOutput、num_scheduled_tokens数组。",
+          "changes": "计算本批索引并调用_prepare_input_ids。",
+          "output": "可供模型使用的GPU输入。",
+          "resume": "返回execute_model进行本轮前向。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4187,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1943,
+              "label": "实际实现",
+              "end": 1955
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2174,
+              "label": "调用位置",
+              "end": 2178
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第3步：prompt输入",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            },
+            {
+              "label": "跳到第7步：R2使用真实11",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "device-reuse",
+          "parent": "inputs",
+          "number": "1.2.1.1.1.1",
+          "kind": "调用",
+          "title": "GPUModelRunner._prepare_input_ids()",
+          "summary": "连续请求的下轮输入从设备采样缓存续接。",
+          "input": "R2的CPU影子可能为-1；prev_sampled_token_ids在GPU。",
+          "changes": "同批常见路径在GPU copy_真实采样ID，依赖设备流顺序。",
+          "output": "R2实际输入11；绝不把-1送进模型。",
+          "resume": "返回_prepare_inputs，再继续前向。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2174,
+              "label": "调用位置",
+              "end": 2178
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1759,
+              "label": "实际实现",
+              "end": 1790
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1851,
+              "label": "设备内复制与重排",
+              "end": 1874
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第5步：设备产生11",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            },
+            {
+              "label": "跳到第7步：实际处理11",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ],
+          "note": "图中的GPU完成是教学观察点；CPU提交下轮不代表GPU越过前轮的数据依赖。"
+        },
+        {
+          "id": "sample",
+          "parent": "engine",
+          "number": "1.3",
+          "kind": "提交",
+          "title": "UniProcExecutor.sample_tokens(non_block=True)",
+          "summary": "本页纯生成、无结构化延迟，执行后单独派发采样。",
+          "input": "执行已发起，grammar_output=None。",
+          "changes": "调用sample_tokens RPC并取得异步结果future。",
+          "output": "采样future将进入batch_queue。",
+          "resume": "回到EngineCore入队。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 723,
+              "label": "调用位置",
+              "end": 731
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 134,
+              "label": "实际实现",
+              "end": 142
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第3步：R1采样已提交",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：R2采样已提交",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ],
+          "note": "这是所选纯生成配置的分支；pooling、空执行或pending structured output不沿用此时序。"
+        },
+        {
+          "id": "sample-worker",
+          "parent": "sample",
+          "number": "1.3.1",
+          "kind": "边界",
+          "title": "UniProcExecutor → Worker.sample_tokens()",
+          "summary": "固定单进程派发到GPU Worker。",
+          "input": "grammar_output=None与runner中保留的执行状态。",
+          "changes": "run_method调用Worker.sample_tokens，再调用runner同名方法。",
+          "output": "AsyncGPUModelRunnerOutput由AsyncOutputFuture包装。",
+          "resume": "future回到EngineCore，不在此处等待D2H。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 137,
+              "label": "调用位置",
+              "end": 142
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 108,
+              "label": "实际实现",
+              "end": 117
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_worker.py",
+              "line": 1260,
+              "label": "实际实现",
+              "end": 1263
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第3步：派发后状态",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "sample-runner",
+          "parent": "sample-worker",
+          "number": "1.3.1.1",
+          "kind": "调用",
+          "title": "GPUModelRunner.sample_tokens()",
+          "summary": "采样后维护host影子并创建异步回报对象。",
+          "input": "execute_model_state中的logits；没有grammar mask。",
+          "changes": "_sample、_bookkeeping_sync，随后创建AsyncGPUModelRunnerOutput。",
+          "output": "GPU采样张量与未完成的CPU拷贝句柄。",
+          "resume": "返回Worker、Executor；EngineCore获得future。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_worker.py",
+              "line": 1263,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4480,
+              "label": "实际实现",
+              "end": 4516
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4715,
+              "label": "实际实现",
+              "end": 4735
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第3步：真实输出未知",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            },
+            {
+              "label": "跳到第5步：设备输出11",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "bookkeeping",
+          "parent": "sample-runner",
+          "number": "1.3.1.1.1",
+          "kind": "调用",
+          "title": "GPUModelRunner._bookkeeping_sync()",
+          "summary": "异步分支保留GPU采样张量，CPU只写影子。",
+          "input": "GPU sampled_token_ids张量，可仍在设备执行。",
+          "changes": "缓存prev_sampled_token_ids；有效请求的CPU输出位置写-1。",
+          "output": "两轮提交后Worker CPU影子[-1,-1]。",
+          "resume": "返回sample_tokens，建立异步D2H回报。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4653,
+              "label": "调用位置",
+              "end": 4659
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 3634,
+              "label": "实际实现",
+              "end": 3648
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 3712,
+              "label": "设备缓存与CPU影子",
+              "end": 3752
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第3步：一个影子占位",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：两个影子占位",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "async-output",
+          "parent": "sample-runner",
+          "number": "1.3.1.1.2",
+          "kind": "调用",
+          "title": "AsyncGPUModelRunnerOutput.__init__()",
+          "summary": "安排非阻塞D2H并记录完成事件。",
+          "input": "真实采样张量引用；CPU尚不能直接读取其值。",
+          "changes": "拷贝流等待默认流，将token拷到CPU，再记录event。",
+          "output": "带就绪事件的异步输出对象。",
+          "resume": "返回sample_tokens；future后续消费时再同步。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4715,
+              "label": "调用位置",
+              "end": 4724
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 281,
+              "label": "实际实现",
+              "end": 327
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第3步：拷贝已安排，值未知",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            },
+            {
+              "label": "跳到第5步：GPU已产出11",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "queue",
+          "parent": "engine",
+          "number": "1.4",
+          "kind": "动作",
+          "title": "batch_queue.appendleft() / pop()",
+          "summary": "队列从左入，从右消费最老结果。",
+          "input": "R1、R2采样future及对应SchedulerOutput。",
+          "changes": "未满可返回继续下一次调度；满后取最老future。",
+          "output": "R1必须先回写，再回写R2。",
+          "resume": "执行future.result，等待选中结果可读。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 737,
+              "label": "队列控制与等待调用",
+              "end": 759
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第4步：两批未回报",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            },
+            {
+              "label": "跳到第6步：最老R1被消费",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "result",
+          "parent": "engine",
+          "number": "1.5",
+          "kind": "等待",
+          "title": "AsyncOutputFuture.result()",
+          "summary": "host读取结果前必须等待异步拷贝完成。",
+          "input": "队列最老采样future。",
+          "changes": "调用async_output.get_output。",
+          "output": "真实CPU token IDs，而非-1影子。",
+          "resume": "回到EngineCore处理abort和update_from_output。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 759,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 38,
+              "label": "实际实现",
+              "end": 48
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第6步：回报11",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            },
+            {
+              "label": "跳到第8步：回报22",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "get-output",
+          "parent": "result",
+          "number": "1.5.1",
+          "kind": "调用",
+          "title": "AsyncGPUModelRunnerOutput.get_output()",
+          "summary": "等待event，再将CPU张量转换为可读列表。",
+          "input": "sampled_token_ids_cpu与async_copy_ready_event。",
+          "changes": "event.synchronize()后tolist并填写ModelRunnerOutput。",
+          "output": "第一轮[11]、第二轮[22]。",
+          "resume": "返回AsyncOutputFuture.result，再交给Scheduler。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 44,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 329,
+              "label": "实际实现",
+              "end": 357
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第6步：真实结果可读",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            },
+            {
+              "label": "跳到第8步：第二个结果可读",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "update",
+          "parent": "engine",
+          "number": "1.6",
+          "kind": "调用",
+          "title": "Scheduler.update_from_output()",
+          "summary": "将实际结果与原调度批次配对。",
+          "input": "本轮ModelRunnerOutput和原SchedulerOutput。",
+          "changes": "扣除in_flight输入；更新输出token、结束状态与资源。",
+          "output": "R1后in_flight=1；R2后=0。",
+          "resume": "返回EngineCoreOutputs给引擎主循环。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 769,
+              "label": "调用位置",
+              "end": 771
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2025,
+              "label": "实际实现",
+              "end": 2035
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2076,
+              "label": "在途输入回收",
+              "end": 2082
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第6步：回写R1",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            },
+            {
+              "label": "跳到第8步：回写R2",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "accept",
+          "parent": "update",
+          "number": "1.6.1",
+          "kind": "调用",
+          "title": "AsyncScheduler._update_request_with_output()",
+          "summary": "接受真实token，抵扣输出占位。",
+          "input": "R1真实11或R2真实22；本页无stale结果。",
+          "changes": "先调用父类追加与check_stop；placeholders减去新增输出数量。",
+          "output": "占位2→1→0；CPU已知输出变为[11,22]。",
+          "resume": "回到update_from_output，随后按停止状态释放。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2166,
+              "label": "调用位置",
+              "end": 2168
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/async_scheduler.py",
+              "line": 59,
+              "label": "实际实现",
+              "end": 78
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第6步：placeholders变1",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            },
+            {
+              "label": "跳到第8步：placeholders变0",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "append",
+          "parent": "accept",
+          "number": "1.6.1.1",
+          "kind": "调用",
+          "title": "Scheduler._update_request_with_output()",
+          "summary": "按序追加输出并检查长度上限。",
+          "input": "一个真实token ID；max_tokens=2。",
+          "changes": "request.append_output_token_ids；check_stop。",
+          "output": "第二次输出后FINISHED_LENGTH_CAPPED。",
+          "resume": "返回AsyncScheduler覆盖方法，扣减占位。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/async_scheduler.py",
+              "line": 63,
+              "label": "调用位置",
+              "end": 65
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2492,
+              "label": "实际实现",
+              "end": 2509
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第6步：已知11",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            },
+            {
+              "label": "跳到第8步：已知22并结束",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "free",
+          "parent": "update",
+          "number": "1.6.2",
+          "kind": "调用",
+          "title": "Scheduler._free_request()",
+          "summary": "完成结果进入释放路径。",
+          "input": "请求已经FINISHED，所有本页在途输入回报完毕。",
+          "changes": "标记finished_req_ids并释放逻辑块；后续Worker消费结束ID。",
+          "output": "请求逻辑占用归还；不要求擦除HBM旧字节。",
+          "resume": "回到update_from_output，输出结束信息。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2229,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2713,
+              "label": "实际实现",
+              "end": 2743
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第9步：清理后的观察状态",
+              "action": {
+                "step": 9,
+                "params": {
+                  "scenario": "async"
+                }
+              }
+            }
+          ],
+          "note": "第9步汇总Scheduler释放和后续Worker清理，不是_free_request直接修改Worker对象。"
+        }
+      ]
+    },
+    {
+      "id": "sync",
+      "title": "同步：回报后再调度",
+      "scope": "同一请求算例；async_scheduling=False；无batch_queue，条件sample_tokens。",
+      "entry": "engine",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM 295c062db8"
+        }
+      },
+      "nodes": [
+        {
+          "id": "engine",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "EngineCore.step()",
+          "summary": "单轮结果回写后，主循环才开始下一轮计划。",
+          "input": "async_scheduling=False，TP=PP=1，max_tokens=2。",
+          "changes": "调用schedule、execute；按返回值条件采样，随后update。",
+          "output": "R1回报11之后才计划R2。",
+          "resume": "返回EngineCoreOutputs，再进入下一次step。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 644,
+              "label": "实际实现",
+              "end": 673
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第4步：等待R1",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            },
+            {
+              "label": "跳到第6步：先收到11再计划R2",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "schedule",
+          "parent": "engine",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "Scheduler.schedule()",
+          "summary": "同步调度只使用已知输出安排下一输入。",
+          "input": "R1prompt3；R1回报前known=3、computed=3。",
+          "changes": "没有异步输出占位；下一轮须等11进入已知token。",
+          "output": "R2计划1输入。",
+          "resume": "回到EngineCore.step派发执行。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 654,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 580,
+              "label": "实际实现",
+              "end": 591
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 692,
+              "label": "实际实现",
+              "end": 696
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第2步：R1计划",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            },
+            {
+              "label": "跳到第6步：收到11后计划R2",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "after",
+          "parent": "schedule",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "Scheduler._update_after_schedule()",
+          "summary": "仍会预记computed与in_flight。",
+          "input": "本轮计划3或1输入。",
+          "changes": "computed、in_flight同时增加；不增加输出占位。",
+          "output": "R1后computed=3；R2计划后=4。",
+          "resume": "返回schedule并交付SchedulerOutput。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1555,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1616,
+              "label": "实际实现",
+              "end": 1648
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第2步：R1预记",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            },
+            {
+              "label": "跳到第6步：R2预记",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "execute",
+          "parent": "engine",
+          "number": "1.2",
+          "kind": "提交",
+          "title": "UniProcExecutor.execute_model(non_block=True)",
+          "summary": "派发模型执行并获得future句柄。",
+          "input": "SchedulerOutput携带输入数量、位置与请求元数据。",
+          "changes": "调用collective_rpc(\"execute_model\")；本页固定单进程Executor。",
+          "output": "执行future；GPU完成与host返回不是同一时刻。",
+          "resume": "回到EngineCore.step，调用执行future.result。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 655,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 119,
+              "label": "实际实现",
+              "end": 132
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第3步：同步派发状态",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "worker",
+          "parent": "execute",
+          "number": "1.2.1",
+          "kind": "边界",
+          "title": "UniProcExecutor → Worker.execute_model()",
+          "summary": "单进程run_method调用Worker；GPU执行仍异步。",
+          "input": "execute_model RPC名和SchedulerOutput。",
+          "changes": "UniProcExecutor调用driver_worker；Worker转交model_runner。",
+          "output": "普通生成MRV1返回None，前向结果暂存在runner。",
+          "resume": "返回Executor，EngineCore先读取执行future。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 122,
+              "label": "调用位置",
+              "end": 127
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 90,
+              "label": "实际实现",
+              "end": 117
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_worker.py",
+              "line": 1293,
+              "label": "调用位置",
+              "end": 1295
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第3步：同步派发状态",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            }
+          ],
+          "note": "这里展开固定UniProcExecutor；不把其他Executor的跨进程RPC细节套进此树。"
+        },
+        {
+          "id": "runner",
+          "parent": "worker",
+          "number": "1.2.1.1",
+          "kind": "调用",
+          "title": "GPUModelRunner.execute_model()",
+          "summary": "准备输入并发起前向，将logits留给采样。",
+          "input": "本轮输入数R1=3、R2=1。",
+          "changes": "调用_prepare_inputs，前向后保存ExecuteModelState。",
+          "output": "返回None；不是已返回生成token。",
+          "resume": "Worker返回，后续sample_tokens消费execute_model_state。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_worker.py",
+              "line": 1293,
+              "label": "调用位置",
+              "end": 1295
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4105,
+              "label": "实际实现",
+              "end": 4114
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4443,
+              "label": "保存状态并返回",
+              "end": 4462
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第3步：同步派发状态",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "inputs",
+          "parent": "runner",
+          "number": "1.2.1.1.1",
+          "kind": "调用",
+          "title": "GPUModelRunner._prepare_inputs()",
+          "summary": "打包本轮token位置并准备真实设备输入。",
+          "input": "SchedulerOutput、num_scheduled_tokens数组。",
+          "changes": "计算本批索引并调用_prepare_input_ids。",
+          "output": "可供模型使用的GPU输入。",
+          "resume": "返回execute_model进行本轮前向。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4187,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1943,
+              "label": "实际实现",
+              "end": 1955
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2174,
+              "label": "调用位置",
+              "end": 2178
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第3步：同步派发状态",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "result",
+          "parent": "engine",
+          "number": "1.3",
+          "kind": "等待",
+          "title": "Future.result() / 条件采样",
+          "summary": "MRV1普通生成execute_model返回None，才调用sample_tokens。",
+          "input": "执行future；普通生成路径保存logits但没有返回生成token。",
+          "changes": "future.result后检查output is None。",
+          "output": "所选路径进入同步sample_tokens。",
+          "resume": "采样完成后处理abort与Scheduler回写。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 661,
+              "label": "等待与条件调用",
+              "end": 663
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第4步：尚未回报",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            },
+            {
+              "label": "跳到第5步：GPU完成R1",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            }
+          ],
+          "note": "同步配置没有batch_queue；图中“待消费轮次”仅为统一比较使用的逻辑观察量。"
+        },
+        {
+          "id": "sample",
+          "parent": "engine",
+          "number": "1.4",
+          "kind": "调用",
+          "title": "UniProcExecutor.sample_tokens()",
+          "summary": "默认non_block=False，host等待结果可读。",
+          "input": "grammar_output=None；MRV1 execute返回None。",
+          "changes": "collective_rpc调用Worker.sample_tokens。",
+          "output": "完整ModelRunnerOutput。",
+          "resume": "回到EngineCore.step执行update_from_output。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 663,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 134,
+              "label": "实际实现",
+              "end": 142
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 102,
+              "label": "实际实现",
+              "end": 106
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第5步：R1结果11",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            },
+            {
+              "label": "跳到第7步：R2结果22",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "sample-worker",
+          "parent": "sample",
+          "number": "1.4.1",
+          "kind": "调用",
+          "title": "Worker.sample_tokens()",
+          "summary": "Worker转交GPUModelRunner采样。",
+          "input": "前向保存在runner中的logits。",
+          "changes": "调用model_runner.sample_tokens。",
+          "output": "同步ModelRunnerOutput。",
+          "resume": "返回Executor.sample_tokens。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 103,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_worker.py",
+              "line": 1260,
+              "label": "实际实现",
+              "end": 1263
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第5步：同步采样结果",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "sample-runner",
+          "parent": "sample-worker",
+          "number": "1.4.1.1",
+          "kind": "调用",
+          "title": "GPUModelRunner.sample_tokens()",
+          "summary": "同步分支直接返回可读输出。",
+          "input": "execute_model_state中的logits。",
+          "changes": "_sample后_bookkeeping_sync整理CPU真实ID。",
+          "output": "ModelRunnerOutput中包含11或22。",
+          "resume": "返回Worker和Executor，不创建AsyncGPUModelRunnerOutput。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_worker.py",
+              "line": 1263,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4480,
+              "label": "实际实现",
+              "end": 4516
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4690,
+              "label": "实际实现",
+              "end": 4710
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第5步：第一个真实输出",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            },
+            {
+              "label": "跳到第7步：第二个真实输出",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "bookkeeping",
+          "parent": "sample-runner",
+          "number": "1.4.1.1.1",
+          "kind": "调用",
+          "title": "GPUModelRunner._bookkeeping_sync()",
+          "summary": "同步路径把采样张量转为CPU真实ID。",
+          "input": "GPU sampled_token_ids。",
+          "changes": "CPU tolist同步得到真实ID，再填充请求输出状态。",
+          "output": "Worker CPU影子中是11、22，没有-1占位。",
+          "resume": "返回sample_tokens构造ModelRunnerOutput。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4653,
+              "label": "调用位置",
+              "end": 4659
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 3680,
+              "label": "实际实现",
+              "end": 3704
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 3726,
+              "label": "实际实现",
+              "end": 3752
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第5步：Worker已知11",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            },
+            {
+              "label": "跳到第7步：Worker已知22",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "update",
+          "parent": "engine",
+          "number": "1.5",
+          "kind": "调用",
+          "title": "Scheduler.update_from_output()",
+          "summary": "回写真实token后，下一次step才可继续。",
+          "input": "本轮ModelRunnerOutput与原SchedulerOutput。",
+          "changes": "扣除in_flight并追加生成结果。",
+          "output": "R1回写后已知11，下一次才计划R2。",
+          "resume": "返回主循环进入下一轮step。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 668,
+              "label": "调用位置",
+              "end": 670
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2025,
+              "label": "实际实现",
+              "end": 2035
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2076,
+              "label": "实际实现",
+              "end": 2082
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第6步：回写11后计划R2",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            },
+            {
+              "label": "跳到第8步：回写22并结束",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "accept",
+          "parent": "update",
+          "number": "1.5.1",
+          "kind": "调用",
+          "title": "Scheduler._update_request_with_output()",
+          "summary": "追加输出与停止检查。",
+          "input": "真实11或22，max_tokens=2。",
+          "changes": "追加ID、check_stop；第二次达到输出上限。",
+          "output": "FINISHED_LENGTH_CAPPED。",
+          "resume": "返回update_from_output，触发完成释放。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2166,
+              "label": "调用位置",
+              "end": 2168
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2492,
+              "label": "实际实现",
+              "end": 2509
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第8步：第二个输出结束请求",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "free",
+          "parent": "update",
+          "number": "1.5.2",
+          "kind": "调用",
+          "title": "Scheduler._free_request()",
+          "summary": "完成结果进入释放路径。",
+          "input": "请求已经FINISHED，所有本页在途输入回报完毕。",
+          "changes": "标记finished_req_ids并释放逻辑块；后续Worker消费结束ID。",
+          "output": "请求逻辑占用归还；不要求擦除HBM旧字节。",
+          "resume": "回到update_from_output，输出结束信息。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2229,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2713,
+              "label": "实际实现",
+              "end": 2743
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第9步：清理后状态",
+              "action": {
+                "step": 9,
+                "params": {
+                  "scenario": "sync"
+                }
+              }
+            }
+          ],
+          "note": "第9步汇总Scheduler释放和后续Worker清理，不是_free_request直接修改Worker对象。"
+        }
+      ]
+    }
+  ]
+}

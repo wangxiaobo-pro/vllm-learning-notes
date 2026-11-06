@@ -1,0 +1,61 @@
+.lesson-workbench { max-width:960px; margin:24px auto; padding:0 16px 24px; box-sizing:border-box; font:14px/1.65 system-ui,"Microsoft YaHei",sans-serif; color:var(--lesson-ink); }
+.lesson-workbench * { box-sizing:border-box; }
+.lesson-workbench [hidden] { display:none !important; }
+.lesson-workbench h1,.lesson-workbench h2,.lesson-workbench h3,.lesson-workbench p { margin:0; }
+.lesson-workbench a { color:var(--lesson-green); text-underline-offset:3px; overflow-wrap:anywhere; }
+.lw-header>a { font-size:12px; text-decoration:none; }
+.lw-kicker { margin-top:20px !important; color:var(--lesson-green); font-size:12px; letter-spacing:.06em; }
+.lw-header h1 { font-size:clamp(25px,4vw,36px); line-height:1.3; margin:7px 0 12px; letter-spacing:-.03em; }
+.lw-subtitle { color:var(--lesson-muted); font-size:15px; }
+.lw-scope { margin:18px 0 !important; padding:12px 14px; background:var(--lesson-shade); border-left:3px solid var(--lesson-green); font-size:12px; overflow-wrap:anywhere; }
+.lw-controls { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr)); gap:12px; margin:20px 0; }
+.lw-field { display:flex; flex-direction:column; gap:5px; min-width:0; color:var(--lesson-muted); font-size:12px; }
+.lw-field input,.lw-field select { width:100%; min-width:0; padding:8px 10px; color:var(--lesson-ink); background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:6px; font:14px system-ui,"Microsoft YaHei",sans-serif; }
+.lw-field input[type=range] { padding:9px 0; accent-color:var(--lesson-green); }
+.lw-field output { color:var(--lesson-green); font-variant-numeric:tabular-nums; }
+.lw-toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:12px 0; border-block:1px solid var(--lesson-line); }
+.lesson-workbench button { cursor:pointer; color:var(--lesson-ink); font:inherit; }
+.lw-toolbar button { padding:6px 11px; background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:6px; font-size:13px; }
+.lw-toolbar button[aria-pressed=true] { background:var(--lesson-mint); border-color:var(--lesson-green); color:var(--lesson-green); }
+.lw-toolbar button:disabled { cursor:default; opacity:.4; }
+.lw-counter { margin-left:auto; color:var(--lesson-muted); font-size:12px; }
+.lesson-workbench :is(button,input,select,a,summary):focus-visible { outline:3px solid var(--lesson-amber); outline-offset:3px; }
+.lw-current { padding:17px 0 12px; }
+.lw-current h2 { font-size:19px; line-height:1.45; }
+.lw-current p { margin-top:6px; color:var(--lesson-muted); }
+.lw-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr)); gap:9px; margin:10px 0 18px; }
+.lw-metric { min-width:0; padding:10px 13px; background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:8px; }
+.lw-metric span { display:block; color:var(--lesson-muted); font-size:11px; }
+.lw-metric strong { display:block; font-size:19px; line-height:1.45; color:var(--lesson-green); overflow-wrap:anywhere; }
+.lw-figure { margin:0; border:1px solid var(--lesson-line); border-radius:12px; background:var(--lesson-panel); padding:10px; }
+.lw-figure svg { display:block; width:100%; height:auto; overflow:visible; font-family:system-ui,"Microsoft YaHei",sans-serif; }
+.lw-figure figcaption { padding:5px 5px 8px; color:var(--lesson-muted); font-size:11px; }
+.lw-equation { margin-top:16px; padding:12px; border:1px solid var(--lesson-line); border-radius:7px; background:var(--lesson-mint); font:13px/1.8 ui-monospace,Consolas,"Microsoft YaHei",monospace; overflow-wrap:anywhere; white-space:pre-wrap; }
+.lw-details { display:grid; gap:16px; margin:16px 0; }
+.lw-table-card,.lw-plot { min-width:0; padding:14px; border:1px solid var(--lesson-line); background:var(--lesson-panel); border-radius:9px; }
+.lw-table-card h3,.lw-plot h3 { margin-bottom:9px; font-size:15px; }
+.lw-table-scroll { overflow:auto; max-width:100%; }
+.lw-table-card table { border-collapse:collapse; width:100%; table-layout:fixed; font-size:12px; }
+.lw-table-card th,.lw-table-card td { text-align:left; padding:7px 8px; border:1px solid var(--lesson-line); overflow-wrap:anywhere; vertical-align:top; white-space:pre-wrap; }
+.lw-table-card th { background:var(--lesson-shade); font-weight:650; }
+.lw-plot svg { display:block; width:100%; height:auto; font-family:system-ui,"Microsoft YaHei",sans-serif; }
+.lw-legend { display:flex; flex-wrap:wrap; gap:4px 15px; color:var(--lesson-muted); font-size:12px; margin-top:8px; }
+.lw-legend span::before { content:''; display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; background:var(--swatch,var(--lesson-green)); }
+.lw-plot-caption { color:var(--lesson-muted); font-size:11px; margin-top:8px !important; overflow-wrap:anywhere; }
+.lw-notes { margin:18px 0; padding:13px 15px; background:var(--lesson-sand); border-left:3px solid var(--lesson-amber); border-radius:0 6px 6px 0; font-size:12px; }
+.lw-notes p+p { margin-top:6px; }
+.lw-steps { margin:22px 0; }
+.lw-steps h2 { margin-bottom:10px; font-size:19px; }
+.lw-steps ol { margin:0; padding:0; list-style:none; display:grid; gap:7px; }
+.lw-step-button { display:grid; grid-template-columns:30px minmax(0,1fr); width:100%; padding:10px; gap:8px; text-align:left; background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:7px; }
+.lw-step-button[aria-current=true] { border-color:var(--lesson-green); background:var(--lesson-mint); }
+.lw-step-button b { font-size:12px; color:var(--lesson-green); }
+.lw-step-button strong { display:block; font-size:13px; }
+.lw-step-button small { display:block; margin-top:3px; color:var(--lesson-muted); font-size:12px; }
+.lw-sources { border-top:1px solid var(--lesson-line); padding-top:16px; margin-top:24px; font-size:12px; }
+.lw-sources summary { cursor:pointer; font-weight:650; }
+.lw-sources a,.lw-related a { display:block; margin-top:6px; }
+.lw-related { margin-top:20px; font-size:12px; }
+.lw-status { color:var(--lesson-amber); font-size:12px; min-height:1.5em; }
+@media(max-width:500px) { .lw-table-card,.lw-plot { padding:10px; } .lw-table-card td,.lw-table-card th { padding:6px 4px; } .lw-counter { flex-basis:100%; margin:0; } .lw-figure { padding:4px; } }
+@media print { .lw-controls,.lw-toolbar,.lw-step-button { break-inside:avoid; } }

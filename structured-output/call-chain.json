@@ -1,0 +1,1179 @@
+{
+  "title": "xgrammar约束进入采样并回写的调用链",
+  "defaultVariant": "xgrammar",
+  "variants": [
+    {
+      "id": "xgrammar",
+      "title": "xgrammar / 同步GPU MRV1",
+      "scope": "单卡、无推测/LoRA/推理标签；JSON string enum[A,B]；toy词表与FSM显式简化，外部库为边界。",
+      "entry": "preprocess",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM 295c062db8"
+        }
+      },
+      "nodes": [
+        {
+          "id": "preprocess",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "EngineCore.preprocess_add_request()",
+          "summary": "输入线程为结构化请求初始化grammar。",
+          "input": "JSON Schema={type:string,enum:[A,B]}及tokenizer配置。",
+          "changes": "调用StructuredOutputManager.grammar_init。",
+          "output": "请求携带grammar对象或编译future。",
+          "resume": "请求进入Scheduler，等待语法可用后调度。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 1074,
+              "label": "实际实现",
+              "end": 1096
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第1步：Schema与词表",
+              "action": {
+                "step": 1,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第2步：编译",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第1步：Schema与词表（B偏好场景）",
+              "action": {
+                "step": 1,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "init",
+          "parent": "preprocess",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "StructuredOutputManager.grammar_init()",
+          "summary": "选择xgrammar后端，发起编译。",
+          "input": "已验证的结构化输出请求；backend=xgrammar。",
+          "changes": "初始化后端；默认线程池提交_create_grammar，保存future。",
+          "output": "请求中的grammar future。",
+          "resume": "返回输入线程；编译继续在线程池执行。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 1095,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/__init__.py",
+              "line": 126,
+              "label": "实际实现",
+              "end": 150
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/__init__.py",
+              "line": 178,
+              "label": "实际实现",
+              "end": 187
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第2步：编译就绪观察点",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第2步：编译就绪观察点（B偏好场景）",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "compile-task",
+          "parent": "init",
+          "number": "1.1.1",
+          "kind": "边界",
+          "title": "线程池执行 StructuredOutputManager._create_grammar()",
+          "summary": "submit建立异步任务，不是同步函数嵌套。",
+          "input": "请求的structured_output_key与stop token IDs。",
+          "changes": "工作线程执行_create_grammar，再调用backend.compile_grammar。",
+          "output": "编译完成的StructuredOutputGrammar，或future异常。",
+          "resume": "future就绪后请求才可用于语法采样。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/__init__.py",
+              "line": 179,
+              "label": "线程池提交边界",
+              "end": 187
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/__init__.py",
+              "line": 189,
+              "label": "实际实现",
+              "end": 211
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第2步：等待后的grammar状态",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第2步：等待后的grammar状态（B偏好场景）",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ],
+          "note": "本页同步调度指生成批次不重叠；不等于grammar编译没有线程池。第2步展示编译完成状态，不模拟线程耗时。"
+        },
+        {
+          "id": "compile",
+          "parent": "compile-task",
+          "number": "1.1.1.1",
+          "kind": "调用",
+          "title": "XgrammarBackend.compile_grammar()",
+          "summary": "把JSON约束交给外部编译器并建立matcher。",
+          "input": "request_type=JSON；schema和tokenizer/vocab上下文。",
+          "changes": "compiler.compile_json_schema，随后构造xgr.GrammarMatcher。",
+          "output": "XgrammarGrammar包装本请求matcher。",
+          "resume": "返回_create_grammar，完成编译future。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/__init__.py",
+              "line": 204,
+              "label": "调用位置",
+              "end": 206
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/backend_xgrammar.py",
+              "line": 86,
+              "label": "实际实现",
+              "end": 116
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/backend_xgrammar.py",
+              "line": 156,
+              "label": "实际实现",
+              "end": 164
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第2步：建立q0教学状态",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第2步：建立q0教学状态（B偏好场景）",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "compiler",
+          "parent": "compile",
+          "number": "1.1.1.1.1",
+          "kind": "边界",
+          "title": "xgrammar编译器 / GrammarMatcher",
+          "summary": "外部库消费Schema和tokenizer字节映射。",
+          "input": "JSON Schema、TokenzierInfo、stop token设置。",
+          "changes": "编译有效语言，建立可推进的匹配状态。",
+          "output": "可执行fill_next_token_bitmask/accept_token的matcher。",
+          "resume": "返回本地XgrammarBackend包装层。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/backend_xgrammar.py",
+              "line": 111,
+              "label": "外部JSON编译调用",
+              "end": 116
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/backend_xgrammar.py",
+              "line": 156,
+              "label": "外部matcher构造",
+              "end": 164
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第2步：编译契约",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第2步：编译契约（B偏好场景）",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ],
+          "note": "未运行外部xgrammar。6词词表、无空白语言、q0…q4是显式教学投影；不声称真实tokenizer产生相同mask。"
+        },
+        {
+          "id": "engine",
+          "parent": null,
+          "number": "2",
+          "kind": "调用",
+          "title": "EngineCore.step()",
+          "summary": "每轮先前向、构造本轮mask，再条件调用采样。",
+          "input": "grammar已就绪；GPU MRV1、async_scheduling=False。",
+          "changes": "schedule→execute→get_grammar_bitmask；执行返回None则sample_tokens；最后回写。",
+          "output": "当前轮真实token与新的CPU grammar状态。",
+          "resume": "下一次step依据更新后的matcher重新构造mask。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 644,
+              "label": "实际实现",
+              "end": 673
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第4步：q1 mask",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第6步：GPU候选",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第7步：CPU接受",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：q1 mask（B偏好场景）",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ],
+          "note": "第3、8、9步分别概括一个完整生成轮；第4–7步细看枚举值这一轮。根1是输入线程阶段，根2是引擎主循环，不是父子调用。"
+        },
+        {
+          "id": "get-mask",
+          "parent": "engine",
+          "number": "2.1",
+          "kind": "调用",
+          "title": "Scheduler.get_grammar_bitmask()",
+          "summary": "收集本轮需要约束的请求并返回GrammarOutput。",
+          "input": "SchedulerOutput中has_structured_output_requests=True。",
+          "changes": "过滤正在采样的结构化请求；调用manager.grammar_bitmask。",
+          "output": "请求ID顺序和bitmask数组。",
+          "resume": "回到EngineCore，传给本轮sample_tokens。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 656,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1994,
+              "label": "实际实现",
+              "end": 2023
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第4步：本轮q1合法集合",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：本轮q1合法集合（B偏好场景）",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "manager-mask",
+          "parent": "get-mask",
+          "number": "2.1.1",
+          "kind": "调用",
+          "title": "StructuredOutputManager.grammar_bitmask()",
+          "summary": "按请求顺序填充本轮采样位置。",
+          "input": "请求matcher；无draft token，只有本轮采样位置。",
+          "changes": "小批量路径调用_fill_bitmasks一次；数组可复用。",
+          "output": "CPU int32位掩码：教学q1为word 6。",
+          "resume": "返回Scheduler包装GrammarOutput。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2011,
+              "label": "调用位置",
+              "end": 2015
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/__init__.py",
+              "line": 330,
+              "label": "实际实现",
+              "end": 352
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/__init__.py",
+              "line": 392,
+              "label": "实际实现",
+              "end": 407
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/__init__.py",
+              "line": 438,
+              "label": "实际实现",
+              "end": 460
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第4步：mask=6",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：mask=6（B偏好场景）",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "fill",
+          "parent": "manager-mask",
+          "number": "2.1.1.1",
+          "kind": "调用",
+          "title": "StructuredOutputManager._fill_bitmasks()",
+          "summary": "仅在需约束且未终止时填合法集合。",
+          "input": "grammar、目标row index、apply_bitmask=True。",
+          "changes": "调用grammar.fill_bitmask；其他路径可写全允许mask。",
+          "output": "当前请求的约束行。",
+          "resume": "返回grammar_bitmask，继续组装矩阵。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/__init__.py",
+              "line": 447,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/__init__.py",
+              "line": 213,
+              "label": "实际实现",
+              "end": 224
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第4步：两个合法token位",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：两个合法token位（B偏好场景）",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "x-fill",
+          "parent": "fill",
+          "number": "2.1.1.1.1",
+          "kind": "调用",
+          "title": "XgrammarGrammar.fill_bitmask()",
+          "summary": "由matcher当前状态产生允许的token位。",
+          "input": "q1教学状态尚未接受A/B。",
+          "changes": "调用外部matcher.fill_next_token_bitmask。",
+          "output": "允许IDs [1,2]，低位语义下word=2¹+2²=6。",
+          "resume": "返回_fill_bitmasks，不推进matcher状态。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/__init__.py",
+              "line": 219,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/backend_xgrammar.py",
+              "line": 241,
+              "label": "实际实现",
+              "end": 242
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第4步：matcher不推进",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：matcher不推进（B偏好场景）",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ],
+          "note": "本地代码确认填充接口；示例mask来自教学词表状态机，真实bitmask由外部库决定。"
+        },
+        {
+          "id": "sample",
+          "parent": "engine",
+          "number": "2.2",
+          "kind": "调用",
+          "title": "UniProcExecutor.sample_tokens()（条件）",
+          "summary": "普通生成MRV1 execute返回None后才调用。",
+          "input": "前向已保存logits；GrammarOutput包含请求ID与mask。",
+          "changes": "通过Executor派发给Worker。",
+          "output": "本页同步等待ModelRunnerOutput。",
+          "resume": "回到EngineCore.step更新Scheduler。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 661,
+              "label": "条件调用位置",
+              "end": 663
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 134,
+              "label": "实际实现",
+              "end": 142
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第5步：mask进入采样",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第6步：选出候选",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第5步：mask进入采样（B偏好场景）",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ],
+          "note": "选定普通生成路径会进入此分支；不把sample_tokens描述为所有引擎配置的必经调用。"
+        },
+        {
+          "id": "sample-worker",
+          "parent": "sample",
+          "number": "2.2.1",
+          "kind": "边界",
+          "title": "UniProcExecutor → Worker.sample_tokens()",
+          "summary": "单进程host调用边界，传递GrammarOutput。",
+          "input": "结构化请求ID与CPU bitmask。",
+          "changes": "run_method调用Worker，再调用model_runner.sample_tokens。",
+          "output": "GPU采样后的同步结果。",
+          "resume": "返回Executor和EngineCore。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 137,
+              "label": "调用位置",
+              "end": 142
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/executor/uniproc_executor.py",
+              "line": 102,
+              "label": "实际实现",
+              "end": 106
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_worker.py",
+              "line": 1260,
+              "label": "实际实现",
+              "end": 1263
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第5步：采样前mask已就绪",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第5步：采样前mask已就绪（B偏好场景）",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "sample-runner",
+          "parent": "sample-worker",
+          "number": "2.2.1.1",
+          "kind": "调用",
+          "title": "GPUModelRunner.sample_tokens()",
+          "summary": "先施加grammar mask，再执行采样。",
+          "input": "execute_model_state.logits与GrammarOutput。",
+          "changes": "调用apply_grammar_bitmask，然后_sample。",
+          "output": "高分非法C被排除，合法A或B胜出。",
+          "resume": "整理CPU结果后返回Worker。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_worker.py",
+              "line": 1263,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4480,
+              "label": "实际实现",
+              "end": 4516
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第5步：施加mask",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第6步：合法候选",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第5步：施加mask（B偏好场景）",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "apply",
+          "parent": "sample-runner",
+          "number": "2.2.1.1.1",
+          "kind": "调用",
+          "title": "apply_grammar_bitmask()",
+          "summary": "请求ID行对齐后将mask送入设备。",
+          "input": "grammar请求顺序、input_batch实际行顺序、GPU logits。",
+          "changes": "排序/扩展mask行，to(logits.device,non_blocking=True)，调用xgrammar设备掩码。",
+          "output": "A偏好masked=[−∞,4,2,−∞,−∞,−∞]；B偏好=[−∞,2,4,−∞,−∞,−∞]。",
+          "resume": "返回sample_tokens，进入_sample。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4511,
+              "label": "调用位置",
+              "end": 4513
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/utils.py",
+              "line": 101,
+              "label": "实际实现",
+              "end": 118
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/utils.py",
+              "line": 129,
+              "label": "实际实现",
+              "end": 177
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第5步：非法C变−∞",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第5步：非法C变−∞（B偏好场景）",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "mask-device",
+          "parent": "apply",
+          "number": "2.2.1.1.1.1",
+          "kind": "边界",
+          "title": "xgr.apply_token_bitmask_inplace()",
+          "summary": "外部设备算子按bitmask原位屏蔽logits。",
+          "input": "GPU logits、已对齐GPU mask、必要的行索引。",
+          "changes": "非法token的logit写为−∞。",
+          "output": "只剩A/B合法分数；不会因为C=9而选择C。",
+          "resume": "返回apply_grammar_bitmask，保留同一logits张量供采样。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/utils.py",
+              "line": 160,
+              "label": "H2D与外部设备mask调用",
+              "end": 177
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第5步：mask后的logits",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第5步：mask后的logits（B偏好场景）",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ],
+          "note": "4 B仅为教学1个int32有效payload，不含真实词表、padding、协议或其他元数据。未展开外部kernel实现。"
+        },
+        {
+          "id": "sample-internal",
+          "parent": "sample-runner",
+          "number": "2.2.1.1.2",
+          "kind": "调用",
+          "title": "GPUModelRunner._sample()",
+          "summary": "无推测解码时调用普通Sampler。",
+          "input": "已经masked的logits；all_greedy=True。",
+          "changes": "更新必要的采样状态，再调用self.sampler。",
+          "output": "SamplerOutput包含选中的GPU token。",
+          "resume": "返回sample_tokens，进行回报整理。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4516,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 3603,
+              "label": "实际实现",
+              "end": 3617
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第6步：合法选择",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第6步：合法选择（B偏好场景）",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "sampler",
+          "parent": "sample-internal",
+          "number": "2.2.1.1.2.1",
+          "kind": "调用",
+          "title": "Sampler.forward() → Sampler.sample()",
+          "summary": "nn.Module调用进入forward，随后执行采样规则。",
+          "input": "masked logits和SamplingMetadata。",
+          "changes": "forward调用sample；all_greedy分支调用greedy_sample。",
+          "output": "A场景选ID1；B场景选ID2。",
+          "resume": "返回GPUModelRunner._sample。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 3614,
+              "label": "调用位置",
+              "end": 3617
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/sample/sampler.py",
+              "line": 73,
+              "label": "实际实现",
+              "end": 105
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/sample/sampler.py",
+              "line": 247,
+              "label": "实际实现",
+              "end": 274
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第6步：temperature=0选A",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第6步：temperature=0选B（B偏好场景）",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ],
+          "note": "图中的softmax概率只解释mask，greedy分支不随机抽样；后续数值场景可切换为B。"
+        },
+        {
+          "id": "greedy",
+          "parent": "sampler",
+          "number": "2.2.1.1.2.1.1",
+          "kind": "调用",
+          "title": "Sampler.greedy_sample()",
+          "summary": "对合法logits执行argmax。",
+          "input": "A偏好合法logits为A=4、B=2；B偏好为A=2、B=4。",
+          "changes": "torch.argmax(logits,dim=-1)。",
+          "output": "A偏好选GPU ID1，B偏好选ID2；CPU matcher仍是q1。",
+          "resume": "返回sample，再经forward返回runner。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/sample/sampler.py",
+              "line": 263,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/sample/sampler.py",
+              "line": 242,
+              "label": "实际实现",
+              "end": 245
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第6步：GPU已有A，CPU尚未接受",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第6步：GPU已有B，CPU尚未接受（B偏好场景）",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "update",
+          "parent": "engine",
+          "number": "2.3",
+          "kind": "调用",
+          "title": "Scheduler.update_from_output()",
+          "summary": "真实token回报后才推进CPU grammar。",
+          "input": "ModelRunnerOutput中的真实ID1或2。",
+          "changes": "更新请求输出，再调用structured_output_manager.accept_tokens。",
+          "output": "CPU grammar q1→q2；下一轮可构造闭引号mask。",
+          "resume": "返回EngineCoreOutputs，下轮重新执行step。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/engine/core.py",
+              "line": 668,
+              "label": "调用位置",
+              "end": 670
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2166,
+              "label": "实际实现",
+              "end": 2196
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第7步：CPU接受A",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第7步：CPU接受B（B偏好场景）",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "accept-manager",
+          "parent": "update",
+          "number": "2.3.1",
+          "kind": "调用",
+          "title": "StructuredOutputManager.accept_tokens()",
+          "summary": "截取受约束的新增token并交给grammar。",
+          "input": "request和new_token_ids；本例无reasoning前缀。",
+          "changes": "确认结构化请求与有效新token，调用grammar.accept_tokens。",
+          "output": "布尔接受结果。",
+          "resume": "返回Scheduler；拒绝会将请求标为错误。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2185,
+              "label": "调用位置",
+              "end": 2187
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/__init__.py",
+              "line": 462,
+              "label": "实际实现",
+              "end": 482
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第7步：真实回报推进状态",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第9步：接受EOS",
+              "action": {
+                "step": 9,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第7步：真实回报推进状态（B偏好场景）",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "accept-grammar",
+          "parent": "accept-manager",
+          "number": "2.3.1.1",
+          "kind": "调用",
+          "title": "XgrammarGrammar.accept_tokens()",
+          "summary": "逐个接受真实token，更新matcher状态。",
+          "input": "例如ID1，然后下一轮ID0，再下一轮ID5。",
+          "changes": "对每个ID调用matcher.accept_token，并更新已处理计数。",
+          "output": "q1→q2→q3→q4教学状态；最终终止。",
+          "resume": "返回accept_tokens布尔值，再回Scheduler。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/__init__.py",
+              "line": 482,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/backend_xgrammar.py",
+              "line": 190,
+              "label": "实际实现",
+              "end": 212
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第7步：接受A",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第8步：接受闭引号",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第9步：接受EOS",
+              "action": {
+                "step": 9,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第7步：接受B（B偏好场景）",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "matcher-accept",
+          "parent": "accept-grammar",
+          "number": "2.3.1.1.1",
+          "kind": "边界",
+          "title": "matcher.accept_token() / is_terminated()",
+          "summary": "外部matcher消费已确认token。",
+          "input": "真实回报token，不是尚未回报的GPU候选。",
+          "changes": "依据编译语法推进状态，检测终止。",
+          "output": "接受或拒绝，以及终止状态。",
+          "resume": "返回XgrammarGrammar.accept_tokens。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/structured_output/backend_xgrammar.py",
+              "line": 199,
+              "label": "外部matcher推进调用",
+              "end": 212
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第7步：状态推进",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第9步：终止",
+              "action": {
+                "step": 9,
+                "params": {
+                  "scenario": "prefer-a"
+                }
+              }
+            },
+            {
+              "label": "跳到第7步：状态推进（B偏好场景）",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "prefer-b"
+                }
+              }
+            }
+          ],
+          "note": "q0…q4是教学标签；外部库的内部状态结构不在本地仓库内。"
+        }
+      ]
+    }
+  ]
+}

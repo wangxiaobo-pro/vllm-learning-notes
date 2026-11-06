@@ -1,0 +1,892 @@
+<!doctype html>
+<html lang="zh-CN" data-lesson-topic="multi-lora" data-lesson-palette="mcp">
+<head>
+<meta charset="utf-8">
+<!-- learning-scope-style:start -->
+<style>
+.learning-scope-shell{box-sizing:border-box;max-width:960px;width:calc(100% - 32px);margin:16px auto 0;font:13px/1.6 system-ui,"Microsoft YaHei",sans-serif;color:#344454}
+.learning-scope{border:1px solid #dce3e9;border-radius:8px;background:#f7f9fb;overflow-wrap:anywhere}
+.learning-scope>summary{display:list-item;list-style:disclosure-closed inside;cursor:pointer;padding:9px 12px;font-size:13px;line-height:1.6;color:inherit}
+.learning-scope[open]>summary{list-style-type:disclosure-open}
+.learning-scope>summary:focus-visible{outline:2px solid #287cb8;outline-offset:3px}
+.learning-scope-kind{font-weight:650;color:#24668f}
+.learning-scope-hint{font-size:11px;opacity:.7;margin-left:6px}
+.learning-scope[open] .learning-scope-hint{display:none}
+.learning-scope dl{display:grid;grid-template-columns:88px minmax(0,1fr);gap:7px 12px;margin:0;padding:3px 12px 13px}
+.learning-scope dt{font-weight:600}.learning-scope dd{margin:0}
+@media(max-width:480px){.learning-scope dl{grid-template-columns:1fr;gap:3px}.learning-scope dd+dt{margin-top:6px}}
+:root[data-theme=dark] .learning-scope-shell{color:#c5d1dc}:root[data-theme=dark] .learning-scope{background:#1b242d;border-color:#384550}:root[data-theme=dark] .learning-scope-kind{color:#9bcaf0}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .learning-scope-shell{color:#c5d1dc}:root:not([data-theme=light]) .learning-scope{background:#1b242d;border-color:#384550}:root:not([data-theme=light]) .learning-scope-kind{color:#9bcaf0}}
+</style>
+<!-- learning-scope-style:end -->
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>交互学习 · vLLM 学习笔记</title>
+<style>body{margin:0}</style>
+<!-- lesson-theme:start -->
+<style>
+/* Scheduler palette. Inlined into each document by scripts/build_learning_ui.py. */
+:root {
+  color-scheme:light !important;
+  --lesson-bg:#f5f5ef; --lesson-panel:#fffefa; --lesson-ink:#192923;
+  --lesson-muted:#52655b; --lesson-line:#d5ddd2; --lesson-grid:#e4e8e0;
+  --lesson-green:#12634b; --lesson-mint:#e7f3e8; --lesson-amber:#8a4a18;
+  --lesson-sand:#fcf0dc; --lesson-shade:#f0f3eb;
+}
+@media(prefers-color-scheme:dark) {
+  :root:not([data-theme=light]) {
+    color-scheme:dark !important;
+    --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+    --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+    --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+    --lesson-sand:#473625; --lesson-shade:#212f27;
+  }
+}
+:root[data-theme=dark] {
+  color-scheme:dark !important;
+  --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+  --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+  --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+  --lesson-sand:#473625; --lesson-shade:#212f27;
+}
+:root {
+  --bg:var(--lesson-bg) !important; --background:var(--lesson-bg) !important;
+  --panel:var(--lesson-panel) !important; --surface:var(--lesson-panel) !important;
+  --card:var(--lesson-panel) !important; --popover:var(--lesson-panel) !important;
+  --ink:var(--lesson-ink) !important; --fg:var(--lesson-ink) !important;
+  --text:var(--lesson-ink) !important; --foreground:var(--lesson-ink) !important;
+  --card-foreground:var(--lesson-ink) !important; --popover-foreground:var(--lesson-ink) !important;
+  --muted-foreground:var(--lesson-muted) !important; --sub:var(--lesson-muted) !important;
+  --line:var(--lesson-line) !important; --border:var(--lesson-line) !important;
+  --grid:var(--lesson-grid) !important; --shade:var(--lesson-shade) !important;
+  --muted:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+  --accent-foreground:var(--lesson-ink) !important;
+  --primary:var(--lesson-green) !important; --primary-foreground:var(--lesson-panel) !important;
+  --accent-soft:var(--lesson-mint) !important; --hover:var(--lesson-shade) !important;
+  --mint:var(--lesson-mint) !important; --sand:var(--lesson-sand) !important;
+  --color-background-primary:var(--lesson-bg) !important;
+  --color-background-secondary:var(--lesson-panel) !important;
+  --color-background-tertiary:var(--lesson-shade) !important;
+  --color-text-primary:var(--lesson-ink) !important;
+  --color-text-secondary:var(--lesson-muted) !important;
+  --color-border-secondary:var(--lesson-line) !important;
+  --viz-panel:var(--lesson-panel) !important;
+  --viz-border:var(--lesson-line) !important;
+  --viz-muted:var(--lesson-muted) !important;
+  background:var(--lesson-bg) !important;
+}
+:root[data-lesson-palette=text] {
+  --muted:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+}
+:root[data-lesson-topic=model-architecture] {
+  --soft:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+}
+:root[data-lesson-palette=matrix] {
+  --soft:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+  --wash:var(--lesson-mint) !important;
+}
+body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !important; }
+.learning-scope-shell { color:var(--lesson-muted) !important; }
+.learning-scope { background:var(--lesson-shade) !important; border-color:var(--lesson-line) !important; }
+.learning-scope-kind { color:var(--lesson-green) !important; }
+</style>
+<!-- lesson-theme:end -->
+</head>
+<body>
+<!-- learning-scope:start -->
+<aside class="learning-scope-shell" aria-label="本页范围与源码版本">
+<details class="learning-scope">
+<summary><span class="learning-scope-kind">源码快照</span> 本页范围与源码版本 <span class="learning-scope-hint">展开查看</span></summary>
+<dl><dt>源码基线</dt><dd>vLLM 295c062db8 · V1</dd>
+<dt>后端与配置</dt><dd>GPU MRV1 · 单卡同步 · ReplicatedLinearWithLoRA · 无量化</dd>
+<dt>流程范围</dt><dd>CPU cache / GPU active slots、token 行映射及 base + LoRA 增量。</dd>
+<dt>教学假设</dt><dd>两个 rank=1 适配器、3 请求/4 token 行；2×2 矩阵仅显示有效元素。</dd></dl>
+</details>
+</aside>
+<!-- learning-scope:end -->
+<!-- lesson-workbench:start -->
+<style>
+.lesson-workbench { max-width:960px; margin:24px auto; padding:0 16px 24px; box-sizing:border-box; font:14px/1.65 system-ui,"Microsoft YaHei",sans-serif; color:var(--lesson-ink); }
+.lesson-workbench * { box-sizing:border-box; }
+.lesson-workbench [hidden] { display:none !important; }
+.lesson-workbench h1,.lesson-workbench h2,.lesson-workbench h3,.lesson-workbench p { margin:0; }
+.lesson-workbench a { color:var(--lesson-green); text-underline-offset:3px; overflow-wrap:anywhere; }
+.lw-header>a { font-size:12px; text-decoration:none; }
+.lw-kicker { margin-top:20px !important; color:var(--lesson-green); font-size:12px; letter-spacing:.06em; }
+.lw-header h1 { font-size:clamp(25px,4vw,36px); line-height:1.3; margin:7px 0 12px; letter-spacing:-.03em; }
+.lw-subtitle { color:var(--lesson-muted); font-size:15px; }
+.lw-scope { margin:18px 0 !important; padding:12px 14px; background:var(--lesson-shade); border-left:3px solid var(--lesson-green); font-size:12px; overflow-wrap:anywhere; }
+.lw-controls { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr)); gap:12px; margin:20px 0; }
+.lw-field { display:flex; flex-direction:column; gap:5px; min-width:0; color:var(--lesson-muted); font-size:12px; }
+.lw-field input,.lw-field select { width:100%; min-width:0; padding:8px 10px; color:var(--lesson-ink); background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:6px; font:14px system-ui,"Microsoft YaHei",sans-serif; }
+.lw-field input[type=range] { padding:9px 0; accent-color:var(--lesson-green); }
+.lw-field output { color:var(--lesson-green); font-variant-numeric:tabular-nums; }
+.lw-toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:12px 0; border-block:1px solid var(--lesson-line); }
+.lesson-workbench button { cursor:pointer; color:var(--lesson-ink); font:inherit; }
+.lw-toolbar button { padding:6px 11px; background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:6px; font-size:13px; }
+.lw-toolbar button[aria-pressed=true] { background:var(--lesson-mint); border-color:var(--lesson-green); color:var(--lesson-green); }
+.lw-toolbar button:disabled { cursor:default; opacity:.4; }
+.lw-counter { margin-left:auto; color:var(--lesson-muted); font-size:12px; }
+.lesson-workbench :is(button,input,select,a,summary):focus-visible { outline:3px solid var(--lesson-amber); outline-offset:3px; }
+.lw-current { padding:17px 0 12px; }
+.lw-current h2 { font-size:19px; line-height:1.45; }
+.lw-current p { margin-top:6px; color:var(--lesson-muted); }
+.lw-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr)); gap:9px; margin:10px 0 18px; }
+.lw-metric { min-width:0; padding:10px 13px; background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:8px; }
+.lw-metric span { display:block; color:var(--lesson-muted); font-size:11px; }
+.lw-metric strong { display:block; font-size:19px; line-height:1.45; color:var(--lesson-green); overflow-wrap:anywhere; }
+.lw-figure { margin:0; border:1px solid var(--lesson-line); border-radius:12px; background:var(--lesson-panel); padding:10px; }
+.lw-figure svg { display:block; width:100%; height:auto; overflow:visible; font-family:system-ui,"Microsoft YaHei",sans-serif; }
+.lw-figure figcaption { padding:5px 5px 8px; color:var(--lesson-muted); font-size:11px; }
+.lw-equation { margin-top:16px; padding:12px; border:1px solid var(--lesson-line); border-radius:7px; background:var(--lesson-mint); font:13px/1.8 ui-monospace,Consolas,"Microsoft YaHei",monospace; overflow-wrap:anywhere; white-space:pre-wrap; }
+.lw-details { display:grid; gap:16px; margin:16px 0; }
+.lw-table-card,.lw-plot { min-width:0; padding:14px; border:1px solid var(--lesson-line); background:var(--lesson-panel); border-radius:9px; }
+.lw-table-card h3,.lw-plot h3 { margin-bottom:9px; font-size:15px; }
+.lw-table-scroll { overflow:auto; max-width:100%; }
+.lw-table-card table { border-collapse:collapse; width:100%; table-layout:fixed; font-size:12px; }
+.lw-table-card th,.lw-table-card td { text-align:left; padding:7px 8px; border:1px solid var(--lesson-line); overflow-wrap:anywhere; vertical-align:top; white-space:pre-wrap; }
+.lw-table-card th { background:var(--lesson-shade); font-weight:650; }
+.lw-plot svg { display:block; width:100%; height:auto; font-family:system-ui,"Microsoft YaHei",sans-serif; }
+.lw-legend { display:flex; flex-wrap:wrap; gap:4px 15px; color:var(--lesson-muted); font-size:12px; margin-top:8px; }
+.lw-legend span::before { content:''; display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; background:var(--swatch,var(--lesson-green)); }
+.lw-plot-caption { color:var(--lesson-muted); font-size:11px; margin-top:8px !important; overflow-wrap:anywhere; }
+.lw-notes { margin:18px 0; padding:13px 15px; background:var(--lesson-sand); border-left:3px solid var(--lesson-amber); border-radius:0 6px 6px 0; font-size:12px; }
+.lw-notes p+p { margin-top:6px; }
+.lw-steps { margin:22px 0; }
+.lw-steps h2 { margin-bottom:10px; font-size:19px; }
+.lw-steps ol { margin:0; padding:0; list-style:none; display:grid; gap:7px; }
+.lw-step-button { display:grid; grid-template-columns:30px minmax(0,1fr); width:100%; padding:10px; gap:8px; text-align:left; background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:7px; }
+.lw-step-button[aria-current=true] { border-color:var(--lesson-green); background:var(--lesson-mint); }
+.lw-step-button b { font-size:12px; color:var(--lesson-green); }
+.lw-step-button strong { display:block; font-size:13px; }
+.lw-step-button small { display:block; margin-top:3px; color:var(--lesson-muted); font-size:12px; }
+.lw-sources { border-top:1px solid var(--lesson-line); padding-top:16px; margin-top:24px; font-size:12px; }
+.lw-sources summary { cursor:pointer; font-weight:650; }
+.lw-sources a,.lw-related a { display:block; margin-top:6px; }
+.lw-related { margin-top:20px; font-size:12px; }
+.lw-status { color:var(--lesson-amber); font-size:12px; min-height:1.5em; }
+@media(max-width:500px) { .lw-table-card,.lw-plot { padding:10px; } .lw-table-card td,.lw-table-card th { padding:6px 4px; } .lw-counter { flex-basis:100%; margin:0; } .lw-figure { padding:4px; } }
+@media print { .lw-controls,.lw-toolbar,.lw-step-button { break-inside:avoid; } }
+</style>
+<main class="lesson-workbench" id="lesson-workbench" data-topic="multi-lora"></main>
+<noscript>请启用 JavaScript 查看逐步演算；源码与范围说明仍可阅读。</noscript>
+<script>
+(() => {
+  const SHA='295c062db8a48ea73bbd05d1174cb37d24bf86f9',base='https://github.com/vllm-project/vllm/blob/'+SHA+'/';
+  window.LESSON={title:'Multi-LoRA：同一批次按行选择适配器',subtitle:'两个 adapter、三个请求、四行 token：从CPU权重和GPU槽位到shrink/expand增量。',kind:'框架机制',
+    controls:[{id:'scenario',label:'GPU槽位布局',type:'select',value:'mixed',options:[{value:'mixed',label:'slot0=α，slot1=β'},{value:'slot-swap',label:'交换slot：输出应保持一致'}]}],
+    build(params){
+      const scenario=params.scenario||'mixed';if(!['mixed','slot-swap'].includes(scenario))throw new Error('未知槽位场景');
+      const X=[[1,2],[2,0],[0,1],[1,-1]],W=[[1,0],[0,2]];
+      const adapters=[{id:101,name:'α',rank:1,alpha:1,A:[[1,1]],B:[[2],[-1]]},{id:202,name:'β',rank:1,alpha:2,A:[[1,-1]],B:[[1],[2]]}].map(a=>({...a,scale:a.alpha/a.rank,scaledB:a.B.map(row=>row.map(v=>v*a.alpha/a.rank))}));
+      const rows=[{request:'R1',position:0,adapter:101},{request:'R1',position:1,adapter:101},{request:'R2',position:0,adapter:202},{request:'R3',position:0,adapter:0}];
+      const slots=scenario==='mixed'?[101,202]:[202,101],tokenIds=rows.map(r=>r.adapter),slotIndices=tokenIds.map(id=>id===0?-1:slots.indexOf(id));
+      const dot=(a,b)=>a.reduce((sum,v,i)=>sum+v*b[i],0),y0=X.map(x=>W.map(w=>dot(x,w)));
+      const shrink=X.map((x,i)=>slotIndices[i]<0?0:dot(x,adapters.find(a=>a.id===slots[slotIndices[i]]).A[0]));
+      const delta=X.map((x,i)=>slotIndices[i]<0?[0,0]:adapters.find(a=>a.id===slots[slotIndices[i]]).scaledB.map(row=>row[0]*shrink[i]));
+      const Y=y0.map((row,i)=>row.map((v,j)=>v+delta[i][j]));
+      const m=x=>JSON.stringify(x),slotText=slots.map((id,i)=>'slot'+i+'→'+id).join('；');
+      const mappingTable=stage=>({title:'控制映射：请求ID → adapter ID → GPU槽位',headers:['token行','请求/位置','adapter ID','slot index'],rows:rows.map((r,i)=>[i,r.request+'/'+r.position,r.adapter,stage>=4?slotIndices[i]:'待映射'])});
+      const weightsTable={title:'有效权重（存储约定：A[r,in]、B[out,r]）',headers:['adapter','A','原 B','α/r','折叠后 B'],rows:adapters.map(a=>[a.name+' / '+a.id,m(a.A),m(a.B),a.scale,m(a.scaledB)])};
+      const matrixTable=(stage)=>({title:'逐行算例（尚未执行的结果保持等待）',headers:['请求/行','x','base y0','shrink h','LoRA Δy','最终 y'],rows:rows.map((r,i)=>[r.request+'/'+r.position,m(X[i]),stage>=5?m(y0[i]):'等待',stage>=6?shrink[i]:'等待',stage>=7?m(delta[i]):'等待',stage>=8?m(Y[i]):'等待'])});
+      const state=stage=>({
+        requests:'R1:2行→α(101)；R2:1行→β(202)；R3:1行→base(0)。token adapter IDs='+m(tokenIds),
+        checkpoints:'α A='+m(adapters[0].A)+' B='+m(adapters[0].B)+'；β A='+m(adapters[1].A)+' B='+m(adapters[1].B),
+        cpu:stage>=2?'两个adapter已加载至CPU；β缩放2已折叠进B='+m(adapters[1].scaledB):'尚未加载 CPU adapter',
+        slots:stage>=3?slotText+'。权重按槽写入，不按token复制一套权重。':'GPU adapter slots 尚未激活',
+        mapping:stage>=4?'token_lora_indices='+m(slotIndices)+'；base行=-1。prompt_mapping只含请求采样行，与token mapping长度不同。':'尚未建立 Punica 行映射',
+        input:'X='+m(X)+'；W[out,in]='+m(W)+'；bias=0，TP=1。',
+        base:stage>=5?'y0=X·Wᵀ='+m(y0):'base linear 尚未执行',
+        shrink:stage>=6?'有效低秩贡献 h=x·Aᵀ='+m(shrink)+'；base行跳过LoRA；图中0是数学贡献，不指未使用buffer字节。':'尚未执行 shrink',
+        expand:stage>=7?'Δy=h·B_scaledᵀ='+m(delta):'尚未执行 expand',
+        output:stage>=8?'y=y0+Δy='+m(Y):'尚未合并最终输出',
+        consumer:stage>=9?'R1→'+m(Y.slice(0,2))+'；R2→'+m(Y[2])+'；R3→'+m(Y[3]):'下游层等待本层输出'
+      });
+      const nd=(id,title,lane,row,col,readyAt=0)=>({id,title,lane,row,col,readyAt,detail:state(9)[id]});
+      const edges=[
+        {id:'ids',from:'requests',to:'mapping',label:'①④ 控制：token/request → adapter ID',steps:[1,4]},
+        {id:'load',from:'checkpoints',to:'cpu',label:'② 数据：LoRA A/B checkpoint → CPU',steps:[2]},
+        {id:'activate',from:'cpu',to:'slots',label:'③ 数据：A/B张量 copy_ CPU→GPU',steps:[3]},
+        {id:'slots-map',from:'slots',to:'mapping',label:'④ 控制：lora_index_to_id → slot indices',steps:[4]},
+        {id:'x-base',from:'input',to:'base',label:'⑤ 数据：X与base权重W',steps:[5]},
+        {id:'x-shrink',from:'input',to:'shrink',label:'⑥ 数据：同一X',steps:[6]},
+        {id:'map-shrink',from:'mapping',to:'shrink',label:'⑥ 控制：每行选A槽，-1跳过',steps:[6]},
+        {id:'a',from:'slots',to:'shrink',label:'⑥ 数据：A[slot,r,in]',steps:[6]},
+        {id:'h',from:'shrink',to:'expand',label:'⑦ 数据：低秩h，内部可用FP32缓冲',steps:[7]},
+        {id:'b',from:'slots',to:'expand',label:'⑦ 数据：B_scaled[slot,out,r]',steps:[7]},
+        {id:'map-expand',from:'mapping',to:'expand',label:'⑦ 控制：每行选同一个adapter槽',steps:[7]},
+        {id:'base-out',from:'base',to:'output',label:'⑧ 数据：共享base结果',steps:[8]},
+        {id:'delta',from:'expand',to:'output',label:'⑧ 数据：对应行增量，相加一次',steps:[8]},
+        {id:'consume',from:'output',to:'consumer',label:'⑨ 数据：保持原请求/行顺序',steps:[9]}
+      ];
+      const texts=[['请求归属与两套 adapter','同一批中的R1/R2选择不同适配器，R3使用base；共享模型权重W只有一套。'],['CPU加载与缩放折叠','Worker加载本地adapter到CPU。α/r折叠进B；后续Punica scale=1，不能再乘一次。'],['激活 GPU slots','把两套有效A/B写入GPU槽。这里选定合法的槽布局，不声称set遍历或LRU永远给固定槽号。'],['构造 Punica mapping','先按token行展开adapter ID，再映射为当前GPU slot。交换slot布局后indices必须同步改变。'],['共享 base linear','所有行使用同一个W，计算y0；adapter归属不会改变base矩阵。'],['LoRA shrink','按每行slot选择A，把in=2压到r=1；base行不应用LoRA。'],['LoRA expand','同一行使用同一adapter的B_scaled，从r=1扩回out=2。'],['逐行相加得到最终输出','共享base输出加各自adapter增量；R3增量为零。图中分开观察，真实expand可直接原位累加到y0。'],['交给下游层','还原请求分组查看输出。两种GPU槽位布局得到同样数值，adapter身份不等于slot编号。']];
+      const active=[['requests','checkpoints'],['checkpoints','cpu'],['cpu','slots'],['requests','slots','mapping'],['input','base'],['input','slots','mapping','shrink'],['shrink','slots','mapping','expand'],['base','expand','output'],['output','consumer']];
+      return {scope:'vLLM '+SHA.slice(0,10)+'；GPU MRV1，TP=PP=DP=1，单层ReplicatedLinearWithLoRA、无量化、bias=0、同步调度；enable_lora，max_loras=2，max_cpu_loras≥2。教学rank=1、in=out=2；真实GPU槽可按max_lora_rank补齐，图中只展示有效元素，不把小矩阵尺寸当真实kernel性能或显存占用。',
+        nodes:[nd('requests','请求与adapter选择','CPU · Scheduler/Worker',0,0),nd('checkpoints','两个adapter文件','存储',0,1),nd('cpu','CPU adapter缓存','CPU DRAM',1,0,2),nd('slots','GPU adapter slots','GPU HBM',1,1,3),nd('mapping','Punica token/slot mapping','CPU → GPU 控制元数据',2,0,4),nd('input','输入X与共享W','GPU HBM',2,1),nd('base','共享base linear','GPU',3,0,5),nd('shrink','按adapter shrink','GPU',3,1,6),nd('expand','按adapter expand','GPU',4,1,7),nd('output','y0 + Δy','GPU',4,0,8),nd('consumer','下游层/请求行','GPU · 消费者',5,0,9)],edges,
+        steps:texts.map(([title,summary],i)=>({title,summary,activeNodes:active[i],activeEdges:edges.filter(e=>e.steps.includes(i+1)).map(e=>e.id),state:state(i+1),tables:[mappingTable(i+1),...(i>=1?[weightsTable]:[]),matrixTable(i+1)],equation:i>=4?'yᵢ = xᵢWᵀ + (xᵢA_adapter(i)ᵀ)B_scaled,adapter(i)ᵀ；base行Δy=0。':'B_scaled = (α/r)·B；运行时scale=1。',notes:['不同adapter的权重和行映射必须配对；只交换slot权重却不更新indices会把增量加错行。','JS矩阵为独立教学演算，未执行GPU/Punica kernel。控制ID传递与权重张量复制分别标注。']})),
+        metrics:[{label:'请求',value:3},{label:'token行',value:4},{label:'adapter / GPU槽',value:'2 / 2'}],tables:[mappingTable(9),weightsTable,matrixTable(0)],plots:[],notes:['CPU cache容量与GPU active slots是两层资源；此页不模拟LRU驱逐时序。','实际LoRA路径包含shape补齐、dtype与kernel约束；算例保留有效矩阵语义。'],audit:{scenario,X,W,adapters,rows,slots,tokenIds,slotIndices,y0,shrink,delta,Y}
+      };
+    },sources:[{label:'Runner激活LoRA与映射',url:base+'vllm/v1/worker/lora_model_runner_mixin.py#L83'},{label:'CPU加载与GPU激活',url:base+'vllm/lora/worker_manager.py#L289'},{label:'adapter到slot',url:base+'vllm/lora/model_manager.py#L350'},{label:'Punica shrink/expand',url:base+'vllm/lora/punica_wrapper/punica_gpu.py#L206'},{label:'缩放折叠到B',url:base+'vllm/lora/lora_weights.py#L37'}],related:[{label:'批处理',href:'../batching/index.html'},{label:'模型架构',href:'../model-architecture/index.html'}]
+  };
+})();
+/* Shared offline renderer. Lesson definitions own the calculations and state transitions. */
+(() => {
+  function mount() {
+    const root = document.getElementById('lesson-workbench'), lesson = window.LESSON;
+    if (!root || !lesson || window.lessonController) return;
+    const topic = root.dataset.topic, key = 'lesson-workbench:' + topic;
+    const controls = lesson.controls || [], defaults = Object.fromEntries(controls.map(c => [c.id,c.value]));
+    let params = {...defaults}, step = 0, result, resizeFrame;
+    const make = (tag,text,cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = String(text); if (cls) e.className = cls; return e; };
+    const svg = (tag,attrs = {},text) => { const e = document.createElementNS('http://www.w3.org/2000/svg',tag); for (const [k,v] of Object.entries(attrs)) e.setAttribute(k,String(v)); if (text !== undefined) e.textContent=String(text); return e; };
+    const context = document.createElement('canvas').getContext('2d');
+    function wrap(text,width,size=12) {
+      context.font = size + 'px system-ui,"Microsoft YaHei",sans-serif';
+      const lines = [];
+      for (const paragraph of String(text ?? '').split('\n')) {
+        let line = '';
+        for (const token of paragraph.match(/[A-Za-z0-9_.+-]+|./gu)||[]) {
+          const pieces=context.measureText(token).width>width?[...token]:[token];
+          for(const piece of pieces){
+            if (line && context.measureText(line+piece).width > width) { lines.push(line); line = piece; }
+            else line += piece;
+          }
+        }
+        lines.push(line);
+      }
+      return lines;
+    }
+    function textLines(parent,lines,x,y,size=12,color,anchor='start') {
+      const t = svg('text',{x,y,'font-size':size,fill:color,'text-anchor':anchor});
+      lines.forEach((line,i)=>t.append(svg('tspan',{x,dy:i ? size*1.5 : 0},line))); parent.append(t); return t;
+    }
+    const fmt = value => typeof value !== 'number' ? String(value) : !Number.isFinite(value) ? '—' : Math.abs(value)>=10000 || Math.abs(value)>0 && Math.abs(value)<.001 ? value.toExponential(2) : Number(value.toFixed(4)).toString();
+    function colors() {
+      const style = getComputedStyle(document.documentElement), get = name => style.getPropertyValue('--lesson-'+name).trim();
+      return {ink:get('ink'),muted:get('muted'),panel:get('panel'),line:get('line'),green:get('green'),mint:get('mint'),shade:get('shade'),sand:get('sand'),amber:get('amber'),series:[get('green'),get('amber'),'#568aad','#ad7099','#89954e','#856eb3']};
+    }
+    root.innerHTML = `<header class="lw-header"><a href="../index.html">← 学习流程目录</a><p class="lw-kicker"></p><h1></h1><p class="lw-subtitle"></p></header>
+      <p class="lw-scope"></p><form class="lw-controls" aria-label="教学参数"></form>
+      <nav class="lw-toolbar" aria-label="流程步骤"><button type="button" data-lw-global>全局关系</button><button type="button" data-lw-prev>上一步</button><button type="button" data-lw-next>下一步</button><button type="button" data-lw-reset>重置参数</button><span class="lw-counter"></span></nav>
+      <div class="lw-current" aria-live="polite"><h2></h2><p></p></div><div class="lw-metrics"></div>
+      <figure class="lw-figure"><svg role="img" aria-label="端到端数据流程"></svg><figcaption>箭头开头的数字对应下方执行步骤；卡片中的圈号仅标识组件。箭头表示字段、数据或通知的去向；数值和时间属于所声明的教学示例。</figcaption></figure>
+      <div class="lw-equation" hidden></div><div class="lw-details"></div><aside class="lw-notes"></aside>
+      <section class="lw-steps"><h2>完整编号流程</h2><ol></ol></section><details class="lw-sources"><summary>依据与适用范围</summary><div></div></details><nav class="lw-related" aria-label="相关学习主题"></nav><p class="lw-status" role="status"></p>`;
+    const $ = q => root.querySelector(q);
+    document.title = lesson.title + ' · vLLM 学习笔记';
+    $('.lw-header h1').textContent=lesson.title; $('.lw-kicker').textContent=lesson.kind || '交互学习'; $('.lw-subtitle').textContent=lesson.subtitle || '';
+    function validated(values,strict=false) {
+      const out={...defaults};
+      if (strict) for (const key of Object.keys(values)) if (!controls.some(c=>c.id===key)) throw new Error('未知参数：'+key);
+      for (const control of controls) {
+        const value=values[control.id] ?? control.value;
+        if (control.type==='select') {
+          if ((control.options||[]).some(o=>String(o.value)===String(value))) out[control.id]=String(value);
+          else if(strict) throw new Error('无效场景或选项：'+control.id);
+        } else {
+          const number=Number(value);
+          const ticks=(number-(control.min??0))/(Number(control.step)||1);
+          if (!Number.isFinite(number) || number<control.min || number>control.max || Math.abs(ticks-Math.round(ticks))>1e-7) {
+            if(strict) throw new Error('参数超出范围：'+control.id);
+          } else out[control.id]=number;
+        }
+      }
+      return out;
+    }
+    try { const saved=JSON.parse(localStorage.getItem(key)); if(saved) { params=validated(saved.params || {}); step=Number.isInteger(saved.step)?saved.step:0; } } catch {}
+    for (const control of controls) {
+      const field=make('label',undefined,'lw-field');field.dataset.control=control.id;
+      field.append(make('span',control.label));
+      const input=make(control.type==='select'?'select':'input'); input.name=control.id; input.setAttribute('aria-label',control.label);
+      if (control.type==='select') for(const option of control.options||[]) { const el=make('option',option.label);el.value=String(option.value);input.append(el); }
+      else {input.type=control.type || 'number'; for(const attr of ['min','max','step']) if(control[attr]!==undefined) input[attr]=control[attr];}
+      field.append(input);if(control.type==='range')field.append(make('output'));
+      input.addEventListener('change',()=>{
+        try {params=validated({...params,[control.id]:input.value},true);step=0;$('.lw-status').textContent='';compute();}
+        catch(error){$('.lw-status').textContent=error.message;input.value=params[control.id];}
+      });
+      $('.lw-controls').append(field);
+    }
+    $('.lw-controls').addEventListener('submit',event=>event.preventDefault());
+    function verifyResult(model) {
+      if(!model || !Array.isArray(model.nodes) || !Array.isArray(model.steps) || !model.steps.length)throw new Error('教学流程缺少节点或步骤');
+      const ids=new Set(model.nodes.map(n=>n.id));if(ids.size!==model.nodes.length)throw new Error('流程节点重复');
+      const edges=new Set();
+      for(const edge of model.edges||[]) {
+        if(edges.has(edge.id) || !ids.has(edge.from) || !ids.has(edge.to))throw new Error('流程边引用错误：'+edge.id);
+        edges.add(edge.id);
+        for(const n of edge.steps||[])if(!Number.isInteger(n)||n<1||n>model.steps.length)throw new Error('边的步骤编号错误');
+      }
+      for(const node of model.nodes)if(node.readyAt!==undefined&&(!Number.isInteger(node.readyAt)||node.readyAt<0||node.readyAt>model.steps.length))throw new Error('节点就绪步骤错误：'+node.id);
+      for(const item of model.steps){
+        for(const id of item.activeNodes||[])if(!ids.has(id))throw new Error('步骤引用未知节点：'+id);
+        for(const id of item.activeEdges||[])if(!edges.has(id))throw new Error('步骤引用未知边：'+id);
+        for(const id of Object.keys(item.state||{}))if(!ids.has(id))throw new Error('状态引用未知节点：'+id);
+      }
+    }
+    function remember(){try{localStorage.setItem(key,JSON.stringify({params,step}));}catch{}}
+    function compute(){result=lesson.build({...params});verifyResult(result);step=Math.max(0,Math.min(step,result.steps.length));render();}
+    function drawFlow(){
+      if(!root.getBoundingClientRect().width)return;
+      const drawing=$('.lw-figure svg'),c=colors(),width=Math.max(220,$('.lw-figure').clientWidth-20);
+      const nodes=[...result.nodes].sort((a,b)=>(a.row??result.nodes.indexOf(a))-(b.row??result.nodes.indexOf(b))||(a.col||0)-(b.col||0));
+      const columns=width<620?1:Math.min(3,Math.max(...nodes.map(n=>(n.col||0)+1)));
+      const current=step?result.steps[step-1]:null,positions=new Map(),rows=new Map();
+      nodes.forEach((n,i)=>positions.set(n.id,{...n,row:columns===1?i:(n.row??i),col:columns===1?0:Math.min(columns-1,n.col||0)}));
+      const edges=result.edges||[],longEdges=edges.filter(e=>positions.get(e.to).row-positions.get(e.from).row!==1);
+      const margin=12,gap=30,railGap=columns===1?5:7,rail=longEdges.length?18+longEdges.length*railGap:4;
+      const cardWidth=(width-2*margin-rail-gap*(columns-1))/columns;
+      const labels=new Map(),rowGaps=new Map(),outgoing=new Map(),incoming=new Map(),rowIncoming=new Map();
+      for(const edge of edges){
+        const a=positions.get(edge.from),b=positions.get(edge.to);
+        const out=outgoing.get(a.id)||[];out.push(edge);outgoing.set(a.id,out);
+        const ins=incoming.get(b.id)||[];ins.push(edge);incoming.set(b.id,ins);
+        const rowIns=rowIncoming.get(b.row)||[];rowIns.push(edge);rowIncoming.set(b.row,rowIns);
+        const label=(edge.steps||[]).join('·')+' '+String(edge.label).replace(/^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]+\s*/u,'');
+        labels.set(edge.id,wrap(label,cardWidth-8,11));
+      }
+      for(const n of positions.values()){
+        const detail=current?.state && Object.hasOwn(current.state,n.id)?current.state[n.id]:step && step<(n.readyAt||0)?'等待上游产出':n.detail;
+        n.titleLines=wrap(n.title,cardWidth-24,14);n.lines=wrap(detail,cardWidth-24,12);n.laneLines=wrap(n.lane||'数据 / 计算',cardWidth-24,10);
+        n.titleY=24+n.laneLines.length*15;n.detailY=n.titleY+4+n.titleLines.length*21;
+        n.height=n.detailY+n.lines.length*18+10;n.x=margin+n.col*(cardWidth+gap);n.width=cardWidth;
+        rows.set(n.row,Math.max(rows.get(n.row)||0,n.height));
+      }
+      const labelOffsets=new Map();
+      for(const row of rows.keys()){
+        let used=22;
+        for(const edge of edges.filter(e=>positions.get(e.from).row===row)){
+          labelOffsets.set(edge.id,used);used+=labels.get(edge.id).length*16.5+16;
+        }
+        const incomingLanes=Math.max(1,(rowIncoming.get(row+1)||[]).length+(rowIncoming.get(row)||[]).filter(e=>positions.get(e.from).row===row).length);
+        rowGaps.set(row,used+24+incomingLanes*8);
+      }
+      let y=20+(rowIncoming.get(0)||[]).length*8;const bottoms=new Map();for(const row of [...rows.keys()].sort((a,b)=>a-b)){
+        for(const n of positions.values())if(n.row===row)n.y=y;
+        bottoms.set(row,y+rows.get(row));y+=rows.get(row)+rowGaps.get(row);
+      }
+      const height=Math.max(180,y+15);drawing.replaceChildren();drawing.setAttribute('viewBox',`0 0 ${width} ${height}`);
+      drawing.setAttribute('aria-label',lesson.title+'：'+(current?.title||'全局输入、处理和消费者'));
+      const defs=svg('defs'),marker=svg('marker',{id:'lw-flow-arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:6,markerHeight:6,orient:'auto-start-reverse'});
+      marker.append(svg('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:c.green}));defs.append(marker);drawing.append(defs);
+      const labelPositions=[];
+      for(const edge of edges){
+        const a=positions.get(edge.from),b=positions.get(edge.to),outs=outgoing.get(a.id),ins=incoming.get(b.id);
+        const active=!current||(current.activeEdges||[]).includes(edge.id)||(edge.steps||[]).includes(step);
+        const sx=a.x+18+(a.width-36)*(outs.indexOf(edge)+1)/(outs.length+1);
+        const tx=b.x+18+(b.width-36)*(ins.indexOf(edge)+1)/(ins.length+1);
+        const sy=a.y+a.height,ly=bottoms.get(a.row)+labelOffsets.get(edge.id),mid=ly+labels.get(edge.id).length*16.5-7;
+        let d;
+        if(b.row-a.row===1)d=`M ${sx} ${sy} V ${mid} H ${tx} V ${b.y-3}`;
+        else {
+          const rx=width-margin-rail+12+longEdges.indexOf(edge)*railGap;
+          if(a.row===b.row)d=`M ${sx} ${sy} V ${mid} H ${rx} V ${bottoms.get(a.row)+rowGaps.get(a.row)-12-rowIncoming.get(b.row).indexOf(edge)*8} H ${tx} V ${b.y+b.height+3}`;
+          else {const entryY=b.y-12-rowIncoming.get(b.row).indexOf(edge)*8;d=`M ${sx} ${sy} V ${mid} H ${rx} V ${entryY} H ${tx} V ${b.y-3}`;}
+        }
+        const path=svg('path',{d,fill:'none',stroke:active?c.green:c.line,'stroke-width':active?1.7:1,'stroke-dasharray':edge.kind==='control'?'5 4':'none','marker-end':'url(#lw-flow-arrow)',opacity:active?1:.45,'data-lw-edge':edge.id});
+        path.append(svg('title',{},(edge.steps||[]).join('·')+' '+a.title+' → '+b.title+'：'+edge.label));drawing.append(path);
+        labelPositions.push({edge,x:a.x+a.width/2,y:ly,active});
+      }
+      for(const n of positions.values()){
+        const active=current&&(current.activeNodes||[]).includes(n.id);
+        drawing.append(svg('rect',{x:n.x,y:n.y,width:n.width,height:n.height,rx:9,fill:active?c.mint:c.panel,stroke:active?c.green:c.line,'stroke-width':active?2:1,'data-lw-node':n.id}));
+        textLines(drawing,n.laneLines,n.x+12,n.y+18,10,c.muted);
+        textLines(drawing,n.titleLines,n.x+12,n.y+n.titleY,14,c.ink).setAttribute('font-weight','650');
+        textLines(drawing,n.lines,n.x+12,n.y+n.detailY,12,c.muted);
+      }
+      for(const item of labelPositions){
+        const lines=labels.get(item.edge.id),maxWidth=cardWidth-8;
+        context.font='11px system-ui,"Microsoft YaHei",sans-serif';
+        const w=Math.min(maxWidth+8,Math.max(...lines.map(line=>context.measureText(line).width))+8),h=lines.length*16.5+4;
+        drawing.append(svg('rect',{x:item.x-w/2,y:item.y-12,width:w,height:h,rx:3,fill:c.panel,opacity:.96,'data-lw-edge-label':item.edge.id}));
+        textLines(drawing,lines,item.x,item.y,11,item.active?c.green:c.muted,'middle');
+      }
+    }
+    function drawPlot(box,plot,index){
+      const c=colors(),width=Math.max(210,box.clientWidth-28),drawing=svg('svg',{role:'img','aria-label':plot.title||plot.type});box.append(drawing);
+      let height=210;
+      const legend=(labels)=>{const el=make('div',undefined,'lw-legend');labels.forEach((entry,i)=>{const item=make('span',typeof entry==='string'?entry:entry.label);item.style.setProperty('--swatch',entry.color||c.series[i%c.series.length]);el.append(item);});box.append(el);};
+      if(plot.type==='bars'){
+        const labels=plot.labels||[],series=plot.series||[],values=series.flatMap(s=>s.values).filter(Number.isFinite),low=Math.min(0,...values),high=Math.max(0,...values),span=high-low||1;
+        const left=Math.min(110,width*.32),right=65,usable=Math.max(60,width-left-right),x=v=>left+(v-low)/span*usable,rowHeight=Math.max(45,series.length*18+20);height=labels.length*rowHeight+35;
+        drawing.append(svg('line',{x1:x(0),x2:x(0),y1:8,y2:height-20,stroke:c.line}));
+        labels.forEach((label,row)=>{const y=17+row*rowHeight;textLines(drawing,wrap(label,left-9,11),3,y+9,11,c.ink);series.forEach((s,col)=>{const value=s.values[row];if(!Number.isFinite(value))return;const py=y+col*18;drawing.append(svg('rect',{x:Math.min(x(0),x(value)),y:py,width:Math.max(1,Math.abs(x(value)-x(0))),height:12,rx:2,fill:c.series[col%c.series.length]}));textLines(drawing,[fmt(value)],width-right+6,py+10,10,c.muted);});});legend(series.map(s=>s.label));
+      }else if(plot.type==='vectors'){
+        height=Math.min(370,width+45);const cx=width/2,cy=(height-25)/2,r=Math.min(width,height-25)*.32,vectors=plot.vectors||[],bound=Math.max(1,...vectors.map(v=>Math.hypot(v.x,v.y)))*1.18,scale=r/bound;
+        drawing.append(svg('circle',{cx,cy,r:scale,fill:'none',stroke:c.line,'stroke-dasharray':'4 4'}));
+        drawing.append(svg('path',{d:`M 15 ${cy} H ${width-15} M ${cx} 12 V ${height-35}`,stroke:c.line,fill:'none'}));textLines(drawing,['x'],width-12,cy-6,11,c.muted);textLines(drawing,['y'],cx+6,15,11,c.muted);
+        vectors.forEach((v,i)=>{const x=cx+v.x*scale,y=cy-v.y*scale,color=c.series[i%c.series.length],angle=Math.atan2(y-cy,x-cx),tip=6;drawing.append(svg('line',{x1:cx,y1:cy,x2:x,y2:y,stroke:color,'stroke-width':2}));drawing.append(svg('path',{d:`M ${x-tip*Math.cos(angle-.45)} ${y-tip*Math.sin(angle-.45)} L ${x} ${y} L ${x-tip*Math.cos(angle+.45)} ${y-tip*Math.sin(angle+.45)}`,stroke:color,fill:'none','stroke-width':2}));textLines(drawing,[String(i+1)],Math.max(12,Math.min(width-18,x+6)),Math.max(14,Math.min(height-30,y-7+i%2*18)),12,color);});legend(vectors.map((v,i)=>(i+1)+'. '+v.label+' ['+fmt(v.x)+', '+fmt(v.y)+']'));
+      }else if(plot.type==='timeline'){
+        const rows=plot.rows||[],max=Math.max(1,...rows.flatMap(r=>[...(r.segments||[]).map(s=>s.end),...(r.events||[]).map(e=>e.time)])),left=45,usable=width-left-16,x=v=>left+v/max*usable; height=rows.length*94+45;
+        rows.forEach((row,i)=>{const y=25+i*94;textLines(drawing,wrap(row.label,39,11),2,y+13,11,c.ink);drawing.append(svg('line',{x1:left,x2:width-15,y1:y+17,y2:y+17,stroke:c.line}));(row.segments||[]).forEach((s,j)=>{drawing.append(svg('rect',{x:x(s.start),y,width:Math.max(1,x(s.end)-x(s.start)),height:24,fill:c.series[j%c.series.length],opacity:.65}));});(row.events||[]).forEach((e,j)=>{drawing.append(svg('circle',{cx:x(e.time),cy:y+12,r:4,fill:c.green,stroke:c.panel}));textLines(drawing,[String(j+1)],x(e.time),y+43+(j%2)*15,10,c.muted,'middle');});});textLines(drawing,['0'],left,height-8,11,c.muted);textLines(drawing,[fmt(max)+' '+(plot.unit||'ms')],width-12,height-8,11,c.muted,'end');
+        legend(rows.flatMap(row=>(row.segments||[]).map((s,i)=>({label:row.label+' · '+s.label+' '+fmt(s.start)+'–'+fmt(s.end)+' '+(plot.unit||'ms'),color:c.series[i%c.series.length]}))));
+        for(const row of rows){const caption=make('p',row.label+' 输出事件：'+(row.events||[]).map((e,i)=>(i+1)+'. '+e.label+' @ '+fmt(e.time)+' '+(plot.unit||'ms')).join('；'),'lw-plot-caption');box.append(caption);}
+      }else if(plot.type==='stack'){
+        const parts=plot.parts||[],sum=parts.reduce((a,p)=>a+p.value,0),limit=Math.max(plot.total||0,sum,1),left=6,usable=width-12; height=90;
+        drawing.append(svg('rect',{x:left,y:23,width:usable,height:26,fill:c.shade,rx:4}));let used=0;parts.forEach((p,i)=>{drawing.append(svg('rect',{x:left+used/limit*usable,y:23,width:p.value/limit*usable,height:26,fill:c.series[i%c.series.length]}));used+=p.value;});const capacity=left+(plot.total||0)/limit*usable;drawing.append(svg('line',{x1:capacity,x2:capacity,y1:14,y2:60,stroke:c.amber,'stroke-width':2}));const capacityLabel='容量 '+fmt(plot.total)+' '+(plot.unit||'');context.font='11px system-ui,"Microsoft YaHei",sans-serif';textLines(drawing,[capacityLabel],Math.max(context.measureText(capacityLabel).width+5,Math.min(width-5,capacity)),12,11,c.amber,'end');textLines(drawing,['合计 '+fmt(sum)+' '+(plot.unit||'')],6,77,12,c.ink);legend(parts.map(p=>p.label+' '+fmt(p.value)+' '+(plot.unit||'')));
+      }else {textLines(drawing,['此图表类型尚未实现：'+plot.type],5,25,12,c.amber);}
+      drawing.setAttribute('viewBox',`0 0 ${width} ${height}`);
+    }
+    function renderDetails(){
+      const current=step?result.steps[step-1]:null,holder=$('.lw-details');holder.replaceChildren();
+      for(const table of current?.tables ?? result.tables ?? []){
+        const card=make('section',undefined,'lw-table-card');card.append(make('h3',table.title||'数据变化'));const scroll=make('div',undefined,'lw-table-scroll'),el=make('table'),head=make('thead'),row=make('tr');
+        for(const value of table.headers||[])row.append(make('th',value));head.append(row);el.append(head);const body=make('tbody');
+        for(const values of table.rows||[]){const row=make('tr');for(const value of values)row.append(make('td',fmt(value)));body.append(row);}el.append(body);scroll.append(el);card.append(scroll);holder.append(card);
+      }
+      for(const [i,plot]of(current?.plots ?? result.plots ?? []).entries()){const box=make('section',undefined,'lw-plot');box.append(make('h3',plot.title||'数值视图'));holder.append(box);drawPlot(box,plot,i);}
+      const equation=current?.equation ?? result.equation;$('.lw-equation').hidden=!equation;$('.lw-equation').textContent=equation||'';
+      const notes=[...(result.notes||[]),...(current?.notes||[])];$('.lw-notes').replaceChildren(...notes.map(note=>make('p',note)));$('.lw-notes').hidden=!notes.length;
+    }
+    function render(){
+      root.dataset.step=String(step);root.dataset.ready='true';
+      $('.lw-scope').textContent=result.scope||'';
+      for(const control of controls){const field=root.querySelector('[data-control="'+control.id+'"]'),input=field.querySelector('input,select');input.value=params[control.id];field.hidden=control.showIf?!control.showIf(params):false;if(field.querySelector('output'))field.querySelector('output').textContent=fmt(params[control.id]);}
+      const current=step?result.steps[step-1]:null;
+      $('.lw-current h2').textContent=current?'第 '+step+' 步 · '+current.title:'全局关系 · 输入、计算与消费者';
+      $('.lw-current p').textContent=current?.summary || lesson.subtitle || '';
+      $('[data-lw-global]').setAttribute('aria-pressed',String(step===0));$('[data-lw-prev]').disabled=step===0;$('[data-lw-next]').disabled=step===result.steps.length;
+      $('.lw-counter').textContent=step+' / '+result.steps.length+' · 0 为全局';
+      $('.lw-metrics').replaceChildren(...(result.metrics||[]).map(metric=>{const e=make('div',undefined,'lw-metric');e.append(make('span',metric.label),make('strong',metric.value));return e;}));
+      const list=$('.lw-steps ol');list.replaceChildren();result.steps.forEach((item,i)=>{const li=make('li'),button=make('button',undefined,'lw-step-button');button.type='button';button.dataset.lwStep=String(i+1);if(step===i+1)button.setAttribute('aria-current','true');const text=make('span');text.append(make('strong',item.title),make('small',item.summary));button.append(make('b',String(i+1).padStart(2,'0')),text);li.append(button);list.append(li);});
+      drawFlow();renderDetails();remember();
+    }
+    function select(next){if(!Number.isInteger(next)||next<0||next>result.steps.length)throw new Error('无效步骤：'+next);step=next;render();}
+    root.addEventListener('click',event=>{const button=event.target.closest('button');if(!button)return;if(button.hasAttribute('data-lw-global'))select(0);if(button.hasAttribute('data-lw-prev'))select(Math.max(0,step-1));if(button.hasAttribute('data-lw-next'))select(Math.min(result.steps.length,step+1));if(button.hasAttribute('data-lw-reset')){params={...defaults};step=0;compute();}if(button.dataset.lwStep)select(Number(button.dataset.lwStep));});
+    for(const source of lesson.sources||[]){const a=make('a',source.label);a.href=source.url;a.target='_blank';a.rel='noopener noreferrer';$('.lw-sources>div').append(a);}
+    for(const related of lesson.related||[]){const a=make('a',related.label+' →');a.href=related.href;$('.lw-related').append(a);}
+    function redraw(){cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(()=>{if(root.getBoundingClientRect().width){drawFlow();renderDetails();}});}
+    window.addEventListener('resize',redraw);matchMedia('(prefers-color-scheme:dark)').addEventListener('change',redraw);
+    window.lessonController={
+      getState:()=>({params:{...params},step,result}),
+      setParams:values=>{const next=validated({...params,...values},true),built=lesson.build({...next});verifyResult(built);params=next;result=built;step=0;render();},
+      openTarget:async action=>{
+        if(!action||!Number.isInteger(action.step))throw new Error('目标缺少有效步骤');
+        const next=validated({...defaults,...(action.params||{})},true),built=lesson.build({...next});verifyResult(built);
+        if(action.step<0||action.step>built.steps.length)throw new Error('无效步骤：'+action.step);
+        params=next;result=built;step=action.step;render();
+        await new Promise(resolve=>requestAnimationFrame(resolve));drawFlow();
+        return {label:action.step?'第 '+action.step+' 步 · '+result.steps[action.step-1].title:'全局关系'};
+      }
+    };
+    compute();
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
+})();
+</script>
+<!-- lesson-workbench:end -->
+<!-- call-adapter:start -->
+<script>
+window.openLessonTarget = async action => window.lessonController.openTarget(action);
+// Runs in the visualization document, including sandboxed srcdoc frames.
+(() => {
+  const pending = new Map();
+  let queue = Promise.resolve();
+  const ready = document.readyState === 'loading'
+    ? new Promise(resolve => document.addEventListener('DOMContentLoaded',resolve,{once:true}))
+    : Promise.resolve();
+  const pause = () => document.querySelectorAll('button').forEach(button => {
+    if (/^(暂停(?:流程|播放|动画)?|停止播放)$/.test(button.textContent.trim())) button.click();
+  });
+  window.addEventListener('lesson-pause-visual',pause);
+  if (parent === window) return;
+  const post = data => parent.postMessage(data,'*');
+  window.addEventListener('message',async event => {
+    if (event.source !== parent || !event.data || typeof event.data !== 'object') return;
+    const {type,id,action} = event.data;
+    if (type === 'lesson-call-ping') {
+      await ready; post({type:'lesson-call-ready'}); return;
+    }
+    if (type === 'lesson-call-pause') { pause(); return; }
+    if (type !== 'lesson-call-open' || typeof id !== 'string') return;
+    if (!pending.has(id)) {
+      const work = queue.then(() => ready).then(() => {
+        if (typeof window.openLessonTarget !== 'function') throw new Error('可视化步骤入口尚未就绪');
+        return window.openLessonTarget(action);
+      });
+      pending.set(id,work);
+      queue = work.catch(() => {});
+      if (pending.size > 16) pending.delete(pending.keys().next().value);
+    }
+    try { post({type:'lesson-call-result',id,ok:true,result:await pending.get(id)}); }
+    catch (error) { post({type:'lesson-call-result',id,ok:false,error:error.message}); }
+  });
+  for (const name of ['click','change']) document.addEventListener(name,event => {
+    if (event.isTrusted && event.target.closest('button,select,input')) post({type:'lesson-call-edited'});
+  },true);
+  ready.then(() => post({type:'lesson-call-ready'}));
+})();
+</script>
+<!-- call-adapter:end -->
+<!-- call-ui:start -->
+<style>
+/* Scope every rule: the visualizations keep their original layout and semantics. */
+.code-walkthrough { width:100%; max-width:960px; margin:18px auto 24px; color:var(--lesson-ink); font:14px/1.6 system-ui,"Microsoft YaHei",sans-serif; text-align:left; }
+.code-walkthrough * { box-sizing:border-box; }
+.code-walkthrough [hidden],.lesson-original.lesson-hidden { display:none !important; }
+html[data-call-chain-ready=true],html[data-call-chain-ready=true] body { overflow-anchor:none; }
+.code-walkthrough[data-cw-screen=visual] { padding-top:55px; }
+.code-walkthrough[data-cw-screen=visual] .cw-nav { position:fixed; z-index:100; top:8px; left:50%; transform:translateX(-50%); width:calc(100% - 32px); max-width:960px; margin:0; padding:7px 9px; border:1px solid var(--lesson-line); border-radius:9px; background:var(--lesson-bg); box-shadow:0 3px 12px #0000000b; }
+.code-walkthrough h1,.code-walkthrough h2,.code-walkthrough h3,.code-walkthrough p,.code-walkthrough dl,.code-walkthrough dd { margin:0; }
+.code-walkthrough button,.code-walkthrough select { font:inherit; color:inherit; cursor:pointer; }
+.code-walkthrough button:disabled { cursor:wait; opacity:.6; }
+.code-walkthrough a { color:var(--lesson-green); text-underline-offset:3px; }
+.code-walkthrough :is(button,select,a,summary):focus-visible { outline:3px solid var(--lesson-amber); outline-offset:3px; }
+.code-walkthrough code { font-family:ui-monospace,Consolas,"Microsoft YaHei",monospace; overflow-wrap:anywhere; }
+.cw-header { padding:8px 0 16px; }
+.cw-header>a { font-size:12px; text-decoration:none; }
+.cw-header h1 { font-size:clamp(24px,4vw,34px); line-height:1.35; margin:13px 0 8px; font-weight:700; letter-spacing:-.025em; }
+.cw-header p { color:var(--lesson-muted); font-size:13px; }
+.cw-nav { display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin:12px 0; }
+.code-walkthrough .cw-nav button,.cw-tools button,.cw-jump { border:1px solid var(--lesson-line); border-radius:7px; padding:7px 12px; background:var(--lesson-panel); font-size:13px; font-weight:650; }
+.code-walkthrough .cw-nav button[aria-pressed=true],.cw-jump { background:var(--lesson-mint); color:var(--lesson-green); border-color:var(--lesson-green); }
+.cw-variant { display:grid; grid-template-columns:minmax(0,1fr); gap:7px; padding:13px 15px; margin:12px 0; border:1px solid var(--lesson-line); border-radius:10px; background:var(--lesson-panel); }
+.cw-variant label { display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-size:13px; font-weight:650; }
+.cw-variant select { padding:5px 9px; max-width:100%; min-width:0; border:1px solid var(--lesson-line); border-radius:6px; background:var(--lesson-panel); font-size:13px; }
+.cw-variant p,.cw-scope { font-size:12px; color:var(--lesson-muted); overflow-wrap:anywhere; }
+.cw-scope summary { cursor:pointer; color:var(--lesson-green); font-weight:650; }
+.cw-scope a { display:block; margin-top:4px; overflow-wrap:anywhere; }
+.cw-guide { color:var(--lesson-muted); font-size:12px; margin:12px 0 !important; }
+.cw-layout { display:grid; grid-template-columns:minmax(0,1.12fr) minmax(0,1fr); gap:14px; align-items:start; }
+.cw-tree-panel,.cw-detail { min-width:0; background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:12px; }
+.cw-tree-panel { overflow:hidden; }
+.cw-tools { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:5px; padding:10px 12px; border-bottom:1px solid var(--lesson-line); }
+.cw-tools strong { font-size:13px; }
+.cw-tools button { padding:3px 7px; font-size:11px; }
+.cw-tree-scroll { max-height:680px; overflow:auto; padding:12px 9px; scrollbar-gutter:stable; }
+.code-walkthrough .cw-tree { padding:0; margin:0; list-style:none; min-width:0; }
+.code-walkthrough .cw-tree li { padding:0; margin:0; }
+.code-walkthrough .cw-tree .cw-tree { margin-left:12px; border-left:1px solid var(--lesson-line); }
+.cw-row { display:flex; align-items:flex-start; min-width:0; margin:2px 0; }
+.code-walkthrough .cw-toggle,.cw-branch { flex:0 0 22px; width:22px; padding:7px 0; border:0; background:transparent; text-align:center; color:var(--lesson-green); font:13px/1.5 ui-monospace,Consolas,monospace; }
+.code-walkthrough .cw-node { min-width:0; flex:1; display:grid; grid-template-columns:auto minmax(0,1fr); align-items:start; gap:5px; padding:7px; text-align:left; border:1px solid transparent; border-radius:6px; background:transparent; line-height:1.45; }
+.code-walkthrough .cw-node:hover { background:var(--lesson-shade); }
+.code-walkthrough .cw-node[aria-current=true] { background:var(--lesson-mint); border-color:var(--lesson-green); }
+.cw-number { padding-top:1px; color:var(--lesson-green); font:600 11px/1.6 ui-monospace,Consolas,monospace; }
+.cw-node code { display:block; font-size:13px; font-weight:650; }
+.cw-node small { display:block; margin-top:2px; color:var(--lesson-muted); font-size:12px; }
+.cw-detail { padding:17px; scroll-margin-top:14px; }
+.cw-kicker { color:var(--lesson-green); font:700 11px/1.5 ui-monospace,Consolas,monospace; }
+.cw-path { display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 6px; padding-bottom:10px; margin-bottom:10px; border-bottom:1px solid var(--lesson-line); color:var(--lesson-muted); font-size:11px; overflow-wrap:anywhere; }
+.code-walkthrough .cw-path button { max-width:100%; border:0; padding:0; background:none; color:var(--lesson-green); text-decoration:underline; text-align:left; overflow-wrap:anywhere; font:inherit; }
+.cw-detail h2 { margin:5px 0 7px; font-size:19px; line-height:1.4; overflow-wrap:anywhere; }
+.cw-summary { font-size:14px; }
+.cw-data { margin-top:12px !important; font-size:13px; }
+.cw-data dt { margin-top:12px; color:var(--lesson-green); font-weight:700; }
+.cw-data dd { margin-top:3px; overflow-wrap:anywhere; }
+.code-walkthrough .cw-note { padding:9px 10px; margin-top:12px; border-left:3px solid var(--lesson-amber); background:var(--lesson-sand); color:var(--lesson-amber); font-size:12px; }
+.cw-evidence,.cw-targets { margin-top:14px; padding-top:10px; border-top:1px solid var(--lesson-line); }
+.cw-evidence h3,.cw-targets h3 { margin:0 0 5px; font-size:13px; }
+.cw-evidence a { display:block; margin-top:6px; font-size:11px; overflow-wrap:anywhere; }
+.cw-evidence a small { display:block; color:var(--lesson-muted); font:10px/1.5 ui-monospace,Consolas,monospace; }
+.cw-targets p { color:var(--lesson-muted); font-size:12px; margin-bottom:7px; }
+.cw-jump { display:block; margin:7px 0 0; max-width:100%; text-align:left; white-space:normal; }
+.cw-context { padding:9px 12px; border:1px solid var(--lesson-line); background:var(--lesson-shade); border-radius:8px; font-size:12px; color:var(--lesson-muted); overflow-wrap:anywhere; }
+.cw-error { margin:10px 0 !important; border:1px solid var(--lesson-amber); padding:10px; background:var(--lesson-sand); color:var(--lesson-amber); border-radius:7px; }
+@media(max-width:760px) { .cw-layout { grid-template-columns:minmax(0,1fr); } .cw-tree-scroll { max-height:420px; } .cw-detail { padding:14px; } }
+@media(max-width:400px) { .code-walkthrough .cw-tree .cw-tree { margin-left:3px; } .code-walkthrough .cw-toggle,.cw-branch { flex-basis:16px; width:16px; } .code-walkthrough .cw-node { grid-template-columns:minmax(0,1fr); padding:6px 4px; gap:2px; } .cw-number { overflow-wrap:anywhere; } }
+</style>
+<script type="application/json" id="lesson-call-chain-data">{"title":"Multi-LoRA加载、槽映射与线性层增量调用链","defaultVariant":"gpu-replicated","variants":[{"id":"gpu-replicated","title":"GPU MRV1 / ReplicatedLinearWithLoRA","scope":"单卡同步、TP=PP=DP=1；无量化/偏置；max_loras=2、max_cpu_loras≥2。单层矩阵算例与两种合法槽布局，非真实kernel测量。","entry":"prepare","repositories":{"vllm":{"url":"https://github.com/vllm-project/vllm","commit":"295c062db8a48ea73bbd05d1174cb37d24bf86f9","label":"vLLM 295c062db8"}},"nodes":[{"id":"prepare","parent":null,"number":"1","kind":"调用","title":"GPUModelRunner._prepare_inputs()","summary":"批次输入准备时激活LoRA并构造行映射。","input":"R1两行→101，R2一行→202，R3一行→base。","changes":"调用set_active_loras，使用本轮实际token数展开映射。","output":"token adapter IDs=[101,101,202,0]。","resume":"映射建立后返回execute_model，模型前向消费它。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":4187,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":1943,"label":"实际实现","end":1955},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2256,"label":"实际实现","end":2264}],"targets":[{"label":"跳到第1步：请求归属","action":{"step":1,"params":{"scenario":"mixed"}}},{"label":"跳到第4步：行映射","action":{"step":4,"params":{"scenario":"mixed"}}},{"label":"跳到第1步：请求归属（交换槽位）","action":{"step":1,"params":{"scenario":"slot-swap"}}}]},{"id":"set-active","parent":"prepare","number":"1.1","kind":"调用","title":"LoRAModelRunnerMixin.set_active_loras()","summary":"从InputBatch获取本批所需adapter与映射。","input":"num_scheduled_tokens=[2,1,1]；普通生成每请求采样1次。","changes":"make_lora_inputs后调用_set_active_loras。","output":"token mapping长度4，prompt mapping长度3。","resume":"返回_prepare_inputs，供本轮模型前向使用。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2262,"label":"调用位置","end":2264},{"repo":"vllm","path":"vllm/v1/worker/lora_model_runner_mixin.py","line":83,"label":"实际实现","end":101}],"targets":[{"label":"跳到第4步：token与prompt映射","action":{"step":4,"params":{"scenario":"mixed"}}},{"label":"跳到第4步：token与prompt映射（交换槽位）","action":{"step":4,"params":{"scenario":"slot-swap"}}}]},{"id":"make-inputs","parent":"set-active","number":"1.1.1","kind":"调用","title":"InputBatch.make_lora_inputs()","summary":"按每请求本轮token数展开adapter ID。","input":"request_lora_mapping=[101,202,0]。","changes":"按scheduled tokens重复为4行；按sampled tokens构造3行prompt mapping。","output":"token=[101,101,202,0]，prompt=[101,202,0]。","resume":"返回set_active_loras。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/lora_model_runner_mixin.py","line":97,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/worker/gpu_input_batch.py","line":998,"label":"实际实现","end":1022}],"targets":[{"label":"跳到第4步：请求ID展开到token行","action":{"step":4,"params":{"scenario":"mixed"}}},{"label":"跳到第4步：请求ID展开到token行（交换槽位）","action":{"step":4,"params":{"scenario":"slot-swap"}}}]},{"id":"set-private","parent":"set-active","number":"1.1.2","kind":"调用","title":"LoRAModelRunnerMixin._set_active_loras()","summary":"包装LoRAMapping后交给Worker管理器。","input":"两套LoRARequest和两个ID映射。","changes":"构造LoRAMapping，调用lora_manager.set_active_adapters。","output":"Worker激活本批adapter并更新Punica metadata。","resume":"返回set_active_loras。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/lora_model_runner_mixin.py","line":99,"label":"调用位置","end":101},{"repo":"vllm","path":"vllm/v1/worker/lora_model_runner_mixin.py","line":58,"label":"实际实现","end":77}],"targets":[{"label":"跳到第2步：加载入口","action":{"step":2,"params":{"scenario":"mixed"}}},{"label":"跳到第4步：映射入口","action":{"step":4,"params":{"scenario":"mixed"}}},{"label":"跳到第2步：加载入口（交换槽位）","action":{"step":2,"params":{"scenario":"slot-swap"}}}]},{"id":"active-manager","parent":"set-private","number":"1.1.2.1","kind":"调用","title":"WorkerLoRAManager.set_active_adapters()","summary":"先加载/激活adapter，再建立slot映射。","input":"本批请求的adapter集合及LoRAMapping。","changes":"动态调用LRU子类_apply_adapters；随后set_adapter_mapping。","output":"GPU slots与行索引互相匹配。","resume":"返回_set_active_loras，再返回输入准备。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/lora_model_runner_mixin.py","line":77,"label":"调用位置"},{"repo":"vllm","path":"vllm/lora/worker_manager.py","line":195,"label":"实际实现","end":198},{"repo":"vllm","path":"vllm/v1/worker/lora_model_runner_mixin.py","line":50,"label":"所选LRU管理器构造","end":56}],"targets":[{"label":"跳到第2步：CPU加载","action":{"step":2,"params":{"scenario":"mixed"}}},{"label":"跳到第3步：GPU激活","action":{"step":3,"params":{"scenario":"mixed"}}},{"label":"跳到第4步：mapping完成","action":{"step":4,"params":{"scenario":"mixed"}}},{"label":"跳到第2步：CPU加载（交换槽位）","action":{"step":2,"params":{"scenario":"slot-swap"}}}]},{"id":"apply-adapters","parent":"active-manager","number":"1.1.2.1.1","kind":"调用","title":"LRUCacheWorkerLoRAManager._apply_adapters()","summary":"检查active slots容量并逐个add_adapter。","input":"本轮请求adapter IDs={101,202}，max_loras=2。","changes":"校验数量不超过slots，遍历本批LoRARequest。","output":"两套adapter可同时激活。","resume":"返回set_active_adapters，再更新映射。","evidence":[{"repo":"vllm","path":"vllm/lora/worker_manager.py","line":196,"label":"调用位置"},{"repo":"vllm","path":"vllm/lora/worker_manager.py","line":274,"label":"实际实现","end":287}],"targets":[{"label":"跳到第2步：两套adapter加载","action":{"step":2,"params":{"scenario":"mixed"}}},{"label":"跳到第3步：两槽激活","action":{"step":3,"params":{"scenario":"mixed"}}},{"label":"跳到第2步：两套adapter加载（交换槽位）","action":{"step":2,"params":{"scenario":"slot-swap"}}}],"note":"集合遍历与空槽选择不保证固定身份顺序；两场景都是合法槽布局。"},{"id":"add-adapter","parent":"apply-adapters","number":"1.1.2.1.1.1","kind":"调用","title":"LRUCacheWorkerLoRAManager.add_adapter()","summary":"CPU缓存未命中时加载，随后激活GPU槽位。","input":"首次使用101与202；本页max_cpu_loras≥2，无驱逐。","changes":"_load_adapter→manager.add_adapter→activate_adapter。","output":"CPU缓存保存权重；GPU槽位保存当前激活权重。","resume":"返回_apply_adapters继续另一个adapter。","evidence":[{"repo":"vllm","path":"vllm/lora/worker_manager.py","line":287,"label":"调用位置"},{"repo":"vllm","path":"vllm/lora/worker_manager.py","line":289,"label":"实际实现","end":325}],"targets":[{"label":"跳到第2步：CPU缓存建立","action":{"step":2,"params":{"scenario":"mixed"}}},{"label":"跳到第3步：槽位激活","action":{"step":3,"params":{"scenario":"mixed"}}},{"label":"跳到第2步：CPU缓存建立（交换槽位）","action":{"step":2,"params":{"scenario":"slot-swap"}}}]},{"id":"load","parent":"add-adapter","number":"1.1.2.1.1.1.1","kind":"调用","title":"WorkerLoRAManager._load_adapter()","summary":"读取本地checkpoint到CPU，校验模型兼容性。","input":"LoRARequest路径、rank/alpha等PEFT配置。","changes":"调用LoRAModel.from_local_checkpoint，明确device=\"cpu\"。","output":"CPU上的A[r,in]与B[out,r]及缩放信息。","resume":"返回add_adapter，随后注册并折叠缩放。","evidence":[{"repo":"vllm","path":"vllm/lora/worker_manager.py","line":304,"label":"调用位置"},{"repo":"vllm","path":"vllm/lora/worker_manager.py","line":106,"label":"实际实现","end":151}],"targets":[{"label":"跳到第2步：CPU加载后状态","action":{"step":2,"params":{"scenario":"mixed"}}},{"label":"跳到第2步：CPU加载后状态（交换槽位）","action":{"step":2,"params":{"scenario":"slot-swap"}}}]},{"id":"checkpoint","parent":"load","number":"1.1.2.1.1.1.1.1","kind":"调用","title":"LoRAModel.from_local_checkpoint()","summary":"读取并解析adapter参数，构建LoRAModel。","input":"本地权重文件与PEFTHelper。","changes":"检查模块名、加载张量，调用from_lora_tensors。","output":"α: A=[1,1], B=[2,−1]；β: A=[1,−1], B=[1,2]。","resume":"返回_load_adapter；尚未进行GPU slot copy。","evidence":[{"repo":"vllm","path":"vllm/lora/worker_manager.py","line":140,"label":"调用位置","end":151},{"repo":"vllm","path":"vllm/lora/lora_model.py","line":195,"label":"实际实现","end":207},{"repo":"vllm","path":"vllm/lora/lora_model.py","line":293,"label":"实际实现","end":325}],"targets":[{"label":"跳到第2步：有效CPU矩阵","action":{"step":2,"params":{"scenario":"mixed"}}},{"label":"跳到第2步：有效CPU矩阵（交换槽位）","action":{"step":2,"params":{"scenario":"slot-swap"}}}],"note":"第2步同时观察加载与后续注册时的缩放折叠；不是from_local_checkpoint本身执行optimize。"},{"id":"register","parent":"add-adapter","number":"1.1.2.1.1.1.2","kind":"调用","title":"LRUCacheLoRAModelManager.add_adapter()","summary":"把CPU权重注册进管理器，准备有效LoRA参数。","input":"已加载LoRAModel，尚未激活GPU。","changes":"新ID调用_add_adapter；内部_create_merged_loras_inplace最终执行optimize。","output":"B中折叠α/r；β有效B=[2,4]。","resume":"返回Worker add_adapter，再激活GPU槽。","evidence":[{"repo":"vllm","path":"vllm/lora/worker_manager.py","line":316,"label":"调用位置"},{"repo":"vllm","path":"vllm/lora/model_manager.py","line":1385,"label":"实际实现","end":1395},{"repo":"vllm","path":"vllm/lora/model_manager.py","line":416,"label":"实际实现","end":419},{"repo":"vllm","path":"vllm/lora/model_manager.py","line":901,"label":"注册路径调用optimize","end":902}],"targets":[{"label":"跳到第2步：缩放折叠后的CPU权重","action":{"step":2,"params":{"scenario":"mixed"}}},{"label":"跳到第2步：缩放折叠后的CPU权重（交换槽位）","action":{"step":2,"params":{"scenario":"slot-swap"}}}],"note":"节点汇总注册路径；下方optimize以真实中间_create_merged_loras_inplace续点表示，不声称直接子调用。"},{"id":"register-inner","parent":"register","number":"1.1.2.1.1.1.2.1","kind":"调用","title":"LoRAModelManager._add_adapter()","summary":"校验后准备模块权重，再写入注册表。","input":"CPU LoRAModel。","changes":"调用_create_merged_loras_inplace。","output":"已准备的权重进入_registered_adapters。","resume":"返回LRUCacheLoRAModelManager.add_adapter。","evidence":[{"repo":"vllm","path":"vllm/lora/model_manager.py","line":1389,"label":"调用位置"},{"repo":"vllm","path":"vllm/lora/model_manager.py","line":416,"label":"实际实现","end":419}],"targets":[{"label":"跳到第2步：注册完成观察状态","action":{"step":2,"params":{"scenario":"mixed"}}},{"label":"跳到第2步：注册完成观察状态（交换槽位）","action":{"step":2,"params":{"scenario":"slot-swap"}}}]},{"id":"merged","parent":"register-inner","number":"1.1.2.1.1.1.2.1.1","kind":"调用","title":"LoRAModelManager._create_merged_loras_inplace()","summary":"本页普通单层无需打包，但仍逐层optimize。","input":"未打包的ReplicatedLinear LoRALayerWeights。","changes":"遍历lora_model.loras.values调用optimize。","output":"每层B完成一次缩放折叠。","resume":"返回_add_adapter，写注册表。","evidence":[{"repo":"vllm","path":"vllm/lora/model_manager.py","line":418,"label":"调用位置"},{"repo":"vllm","path":"vllm/lora/model_manager.py","line":842,"label":"实际实现","end":850},{"repo":"vllm","path":"vllm/lora/model_manager.py","line":901,"label":"实际实现","end":902}],"targets":[{"label":"跳到第2步：缩放折叠","action":{"step":2,"params":{"scenario":"mixed"}}},{"label":"跳到第2步：缩放折叠（交换槽位）","action":{"step":2,"params":{"scenario":"slot-swap"}}}]},{"id":"optimize","parent":"merged","number":"1.1.2.1.1.1.2.1.1.1","kind":"调用","title":"LoRALayerWeights.optimize()","summary":"把α/r折进B，运行时不再重复缩放。","input":"β alpha/r=2，原B=[[1],[2]]。","changes":"B *= scaling，scaling设为1。","output":"β B_scaled=[[2],[4]]。","resume":"返回模块准备，再注册/激活adapter。","evidence":[{"repo":"vllm","path":"vllm/lora/model_manager.py","line":902,"label":"调用位置"},{"repo":"vllm","path":"vllm/lora/lora_weights.py","line":37,"label":"实际实现","end":43}],"targets":[{"label":"跳到第2步：B乘2一次","action":{"step":2,"params":{"scenario":"mixed"}}},{"label":"跳到第2步：B乘2一次（交换槽位）","action":{"step":2,"params":{"scenario":"slot-swap"}}}]},{"id":"activate","parent":"add-adapter","number":"1.1.2.1.1.1.3","kind":"调用","title":"LRUCacheLoRAModelManager.activate_adapter()","summary":"管理active容量后调用父类填GPU槽。","input":"已注册101或202；两槽均可容纳。","changes":"必要时移除最老active，本例不触发；super激活并touch LRU。","output":"对应ID进入GPU active集。","resume":"返回Worker.add_adapter。","evidence":[{"repo":"vllm","path":"vllm/lora/worker_manager.py","line":324,"label":"调用位置"},{"repo":"vllm","path":"vllm/lora/model_manager.py","line":1397,"label":"实际实现","end":1409}],"targets":[{"label":"跳到第3步：两套GPU权重就绪","action":{"step":3,"params":{"scenario":"mixed"}}},{"label":"跳到第3步：两套GPU权重就绪（交换槽位）","action":{"step":3,"params":{"scenario":"slot-swap"}}}]},{"id":"activate-base","parent":"activate","number":"1.1.2.1.1.1.3.1","kind":"调用","title":"LoRAModelManager.activate_adapter()","summary":"选择空槽并把ID和权重写到同一个槽。","input":"CPU LoRAModel、lora_index_to_id。","changes":"选空slot，更新index_to_id；对模块调用set_lora。","output":"mixed槽[101,202]；swap槽[202,101]。","resume":"返回LRU覆盖方法，更新使用顺序。","evidence":[{"repo":"vllm","path":"vllm/lora/model_manager.py","line":1406,"label":"调用位置"},{"repo":"vllm","path":"vllm/lora/model_manager.py","line":350,"label":"实际实现","end":374},{"repo":"vllm","path":"vllm/lora/model_manager.py","line":393,"label":"实际实现","end":397}],"targets":[{"label":"跳到第3步：身份和槽号分开","action":{"step":3,"params":{"scenario":"mixed"}}},{"label":"跳到第3步：身份和槽号分开（交换槽位）","action":{"step":3,"params":{"scenario":"slot-swap"}}}]},{"id":"set-lora","parent":"activate-base","number":"1.1.2.1.1.1.3.1.1","kind":"调用","title":"BaseLinearLayerWithLoRA.set_lora()","summary":"将有效A/B复制进该模块的GPU槽。","input":"slot index和对应CPU A/B_scaled。","changes":"reset_lora后copy_到堆叠权重张量的选定slot。","output":"GPU可按slot读取A、B；实际可含rank padding。","resume":"返回activate_adapter；之后建立本批行映射。","evidence":[{"repo":"vllm","path":"vllm/lora/model_manager.py","line":393,"label":"调用位置","end":397},{"repo":"vllm","path":"vllm/lora/layers/base_linear.py","line":162,"label":"实际实现","end":188}],"targets":[{"label":"跳到第3步：CPU→GPU权重复制","action":{"step":3,"params":{"scenario":"mixed"}}},{"label":"跳到第3步：CPU→GPU权重复制（交换槽位）","action":{"step":3,"params":{"scenario":"slot-swap"}}}]},{"id":"set-mapping","parent":"active-manager","number":"1.1.2.1.2","kind":"调用","title":"LoRAModelManager.set_adapter_mapping()","summary":"映射变化后更新底层Punica metadata。","input":"LoRAMapping与当前lora_index_to_id。","changes":"同时比较last_mapping和slot_layout；任一变化都调用_set_adapter_mapping。","output":"缓存mapping与slot_layout；交换槽位即使adapter ID序列不变，也必须刷新indices。","resume":"返回Worker.set_active_adapters。","evidence":[{"repo":"vllm","path":"vllm/lora/worker_manager.py","line":198,"label":"调用位置"},{"repo":"vllm","path":"vllm/lora/model_manager.py","line":1358,"label":"实际实现","end":1366}],"targets":[{"label":"跳到第4步：按本批更新indices","action":{"step":4,"params":{"scenario":"mixed"}}},{"label":"跳到第4步：按本批更新indices（交换槽位）","action":{"step":4,"params":{"scenario":"slot-swap"}}}]},{"id":"set-mapping-inner","parent":"set-mapping","number":"1.1.2.1.2.1","kind":"调用","title":"LoRAModelManager._set_adapter_mapping()","summary":"选择语言模型Punica wrapper。","input":"本页普通语言模型，无多模态tower映射。","changes":"调用punica_wrapper.update_metadata。","output":"传入token IDs和slot身份表。","resume":"返回set_adapter_mapping。","evidence":[{"repo":"vllm","path":"vllm/lora/model_manager.py","line":1364,"label":"调用位置"},{"repo":"vllm","path":"vllm/lora/model_manager.py","line":428,"label":"实际实现","end":451}],"targets":[{"label":"跳到第4步：ID表与槽表共同输入","action":{"step":4,"params":{"scenario":"mixed"}}},{"label":"跳到第4步：ID表与槽表共同输入（交换槽位）","action":{"step":4,"params":{"scenario":"slot-swap"}}}]},{"id":"punica-map","parent":"set-mapping-inner","number":"1.1.2.1.2.1.1","kind":"调用","title":"PunicaWrapperGPU.update_metadata()","summary":"更新base indices并准备GPU kernel元数据。","input":"LoRAMapping、slot身份表、词表尺寸。","changes":"_update_base_metadata后prepare_tensors。","output":"供shrink/expand共用的token_mapping_meta。","resume":"返回LoRAModelManager。","evidence":[{"repo":"vllm","path":"vllm/lora/model_manager.py","line":446,"label":"调用位置","end":451},{"repo":"vllm","path":"vllm/lora/punica_wrapper/punica_gpu.py","line":74,"label":"实际实现","end":89}],"targets":[{"label":"跳到第4步：Punica行映射","action":{"step":4,"params":{"scenario":"mixed"}}},{"label":"跳到第4步：Punica行映射（交换槽位）","action":{"step":4,"params":{"scenario":"slot-swap"}}}]},{"id":"base-map","parent":"punica-map","number":"1.1.2.1.2.1.1.1","kind":"调用","title":"PunicaWrapperBase._update_base_metadata()","summary":"把adapter ID转换成slot索引并复制到持久metadata。","input":"token mapping=[101,101,202,0]及slot身份表。","changes":"调用convert_mapping；copy_到token_lora_indices等缓冲。","output":"mixed [0,0,1,−1]；swap [1,1,0,−1]。","resume":"返回PunicaWrapperGPU继续prepare_tensors。","evidence":[{"repo":"vllm","path":"vllm/lora/punica_wrapper/punica_gpu.py","line":83,"label":"调用位置"},{"repo":"vllm","path":"vllm/lora/punica_wrapper/punica_base.py","line":163,"label":"实际实现","end":192}],"targets":[{"label":"跳到第4步：index随槽布局变化","action":{"step":4,"params":{"scenario":"mixed"}}},{"label":"跳到第4步：index随槽布局变化（交换槽位）","action":{"step":4,"params":{"scenario":"slot-swap"}}}]},{"id":"convert","parent":"base-map","number":"1.1.2.1.2.1.1.1.1","kind":"调用","title":"convert_mapping()","summary":"adapter身份映射为当前GPU槽位，base用−1。","input":"IDs [101,101,202,0]和lora_index_to_id。","changes":"建立ID→index字典；逐行转换。","output":"同一adapter的多行指向同一槽；base不应用LoRA。","resume":"返回_update_base_metadata。","evidence":[{"repo":"vllm","path":"vllm/lora/punica_wrapper/punica_base.py","line":176,"label":"调用位置","end":182},{"repo":"vllm","path":"vllm/lora/punica_wrapper/utils.py","line":52,"label":"实际实现","end":64},{"repo":"vllm","path":"vllm/lora/punica_wrapper/utils.py","line":94,"label":"实际实现","end":111}],"targets":[{"label":"跳到第4步：准确的四行indices","action":{"step":4,"params":{"scenario":"mixed"}}},{"label":"跳到第4步：准确的四行indices（交换槽位）","action":{"step":4,"params":{"scenario":"slot-swap"}}}]},{"id":"linear","parent":null,"number":"2","kind":"调用","title":"ReplicatedLinearWithLoRA.forward()","summary":"模型前向调用已替换的LoRA线性层。","input":"X四行、共享W、已准备GPU槽与行映射。","changes":"调用apply；按base层约定返回output或(output,bias)。","output":"四行输出保持请求顺序。","resume":"回到具体模型forward的下一层。","evidence":[{"repo":"vllm","path":"vllm/lora/layers/replicated_linear.py","line":25,"label":"实际实现","end":48}],"targets":[{"label":"跳到第5步：base计算","action":{"step":5,"params":{"scenario":"mixed"}}},{"label":"跳到第8步：最终输出","action":{"step":8,"params":{"scenario":"mixed"}}},{"label":"跳到第5步：base计算（交换槽位）","action":{"step":5,"params":{"scenario":"slot-swap"}}}],"note":"根1为输入准备调用栈，根2为稍后模型层调用栈；不是把前向误嵌套进mapping函数。固定单层ReplicatedLinearWithLoRA，不绑定某个完整模型层名。"},{"id":"apply-linear","parent":"linear","number":"2.1","kind":"调用","title":"ReplicatedLinearWithLoRA.apply()","summary":"尊重真实base layer forward，再叠加LoRA。","input":"X和bias（本页bias=0）。","changes":"调用_apply_base_forward，不绕过base层自定义forward。","output":"共享base加LoRA后的输出。","resume":"返回ReplicatedLinearWithLoRA.forward。","evidence":[{"repo":"vllm","path":"vllm/lora/layers/replicated_linear.py","line":41,"label":"调用位置"},{"repo":"vllm","path":"vllm/lora/layers/replicated_linear.py","line":50,"label":"实际实现","end":54}],"targets":[{"label":"跳到第5步：base入口","action":{"step":5,"params":{"scenario":"mixed"}}},{"label":"跳到第8步：叠加结果","action":{"step":8,"params":{"scenario":"mixed"}}},{"label":"跳到第5步：base入口（交换槽位）","action":{"step":5,"params":{"scenario":"slot-swap"}}}]},{"id":"base-forward","parent":"apply-linear","number":"2.1.1","kind":"调用","title":"BaseLinearLayerWithLoRA._apply_base_forward()","summary":"先执行base_layer(x)，再调用增量路径。","input":"X=[[1,2],[2,0],[0,1],[1,−1]]，W=diag(1,2)。","changes":"base_layer先得到y0=[[1,4],[2,0],[0,2],[1,−2]]，再将X和同一个output交给_apply_lora_to_output。","output":"返回叠加后的Y=[[7,1],[6,−2],[−2,−2],[1,−2]]；y0只是中间量。","resume":"等待LoRA增量写入后返回apply。","evidence":[{"repo":"vllm","path":"vllm/lora/layers/replicated_linear.py","line":54,"label":"调用位置"},{"repo":"vllm","path":"vllm/lora/layers/base_linear.py","line":214,"label":"实际实现","end":217}],"targets":[{"label":"跳到第5步：共享W的结果","action":{"step":5,"params":{"scenario":"mixed"}}},{"label":"跳到第5步：共享W的结果（交换槽位）","action":{"step":5,"params":{"scenario":"slot-swap"}}}]},{"id":"lora-output","parent":"base-forward","number":"2.1.1.1","kind":"调用","title":"BaseLinearLayerWithLoRA._apply_lora_to_output()","summary":"把现有base输出交给Punica累加。","input":"X、y0、堆叠A/B_scaled和output_slices。","changes":"调用add_lora_linear，运行时scale固定1.0。","output":"同一输出张量包含y0+Δy。","resume":"返回_apply_base_forward，再返回线性层。","evidence":[{"repo":"vllm","path":"vllm/lora/layers/base_linear.py","line":217,"label":"调用位置"},{"repo":"vllm","path":"vllm/lora/layers/base_linear.py","line":219,"label":"实际实现","end":242}],"targets":[{"label":"跳到第6步：低秩增量入口","action":{"step":6,"params":{"scenario":"mixed"}}},{"label":"跳到第8步：相加一次","action":{"step":8,"params":{"scenario":"mixed"}}},{"label":"跳到第6步：低秩增量入口（交换槽位）","action":{"step":6,"params":{"scenario":"slot-swap"}}}]},{"id":"punica-linear","parent":"lora-output","number":"2.1.1.1.1","kind":"调用","title":"PunicaWrapperGPU.add_lora_linear()","summary":"用同一token mapping依次shrink与expand。","input":"X、base输出、按GPU槽存放的A/B_scaled。","changes":"分配低秩buffer；add_shrink后add_expand(add_inputs=True)。","output":"每行加对应adapter增量；base行保持原值。","resume":"返回_apply_lora_to_output；恢复原shape如有必要。","evidence":[{"repo":"vllm","path":"vllm/lora/layers/base_linear.py","line":231,"label":"调用位置","end":233},{"repo":"vllm","path":"vllm/lora/punica_wrapper/punica_gpu.py","line":206,"label":"实际实现","end":217},{"repo":"vllm","path":"vllm/lora/punica_wrapper/punica_gpu.py","line":247,"label":"实际实现","end":269}],"targets":[{"label":"跳到第6步：shrink","action":{"step":6,"params":{"scenario":"mixed"}}},{"label":"跳到第7步：expand","action":{"step":7,"params":{"scenario":"mixed"}}},{"label":"跳到第8步：累加输出","action":{"step":8,"params":{"scenario":"mixed"}}},{"label":"跳到第6步：shrink（交换槽位）","action":{"step":6,"params":{"scenario":"slot-swap"}}}]},{"id":"shrink","parent":"punica-linear","number":"2.1.1.1.1.1","kind":"调用","title":"PunicaWrapperGPU.add_shrink()","summary":"按token mapping选A，把2维压到1维。","input":"同一X、A_stacked、FP32低秩buffer；scale=1。","changes":"调用lora_shrink，按每行adapter选择权重。","output":"有效h=[3,2,−1,0]；base行不产生增量。","resume":"回到add_lora_linear，接着expand。","evidence":[{"repo":"vllm","path":"vllm/lora/punica_wrapper/punica_gpu.py","line":255,"label":"调用位置","end":261},{"repo":"vllm","path":"vllm/lora/punica_wrapper/punica_gpu.py","line":91,"label":"实际实现","end":122}],"targets":[{"label":"跳到第6步：低秩结果","action":{"step":6,"params":{"scenario":"mixed"}}},{"label":"跳到第6步：低秩结果（交换槽位）","action":{"step":6,"params":{"scenario":"slot-swap"}}}],"note":"图中h=0表示base行不应用LoRA的数学贡献，不声称未使用的真实empty buffer字节被清零。"},{"id":"expand","parent":"punica-linear","number":"2.1.1.1.1.2","kind":"调用","title":"PunicaWrapperGPU.add_expand()","summary":"选同一adapter的B，将增量加到base输出。","input":"h、B_scaled、token mapping、add_inputs=True。","changes":"调用lora_expand原位累加；图将Δy与加法拆成观察步骤。","output":"Δy=[[6,−3],[4,−2],[−2,−4],[0,0]]；Y=[[7,1],[6,−2],[−2,−2],[1,−2]]。","resume":"返回add_lora_linear，再逐层返回模型forward。","evidence":[{"repo":"vllm","path":"vllm/lora/punica_wrapper/punica_gpu.py","line":262,"label":"调用位置","end":269},{"repo":"vllm","path":"vllm/lora/punica_wrapper/punica_gpu.py","line":124,"label":"实际实现","end":172}],"targets":[{"label":"跳到第7步：增量观察","action":{"step":7,"params":{"scenario":"mixed"}}},{"label":"跳到第8步：最终累加","action":{"step":8,"params":{"scenario":"mixed"}}},{"label":"跳到第9步：下游消费","action":{"step":9,"params":{"scenario":"mixed"}}},{"label":"跳到第7步：增量观察（交换槽位）","action":{"step":7,"params":{"scenario":"slot-swap"}}}],"note":"未运行GPU kernel；rank=1、2×2有效矩阵只用于算术解释，真实GPU形状可按max_lora_rank补齐。"}]}],"topic":"multi-lora"}</script>
+<script>
+/* Common entry: verified call tree -> existing visualization, preserving native DOM. */
+(() => {
+  function mount() {
+    const dataElement = document.getElementById('lesson-call-chain-data');
+    if (!dataElement || document.getElementById('lesson-call-chain')) return;
+    const data = JSON.parse(dataElement.textContent);
+    const variants = new Map(data.variants.map(variant => [variant.id,variant]));
+    const fallback = variants.get(data.defaultVariant) || data.variants[0];
+    const topic = data.topic;
+    const original = [...document.body.children].filter(node =>
+      !['SCRIPT','STYLE','LINK','META','NOSCRIPT'].includes(node.tagName) && !node.classList.contains('learning-scope-shell'));
+    original.forEach(node => node.classList.add('lesson-original'));
+    const frame = document.getElementById('codex-visualization');
+    const storageKey = 'lesson-call-chain:' + topic + ':' + location.pathname.split('/').at(-1);
+    let variant = fallback, selected = variant.entry || variant.nodes[0].id, screen = 'chain', targetIndex = null;
+    let collapsed = new Set(), busy = false, revision = 0, frameReady = false, requestId = 0;
+    const replies = new Map();
+    let nativeQueue = Promise.resolve();
+    const nodeById = id => variant.nodes.find(node => node.id === id);
+    const make = (tag,text,className) => {
+      const node = document.createElement(tag);
+      if (text !== undefined) node.textContent = text;
+      if (className) node.className = className;
+      return node;
+    };
+    const root = make('section',undefined,'code-walkthrough');
+    root.id = 'lesson-call-chain';
+    root.innerHTML = `<header class="cw-header"><a href="../index.html">← vLLM 学习笔记</a><h1></h1><p>先沿源码调用链定位接口，再进入对应的可视化步骤。</p></header>
+      <nav class="cw-nav" aria-label="阅读方式"><button type="button" data-cw-view="chain">01 整体调用链</button><button type="button" data-cw-view="visual">02 可视化执行</button></nav>
+      <p class="cw-error" role="alert" hidden></p>
+      <section class="cw-chain"><div class="cw-variant"><label>实现与场景 <select aria-label="选择调用链实现"></select></label><p class="cw-scope-text"></p><details class="cw-scope"><summary>源码仓库与固定 commit</summary><div class="cw-repositories"></div></details></div>
+      <p class="cw-guide">默认展开三层，点 ＋ 继续跟入子调用。父子缩进表示调用或明确标记的控制块；异步提交与消费分别说明。点名称查看数据变化，沿详情中的调用路径返回上层。</p>
+      <div class="cw-layout"><section class="cw-tree-panel" aria-label="源码调用树"><div class="cw-tools"><strong></strong><div><button type="button" data-cw-depth>展开三层</button> <button type="button" data-cw-expand>全部展开</button> <button type="button" data-cw-fold>只看主链</button></div></div><div class="cw-tree-scroll"><ol class="cw-tree"></ol></div></section>
+      <article class="cw-detail" tabindex="-1" aria-labelledby="cw-node-title"><nav class="cw-path" aria-label="当前调用路径"></nav><div class="cw-kicker"></div><h2 id="cw-node-title"></h2><p class="cw-summary"></p><dl class="cw-data"></dl><p class="cw-note" hidden></p>
+      <section class="cw-evidence"><h3>源码依据 · 行号属于所示 commit</h3><div></div></section><section class="cw-targets"><h3>进入可视化执行</h3><p>按下列入口定位现有图中的对应步骤。</p><div></div></section></article></div></section>
+      <div class="cw-context" tabindex="-1" hidden></div>`;
+    document.body.insertBefore(root,original[0] || dataElement);
+    const $ = selector => root.querySelector(selector);
+    $('.cw-header h1').textContent = data.title;
+    for (const item of data.variants) {
+      const option = make('option',item.title); option.value = item.id; $('.cw-variant select').append(option);
+    }
+    function validState(value) {
+      const nextVariant = variants.get(value?.variant);
+      const node = nextVariant?.nodes.find(item => item.id === value.node);
+      if (!node || !['chain','visual'].includes(value.screen)) return null;
+      const target = value.target === null ? null : Number(value.target);
+      if (target !== null && (!Number.isInteger(target) || target < 0 || target >= node.targets.length)) return null;
+      return {variant:nextVariant.id,node:node.id,screen:value.screen,target};
+    }
+    const state = () => ({variant:variant.id,node:selected,screen,target:targetIndex});
+    function parseRoute() {
+      const query = new URLSearchParams(location.search);
+      if (!query.has('cw-view')) return null;
+      return validState({variant:query.get('cw-variant'),node:query.get('cw-node'),screen:query.get('cw-view'),target:query.has('cw-target') ? query.get('cw-target') : null});
+    }
+    function applyState(next) {
+      variant = variants.get(next.variant); selected = next.node; screen = next.screen; targetIndex = next.target;
+    }
+    try {
+      const saved = validState(JSON.parse(localStorage.getItem(storageKey)));
+      if (saved) applyState({...saved,screen:'chain'});
+    } catch {}
+    const requested = parseRoute();
+    if (requested) applyState(requested);
+    function routeKey() {
+      const query = new URLSearchParams(location.search);
+      return ['cw-view','cw-variant','cw-node','cw-target'].map(key => query.get(key)).join('|');
+    }
+    let lastRoute = routeKey();
+    function urlFor(next = state(),url = new URL(location.href)) {
+      url.searchParams.set('cw-view',next.screen); url.searchParams.set('cw-variant',next.variant); url.searchParams.set('cw-node',next.node);
+      if (next.target === null) url.searchParams.delete('cw-target'); else url.searchParams.set('cw-target',String(next.target));
+      return url;
+    }
+    function remember(method = 'replace') {
+      try { localStorage.setItem(storageKey,JSON.stringify(state())); } catch {}
+      const url = urlFor();
+      if (url.href !== location.href) {
+        try { history[method + 'State']({...history.state,lessonCallChain:state()},'',url); } catch {}
+      }
+      lastRoute = routeKey();
+    }
+    function depthOf(node) {
+      let depth = 1;
+      while (node.parent !== null) { node = nodeById(node.parent); depth++; }
+      return depth;
+    }
+    function resetTree() {
+      collapsed = new Set(variant.nodes.filter(node => depthOf(node) >= 3).map(node => node.id));
+      revealSelected();
+    }
+    function revealSelected() {
+      let node = nodeById(selected);
+      while (node?.parent) { collapsed.delete(node.parent); node = nodeById(node.parent); }
+    }
+    function buildTree() {
+      const top = $('.cw-tree'); top.replaceChildren();
+      const append = (list,parent) => {
+        const children = variant.nodes.filter(node => node.parent === parent);
+        children.forEach((node,index) => {
+          const item = make('li'), row = make('div',undefined,'cw-row');
+          const hasChildren = variant.nodes.some(child => child.parent === node.id);
+          const branch = make(hasChildren ? 'button' : 'span',hasChildren ? (collapsed.has(node.id) ? '+' : '−') : (index === children.length - 1 ? '└─' : '├─'),hasChildren ? 'cw-toggle' : 'cw-branch');
+          if (hasChildren) {
+            branch.type = 'button'; branch.dataset.cwToggle = node.id;
+            branch.setAttribute('aria-expanded',!collapsed.has(node.id)); branch.setAttribute('aria-label',(collapsed.has(node.id) ? '展开 ' : '收起 ') + node.title);
+          } else branch.setAttribute('aria-hidden','true');
+          const button = make('button',undefined,'cw-node'); button.type = 'button'; button.dataset.cwNode = node.id;
+          const childCount = variant.nodes.filter(child => child.parent === node.id).length;
+          const label = make('span'); label.append(make('code',node.title),make('small','[' + node.kind + '] ' + node.summary + (childCount ? ' · ' + childCount + ' 个子节点' : '')));
+          button.append(make('span',node.number,'cw-number'),label); row.append(branch,button); item.append(row);
+          if (hasChildren) { const nested = make('ol',undefined,'cw-tree'); nested.hidden = collapsed.has(node.id); append(nested,node.id); item.append(nested); }
+          list.append(item);
+        });
+      };
+      append(top,null); $('.cw-tools strong').textContent = '调用与返回 · ' + variant.nodes.length + ' 节点 / ' + Math.max(...variant.nodes.map(depthOf)) + ' 层';
+    }
+    function detail() {
+      const node = nodeById(selected);
+      const ancestors = [];
+      for (let item = node; item; item = item.parent === null ? null : nodeById(item.parent)) ancestors.unshift(item);
+      const path = $('.cw-path'); path.replaceChildren(make('span','调用路径'));
+      ancestors.forEach((item,index) => {
+        if (index) path.append(make('span','›'));
+        const part = make(index === ancestors.length - 1 ? 'span' : 'button',item.number + ' ' + item.title);
+        if (part.tagName === 'BUTTON') { part.type = 'button'; part.dataset.cwAncestor = item.id; }
+        path.append(part);
+      });
+      root.querySelectorAll('[data-cw-node]').forEach(button => {
+        if (button.dataset.cwNode === selected) button.setAttribute('aria-current','true'); else button.removeAttribute('aria-current');
+      });
+      $('.cw-kicker').textContent = '节点 ' + node.number + ' / ' + node.kind;
+      $('#cw-node-title').textContent = node.title; $('.cw-summary').textContent = node.summary;
+      $('.cw-data').replaceChildren();
+      for (const [label,key] of [['输入从哪来','input'],['内部动作与持久状态','changes'],['输出交给谁','output'],['返回后在哪里继续','resume']]) $('.cw-data').append(make('dt',label),make('dd',node[key]));
+      $('.cw-note').hidden = !node.note; $('.cw-note').textContent = node.note || '';
+      $('.cw-evidence>div').replaceChildren();
+      $('.cw-evidence h3').textContent = variant.provenance === 'teaching' ? '算法教学对照 · 不绑定源码' : '源码依据 · 行号属于所示 commit';
+      if (variant.provenance === 'teaching') $('.cw-evidence>div').append(make('p','此分支说明教学算法，不表示 vLLM 内存在同名函数。','cw-guide'));
+      for (const evidence of node.evidence) {
+        const repo = variant.repositories[evidence.repo];
+        const link = make('a',evidence.label + ' · ' + evidence.path + ':' + evidence.line + (evidence.end ? '–' + evidence.end : ''));
+        link.href = repo.url + '/blob/' + repo.commit + '/' + evidence.path + '#L' + evidence.line + (evidence.end ? '-L' + evidence.end : '');
+        link.target = '_blank'; link.rel = 'noopener noreferrer'; link.title = repo.commit;
+        link.append(make('small',(repo.label || evidence.repo) + ' @ ' + repo.commit.slice(0,10)));
+        $('.cw-evidence>div').append(link);
+      }
+      $('.cw-targets>div').replaceChildren();
+      node.targets.forEach((target,index) => {
+        const button = make('button',target.label + ' →','cw-jump'); button.type = 'button'; button.dataset.cwTarget = index; button.disabled = busy;
+        $('.cw-targets>div').append(button);
+      });
+    }
+    function render() {
+      const visual = screen === 'visual';
+      root.dataset.cwBusy = String(busy);
+      root.dataset.cwScreen = screen;
+      original.forEach(node => node.classList.toggle('lesson-hidden',!visual));
+      $('.cw-header').hidden = visual; $('.cw-chain').hidden = visual; $('.cw-context').hidden = !visual;
+      root.querySelectorAll('[data-cw-view]').forEach(button => button.setAttribute('aria-pressed',button.dataset.cwView === screen));
+      $('[data-cw-view=chain]').textContent = visual ? '← 返回调用链' : '01 整体调用链';
+      $('.cw-variant select').value = variant.id; $('.cw-scope-text').textContent = variant.scope;
+      const repos = $('.cw-repositories'); repos.replaceChildren();
+      $('.cw-scope summary').textContent = variant.provenance === 'teaching' ? '算法教学对照 · 无源码仓库' : '源码仓库与固定 commit';
+      for (const [key,repo] of Object.entries(variant.repositories)) {
+        const link = make('a',(repo.label || key) + ' · ' + repo.url.replace('https://github.com/','') + ' @ ' + repo.commit);
+        link.href = repo.url + '/tree/' + repo.commit; link.target = '_blank'; link.rel = 'noopener noreferrer'; repos.append(link);
+      }
+      $('.cw-context').textContent = targetIndex === null
+        ? '当前展示原交互流程。从调用链的具体节点跳转，可定位对应模式和步骤。'
+        : '来自节点 ' + nodeById(selected).number + ' · ' + nodeById(selected).title + '。可继续使用图中的模式与步进控件。';
+      detail();
+      if (visual) window.dispatchEvent(new Event('resize'));
+    }
+    function scrollSelected() {
+      const button = root.querySelector('[data-cw-node="' + selected + '"]'), box = $('.cw-tree-scroll');
+      const a = button.getBoundingClientRect(), b = box.getBoundingClientRect();
+      if (a.top < b.top) box.scrollTop += a.top - b.top - 8;
+      else if (a.bottom > b.bottom) box.scrollTop += a.bottom - b.bottom + 8;
+    }
+    function clearError() { $('.cw-error').hidden = true; $('.cw-error').textContent = ''; }
+    function errorMessage(error) { $('.cw-error').textContent = '无法定位该步骤：' + error.message; $('.cw-error').hidden = false; }
+    window.addEventListener('message',event => {
+      if (!frame || event.source !== frame.contentWindow || !event.data) return;
+      if (event.data.type === 'lesson-call-ready') frameReady = true;
+      if (event.data.type === 'lesson-call-result') {
+        const pending = replies.get(event.data.id);
+        if (pending) { replies.delete(event.data.id); clearTimeout(pending.timer); event.data.ok ? pending.resolve(event.data.result) : pending.reject(new Error(event.data.error)); }
+      }
+      if (event.data.type === 'lesson-call-edited' && !busy && screen === 'visual') markEdited();
+    });
+    function markEdited() {
+      targetIndex = null;
+      $('.cw-context').textContent = '图中的模式或步骤已手动调整，当前状态不再绑定调用链节点。返回调用链可重新定位源码对应步骤。';
+      remember();
+    }
+    async function invoke(action) {
+      if (!frame) {
+        if (typeof window.openLessonTarget !== 'function') throw new Error('当前页面缺少步骤入口');
+        const work = nativeQueue.then(() => window.openLessonTarget(action));
+        nativeQueue = work.catch(() => {});
+        return work;
+      }
+      const deadline = Date.now() + 5000;
+      while (!frameReady && Date.now() < deadline) {
+        frame.contentWindow?.postMessage({type:'lesson-call-ping'},'*');
+        await new Promise(resolve => setTimeout(resolve,80));
+      }
+      if (!frameReady) throw new Error('内嵌可视化尚未就绪，请稍后重试');
+      const id = topic + ':' + ++requestId;
+      return new Promise((resolve,reject) => {
+        const timer = setTimeout(() => { replies.delete(id); reject(new Error('步骤定位超时')); },8000);
+        replies.set(id,{resolve,reject,timer});
+        frame.contentWindow.postMessage({type:'lesson-call-open',id,action},'*');
+      });
+    }
+    async function openTarget(index,method = 'push',scroll = true) {
+      const target = nodeById(selected).targets[index];
+      if (!target) return;
+      const currentPage = location.pathname.split('/').at(-1);
+      if (target.action.page && target.action.page !== currentPage) {
+        if (!['index.html','comparison.html'].includes(target.action.page)) throw new Error('不支持的页面目标');
+        const url = new URL(target.action.page,location.href); url.hash = '';
+        location.assign(urlFor({...state(),screen:'visual',target:index},url)); return;
+      }
+      const job = ++revision; busy = true; screen = 'visual'; targetIndex = index; clearError(); render();
+      $('.cw-context').textContent = '正在定位：' + target.label;
+      try {
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const result = await invoke(target.action);
+        if (job !== revision) return;
+        $('.cw-context').textContent = '来自节点 ' + nodeById(selected).number + ' · ' + nodeById(selected).title + ' → ' + (result?.label || target.label);
+        if (method) remember(method);
+        if (scroll) { $('.cw-context').scrollIntoView({block:'start'}); $('.cw-context').focus({preventScroll:true}); }
+      } catch (error) {
+        if (job === revision) { screen = 'chain'; render(); errorMessage(error); }
+      } finally { if (job === revision) { busy = false; root.dataset.cwBusy = 'false'; detail(); } }
+    }
+    function pauseVisual() {
+      if (frame) frame.contentWindow?.postMessage({type:'lesson-call-pause'},'*');
+      else window.dispatchEvent(new Event('lesson-pause-visual'));
+    }
+    function openChain() {
+      revision++; busy = false; screen = 'chain'; clearError();
+      pauseVisual();
+      revealSelected(); buildTree(); render(); remember('push'); scrollSelected();
+      root.scrollIntoView({block:'start'});
+    }
+    root.addEventListener('click',event => {
+      const target = event.target.closest('[data-cw-target]');
+      if (target) { openTarget(Number(target.dataset.cwTarget)); return; }
+      const layer = event.target.closest('[data-cw-view]');
+      if (layer) {
+        if (layer.dataset.cwView === 'chain') openChain();
+        else if (targetIndex !== null) openTarget(targetIndex);
+        else { screen = 'visual'; clearError(); render(); remember('push'); }
+        return;
+      }
+      const toggle = event.target.closest('[data-cw-toggle]');
+      if (toggle) {
+        const id = toggle.dataset.cwToggle;
+        if (collapsed.has(id)) collapsed.delete(id); else collapsed.add(id);
+        buildTree(); detail(); root.querySelector('[data-cw-toggle="' + id + '"]').focus({preventScroll:true}); return;
+      }
+      const button = event.target.closest('[data-cw-node],[data-cw-ancestor]');
+      if (button) {
+        selected = button.dataset.cwNode || button.dataset.cwAncestor; targetIndex = null; clearError();
+        if (button.dataset.cwAncestor) { revealSelected(); buildTree(); }
+        detail(); remember('push');
+        if (button.dataset.cwAncestor) scrollSelected();
+        if (matchMedia('(max-width:760px)').matches) { $('.cw-detail').scrollIntoView({block:'start'}); $('.cw-detail').focus({preventScroll:true}); }
+      }
+    });
+    $('[data-cw-expand]').addEventListener('click',() => { collapsed.clear(); buildTree(); detail(); });
+    $('[data-cw-depth]').addEventListener('click',() => { resetTree(); buildTree(); detail(); });
+    $('[data-cw-fold]').addEventListener('click',() => { collapsed = new Set(variant.nodes.filter(node => node.parent !== null).map(node => node.id)); buildTree(); detail(); });
+    $('.cw-variant select').addEventListener('change',event => {
+      variant = variants.get(event.target.value); selected = variant.entry || variant.nodes[0].id; targetIndex = null;
+      resetTree(); buildTree(); clearError(); render(); remember('push');
+    });
+    for (const name of ['click','change']) document.addEventListener(name,event => {
+      if (event.isTrusted && !busy && screen === 'visual' && event.target.closest('.lesson-original') && event.target.closest('button,select,input')) markEdited();
+    },true);
+    window.addEventListener('popstate',() => {
+      if (routeKey() === lastRoute) return;
+      lastRoute = routeKey(); revision++; busy = false;
+      const next = parseRoute() || {variant:fallback.id,node:fallback.entry || fallback.nodes[0].id,screen:'chain',target:null};
+      applyState(next); resetTree(); buildTree(); render(); clearError();
+      if (screen === 'visual' && targetIndex !== null) openTarget(targetIndex,null,false);
+      else if (screen === 'chain') { pauseVisual(); scrollSelected(); }
+    });
+    resetTree(); buildTree(); render();
+    if (screen === 'visual' && targetIndex !== null) openTarget(targetIndex,null,false);
+    else if (screen === 'chain') scrollSelected();
+    document.documentElement.dataset.callChainReady = 'true';
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded',mount,{once:true}); else mount();
+})();
+</script>
+<!-- call-ui:end -->
+</body>
+</html>

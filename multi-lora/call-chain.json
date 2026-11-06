@@ -1,0 +1,1526 @@
+{
+  "title": "Multi-LoRA加载、槽映射与线性层增量调用链",
+  "defaultVariant": "gpu-replicated",
+  "variants": [
+    {
+      "id": "gpu-replicated",
+      "title": "GPU MRV1 / ReplicatedLinearWithLoRA",
+      "scope": "单卡同步、TP=PP=DP=1；无量化/偏置；max_loras=2、max_cpu_loras≥2。单层矩阵算例与两种合法槽布局，非真实kernel测量。",
+      "entry": "prepare",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM 295c062db8"
+        }
+      },
+      "nodes": [
+        {
+          "id": "prepare",
+          "parent": null,
+          "number": "1",
+          "kind": "调用",
+          "title": "GPUModelRunner._prepare_inputs()",
+          "summary": "批次输入准备时激活LoRA并构造行映射。",
+          "input": "R1两行→101，R2一行→202，R3一行→base。",
+          "changes": "调用set_active_loras，使用本轮实际token数展开映射。",
+          "output": "token adapter IDs=[101,101,202,0]。",
+          "resume": "映射建立后返回execute_model，模型前向消费它。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 4187,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 1943,
+              "label": "实际实现",
+              "end": 1955
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2256,
+              "label": "实际实现",
+              "end": 2264
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第1步：请求归属",
+              "action": {
+                "step": 1,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：行映射",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第1步：请求归属（交换槽位）",
+              "action": {
+                "step": 1,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "set-active",
+          "parent": "prepare",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "LoRAModelRunnerMixin.set_active_loras()",
+          "summary": "从InputBatch获取本批所需adapter与映射。",
+          "input": "num_scheduled_tokens=[2,1,1]；普通生成每请求采样1次。",
+          "changes": "make_lora_inputs后调用_set_active_loras。",
+          "output": "token mapping长度4，prompt mapping长度3。",
+          "resume": "返回_prepare_inputs，供本轮模型前向使用。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_model_runner.py",
+              "line": 2262,
+              "label": "调用位置",
+              "end": 2264
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/lora_model_runner_mixin.py",
+              "line": 83,
+              "label": "实际实现",
+              "end": 101
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第4步：token与prompt映射",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：token与prompt映射（交换槽位）",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "make-inputs",
+          "parent": "set-active",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "InputBatch.make_lora_inputs()",
+          "summary": "按每请求本轮token数展开adapter ID。",
+          "input": "request_lora_mapping=[101,202,0]。",
+          "changes": "按scheduled tokens重复为4行；按sampled tokens构造3行prompt mapping。",
+          "output": "token=[101,101,202,0]，prompt=[101,202,0]。",
+          "resume": "返回set_active_loras。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/lora_model_runner_mixin.py",
+              "line": 97,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/gpu_input_batch.py",
+              "line": 998,
+              "label": "实际实现",
+              "end": 1022
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第4步：请求ID展开到token行",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：请求ID展开到token行（交换槽位）",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "set-private",
+          "parent": "set-active",
+          "number": "1.1.2",
+          "kind": "调用",
+          "title": "LoRAModelRunnerMixin._set_active_loras()",
+          "summary": "包装LoRAMapping后交给Worker管理器。",
+          "input": "两套LoRARequest和两个ID映射。",
+          "changes": "构造LoRAMapping，调用lora_manager.set_active_adapters。",
+          "output": "Worker激活本批adapter并更新Punica metadata。",
+          "resume": "返回set_active_loras。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/lora_model_runner_mixin.py",
+              "line": 99,
+              "label": "调用位置",
+              "end": 101
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/lora_model_runner_mixin.py",
+              "line": 58,
+              "label": "实际实现",
+              "end": 77
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第2步：加载入口",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：映射入口",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第2步：加载入口（交换槽位）",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "active-manager",
+          "parent": "set-private",
+          "number": "1.1.2.1",
+          "kind": "调用",
+          "title": "WorkerLoRAManager.set_active_adapters()",
+          "summary": "先加载/激活adapter，再建立slot映射。",
+          "input": "本批请求的adapter集合及LoRAMapping。",
+          "changes": "动态调用LRU子类_apply_adapters；随后set_adapter_mapping。",
+          "output": "GPU slots与行索引互相匹配。",
+          "resume": "返回_set_active_loras，再返回输入准备。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/lora_model_runner_mixin.py",
+              "line": 77,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/worker_manager.py",
+              "line": 195,
+              "label": "实际实现",
+              "end": 198
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/worker/lora_model_runner_mixin.py",
+              "line": 50,
+              "label": "所选LRU管理器构造",
+              "end": 56
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第2步：CPU加载",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第3步：GPU激活",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：mapping完成",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第2步：CPU加载（交换槽位）",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "apply-adapters",
+          "parent": "active-manager",
+          "number": "1.1.2.1.1",
+          "kind": "调用",
+          "title": "LRUCacheWorkerLoRAManager._apply_adapters()",
+          "summary": "检查active slots容量并逐个add_adapter。",
+          "input": "本轮请求adapter IDs={101,202}，max_loras=2。",
+          "changes": "校验数量不超过slots，遍历本批LoRARequest。",
+          "output": "两套adapter可同时激活。",
+          "resume": "返回set_active_adapters，再更新映射。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/worker_manager.py",
+              "line": 196,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/worker_manager.py",
+              "line": 274,
+              "label": "实际实现",
+              "end": 287
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第2步：两套adapter加载",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第3步：两槽激活",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第2步：两套adapter加载（交换槽位）",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ],
+          "note": "集合遍历与空槽选择不保证固定身份顺序；两场景都是合法槽布局。"
+        },
+        {
+          "id": "add-adapter",
+          "parent": "apply-adapters",
+          "number": "1.1.2.1.1.1",
+          "kind": "调用",
+          "title": "LRUCacheWorkerLoRAManager.add_adapter()",
+          "summary": "CPU缓存未命中时加载，随后激活GPU槽位。",
+          "input": "首次使用101与202；本页max_cpu_loras≥2，无驱逐。",
+          "changes": "_load_adapter→manager.add_adapter→activate_adapter。",
+          "output": "CPU缓存保存权重；GPU槽位保存当前激活权重。",
+          "resume": "返回_apply_adapters继续另一个adapter。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/worker_manager.py",
+              "line": 287,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/worker_manager.py",
+              "line": 289,
+              "label": "实际实现",
+              "end": 325
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第2步：CPU缓存建立",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第3步：槽位激活",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第2步：CPU缓存建立（交换槽位）",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "load",
+          "parent": "add-adapter",
+          "number": "1.1.2.1.1.1.1",
+          "kind": "调用",
+          "title": "WorkerLoRAManager._load_adapter()",
+          "summary": "读取本地checkpoint到CPU，校验模型兼容性。",
+          "input": "LoRARequest路径、rank/alpha等PEFT配置。",
+          "changes": "调用LoRAModel.from_local_checkpoint，明确device=\"cpu\"。",
+          "output": "CPU上的A[r,in]与B[out,r]及缩放信息。",
+          "resume": "返回add_adapter，随后注册并折叠缩放。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/worker_manager.py",
+              "line": 304,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/worker_manager.py",
+              "line": 106,
+              "label": "实际实现",
+              "end": 151
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第2步：CPU加载后状态",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第2步：CPU加载后状态（交换槽位）",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "checkpoint",
+          "parent": "load",
+          "number": "1.1.2.1.1.1.1.1",
+          "kind": "调用",
+          "title": "LoRAModel.from_local_checkpoint()",
+          "summary": "读取并解析adapter参数，构建LoRAModel。",
+          "input": "本地权重文件与PEFTHelper。",
+          "changes": "检查模块名、加载张量，调用from_lora_tensors。",
+          "output": "α: A=[1,1], B=[2,−1]；β: A=[1,−1], B=[1,2]。",
+          "resume": "返回_load_adapter；尚未进行GPU slot copy。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/worker_manager.py",
+              "line": 140,
+              "label": "调用位置",
+              "end": 151
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/lora_model.py",
+              "line": 195,
+              "label": "实际实现",
+              "end": 207
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/lora_model.py",
+              "line": 293,
+              "label": "实际实现",
+              "end": 325
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第2步：有效CPU矩阵",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第2步：有效CPU矩阵（交换槽位）",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ],
+          "note": "第2步同时观察加载与后续注册时的缩放折叠；不是from_local_checkpoint本身执行optimize。"
+        },
+        {
+          "id": "register",
+          "parent": "add-adapter",
+          "number": "1.1.2.1.1.1.2",
+          "kind": "调用",
+          "title": "LRUCacheLoRAModelManager.add_adapter()",
+          "summary": "把CPU权重注册进管理器，准备有效LoRA参数。",
+          "input": "已加载LoRAModel，尚未激活GPU。",
+          "changes": "新ID调用_add_adapter；内部_create_merged_loras_inplace最终执行optimize。",
+          "output": "B中折叠α/r；β有效B=[2,4]。",
+          "resume": "返回Worker add_adapter，再激活GPU槽。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/worker_manager.py",
+              "line": 316,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/model_manager.py",
+              "line": 1385,
+              "label": "实际实现",
+              "end": 1395
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/model_manager.py",
+              "line": 416,
+              "label": "实际实现",
+              "end": 419
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/model_manager.py",
+              "line": 901,
+              "label": "注册路径调用optimize",
+              "end": 902
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第2步：缩放折叠后的CPU权重",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第2步：缩放折叠后的CPU权重（交换槽位）",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ],
+          "note": "节点汇总注册路径；下方optimize以真实中间_create_merged_loras_inplace续点表示，不声称直接子调用。"
+        },
+        {
+          "id": "register-inner",
+          "parent": "register",
+          "number": "1.1.2.1.1.1.2.1",
+          "kind": "调用",
+          "title": "LoRAModelManager._add_adapter()",
+          "summary": "校验后准备模块权重，再写入注册表。",
+          "input": "CPU LoRAModel。",
+          "changes": "调用_create_merged_loras_inplace。",
+          "output": "已准备的权重进入_registered_adapters。",
+          "resume": "返回LRUCacheLoRAModelManager.add_adapter。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/model_manager.py",
+              "line": 1389,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/model_manager.py",
+              "line": 416,
+              "label": "实际实现",
+              "end": 419
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第2步：注册完成观察状态",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第2步：注册完成观察状态（交换槽位）",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "merged",
+          "parent": "register-inner",
+          "number": "1.1.2.1.1.1.2.1.1",
+          "kind": "调用",
+          "title": "LoRAModelManager._create_merged_loras_inplace()",
+          "summary": "本页普通单层无需打包，但仍逐层optimize。",
+          "input": "未打包的ReplicatedLinear LoRALayerWeights。",
+          "changes": "遍历lora_model.loras.values调用optimize。",
+          "output": "每层B完成一次缩放折叠。",
+          "resume": "返回_add_adapter，写注册表。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/model_manager.py",
+              "line": 418,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/model_manager.py",
+              "line": 842,
+              "label": "实际实现",
+              "end": 850
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/model_manager.py",
+              "line": 901,
+              "label": "实际实现",
+              "end": 902
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第2步：缩放折叠",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第2步：缩放折叠（交换槽位）",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "optimize",
+          "parent": "merged",
+          "number": "1.1.2.1.1.1.2.1.1.1",
+          "kind": "调用",
+          "title": "LoRALayerWeights.optimize()",
+          "summary": "把α/r折进B，运行时不再重复缩放。",
+          "input": "β alpha/r=2，原B=[[1],[2]]。",
+          "changes": "B *= scaling，scaling设为1。",
+          "output": "β B_scaled=[[2],[4]]。",
+          "resume": "返回模块准备，再注册/激活adapter。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/model_manager.py",
+              "line": 902,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/lora_weights.py",
+              "line": 37,
+              "label": "实际实现",
+              "end": 43
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第2步：B乘2一次",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第2步：B乘2一次（交换槽位）",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "activate",
+          "parent": "add-adapter",
+          "number": "1.1.2.1.1.1.3",
+          "kind": "调用",
+          "title": "LRUCacheLoRAModelManager.activate_adapter()",
+          "summary": "管理active容量后调用父类填GPU槽。",
+          "input": "已注册101或202；两槽均可容纳。",
+          "changes": "必要时移除最老active，本例不触发；super激活并touch LRU。",
+          "output": "对应ID进入GPU active集。",
+          "resume": "返回Worker.add_adapter。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/worker_manager.py",
+              "line": 324,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/model_manager.py",
+              "line": 1397,
+              "label": "实际实现",
+              "end": 1409
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第3步：两套GPU权重就绪",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第3步：两套GPU权重就绪（交换槽位）",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "activate-base",
+          "parent": "activate",
+          "number": "1.1.2.1.1.1.3.1",
+          "kind": "调用",
+          "title": "LoRAModelManager.activate_adapter()",
+          "summary": "选择空槽并把ID和权重写到同一个槽。",
+          "input": "CPU LoRAModel、lora_index_to_id。",
+          "changes": "选空slot，更新index_to_id；对模块调用set_lora。",
+          "output": "mixed槽[101,202]；swap槽[202,101]。",
+          "resume": "返回LRU覆盖方法，更新使用顺序。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/model_manager.py",
+              "line": 1406,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/model_manager.py",
+              "line": 350,
+              "label": "实际实现",
+              "end": 374
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/model_manager.py",
+              "line": 393,
+              "label": "实际实现",
+              "end": 397
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第3步：身份和槽号分开",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第3步：身份和槽号分开（交换槽位）",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "set-lora",
+          "parent": "activate-base",
+          "number": "1.1.2.1.1.1.3.1.1",
+          "kind": "调用",
+          "title": "BaseLinearLayerWithLoRA.set_lora()",
+          "summary": "将有效A/B复制进该模块的GPU槽。",
+          "input": "slot index和对应CPU A/B_scaled。",
+          "changes": "reset_lora后copy_到堆叠权重张量的选定slot。",
+          "output": "GPU可按slot读取A、B；实际可含rank padding。",
+          "resume": "返回activate_adapter；之后建立本批行映射。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/model_manager.py",
+              "line": 393,
+              "label": "调用位置",
+              "end": 397
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/layers/base_linear.py",
+              "line": 162,
+              "label": "实际实现",
+              "end": 188
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第3步：CPU→GPU权重复制",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第3步：CPU→GPU权重复制（交换槽位）",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "set-mapping",
+          "parent": "active-manager",
+          "number": "1.1.2.1.2",
+          "kind": "调用",
+          "title": "LoRAModelManager.set_adapter_mapping()",
+          "summary": "映射变化后更新底层Punica metadata。",
+          "input": "LoRAMapping与当前lora_index_to_id。",
+          "changes": "同时比较last_mapping和slot_layout；任一变化都调用_set_adapter_mapping。",
+          "output": "缓存mapping与slot_layout；交换槽位即使adapter ID序列不变，也必须刷新indices。",
+          "resume": "返回Worker.set_active_adapters。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/worker_manager.py",
+              "line": 198,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/model_manager.py",
+              "line": 1358,
+              "label": "实际实现",
+              "end": 1366
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第4步：按本批更新indices",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：按本批更新indices（交换槽位）",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "set-mapping-inner",
+          "parent": "set-mapping",
+          "number": "1.1.2.1.2.1",
+          "kind": "调用",
+          "title": "LoRAModelManager._set_adapter_mapping()",
+          "summary": "选择语言模型Punica wrapper。",
+          "input": "本页普通语言模型，无多模态tower映射。",
+          "changes": "调用punica_wrapper.update_metadata。",
+          "output": "传入token IDs和slot身份表。",
+          "resume": "返回set_adapter_mapping。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/model_manager.py",
+              "line": 1364,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/model_manager.py",
+              "line": 428,
+              "label": "实际实现",
+              "end": 451
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第4步：ID表与槽表共同输入",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：ID表与槽表共同输入（交换槽位）",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "punica-map",
+          "parent": "set-mapping-inner",
+          "number": "1.1.2.1.2.1.1",
+          "kind": "调用",
+          "title": "PunicaWrapperGPU.update_metadata()",
+          "summary": "更新base indices并准备GPU kernel元数据。",
+          "input": "LoRAMapping、slot身份表、词表尺寸。",
+          "changes": "_update_base_metadata后prepare_tensors。",
+          "output": "供shrink/expand共用的token_mapping_meta。",
+          "resume": "返回LoRAModelManager。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/model_manager.py",
+              "line": 446,
+              "label": "调用位置",
+              "end": 451
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/punica_wrapper/punica_gpu.py",
+              "line": 74,
+              "label": "实际实现",
+              "end": 89
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第4步：Punica行映射",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：Punica行映射（交换槽位）",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "base-map",
+          "parent": "punica-map",
+          "number": "1.1.2.1.2.1.1.1",
+          "kind": "调用",
+          "title": "PunicaWrapperBase._update_base_metadata()",
+          "summary": "把adapter ID转换成slot索引并复制到持久metadata。",
+          "input": "token mapping=[101,101,202,0]及slot身份表。",
+          "changes": "调用convert_mapping；copy_到token_lora_indices等缓冲。",
+          "output": "mixed [0,0,1,−1]；swap [1,1,0,−1]。",
+          "resume": "返回PunicaWrapperGPU继续prepare_tensors。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/punica_wrapper/punica_gpu.py",
+              "line": 83,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/punica_wrapper/punica_base.py",
+              "line": 163,
+              "label": "实际实现",
+              "end": 192
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第4步：index随槽布局变化",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：index随槽布局变化（交换槽位）",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "convert",
+          "parent": "base-map",
+          "number": "1.1.2.1.2.1.1.1.1",
+          "kind": "调用",
+          "title": "convert_mapping()",
+          "summary": "adapter身份映射为当前GPU槽位，base用−1。",
+          "input": "IDs [101,101,202,0]和lora_index_to_id。",
+          "changes": "建立ID→index字典；逐行转换。",
+          "output": "同一adapter的多行指向同一槽；base不应用LoRA。",
+          "resume": "返回_update_base_metadata。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/punica_wrapper/punica_base.py",
+              "line": 176,
+              "label": "调用位置",
+              "end": 182
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/punica_wrapper/utils.py",
+              "line": 52,
+              "label": "实际实现",
+              "end": 64
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/punica_wrapper/utils.py",
+              "line": 94,
+              "label": "实际实现",
+              "end": 111
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第4步：准确的四行indices",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第4步：准确的四行indices（交换槽位）",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "linear",
+          "parent": null,
+          "number": "2",
+          "kind": "调用",
+          "title": "ReplicatedLinearWithLoRA.forward()",
+          "summary": "模型前向调用已替换的LoRA线性层。",
+          "input": "X四行、共享W、已准备GPU槽与行映射。",
+          "changes": "调用apply；按base层约定返回output或(output,bias)。",
+          "output": "四行输出保持请求顺序。",
+          "resume": "回到具体模型forward的下一层。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/layers/replicated_linear.py",
+              "line": 25,
+              "label": "实际实现",
+              "end": 48
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第5步：base计算",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第8步：最终输出",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第5步：base计算（交换槽位）",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ],
+          "note": "根1为输入准备调用栈，根2为稍后模型层调用栈；不是把前向误嵌套进mapping函数。固定单层ReplicatedLinearWithLoRA，不绑定某个完整模型层名。"
+        },
+        {
+          "id": "apply-linear",
+          "parent": "linear",
+          "number": "2.1",
+          "kind": "调用",
+          "title": "ReplicatedLinearWithLoRA.apply()",
+          "summary": "尊重真实base layer forward，再叠加LoRA。",
+          "input": "X和bias（本页bias=0）。",
+          "changes": "调用_apply_base_forward，不绕过base层自定义forward。",
+          "output": "共享base加LoRA后的输出。",
+          "resume": "返回ReplicatedLinearWithLoRA.forward。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/layers/replicated_linear.py",
+              "line": 41,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/layers/replicated_linear.py",
+              "line": 50,
+              "label": "实际实现",
+              "end": 54
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第5步：base入口",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第8步：叠加结果",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第5步：base入口（交换槽位）",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "base-forward",
+          "parent": "apply-linear",
+          "number": "2.1.1",
+          "kind": "调用",
+          "title": "BaseLinearLayerWithLoRA._apply_base_forward()",
+          "summary": "先执行base_layer(x)，再调用增量路径。",
+          "input": "X=[[1,2],[2,0],[0,1],[1,−1]]，W=diag(1,2)。",
+          "changes": "base_layer先得到y0=[[1,4],[2,0],[0,2],[1,−2]]，再将X和同一个output交给_apply_lora_to_output。",
+          "output": "返回叠加后的Y=[[7,1],[6,−2],[−2,−2],[1,−2]]；y0只是中间量。",
+          "resume": "等待LoRA增量写入后返回apply。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/layers/replicated_linear.py",
+              "line": 54,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/layers/base_linear.py",
+              "line": 214,
+              "label": "实际实现",
+              "end": 217
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第5步：共享W的结果",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第5步：共享W的结果（交换槽位）",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "lora-output",
+          "parent": "base-forward",
+          "number": "2.1.1.1",
+          "kind": "调用",
+          "title": "BaseLinearLayerWithLoRA._apply_lora_to_output()",
+          "summary": "把现有base输出交给Punica累加。",
+          "input": "X、y0、堆叠A/B_scaled和output_slices。",
+          "changes": "调用add_lora_linear，运行时scale固定1.0。",
+          "output": "同一输出张量包含y0+Δy。",
+          "resume": "返回_apply_base_forward，再返回线性层。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/layers/base_linear.py",
+              "line": 217,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/layers/base_linear.py",
+              "line": 219,
+              "label": "实际实现",
+              "end": 242
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第6步：低秩增量入口",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第8步：相加一次",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第6步：低秩增量入口（交换槽位）",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "punica-linear",
+          "parent": "lora-output",
+          "number": "2.1.1.1.1",
+          "kind": "调用",
+          "title": "PunicaWrapperGPU.add_lora_linear()",
+          "summary": "用同一token mapping依次shrink与expand。",
+          "input": "X、base输出、按GPU槽存放的A/B_scaled。",
+          "changes": "分配低秩buffer；add_shrink后add_expand(add_inputs=True)。",
+          "output": "每行加对应adapter增量；base行保持原值。",
+          "resume": "返回_apply_lora_to_output；恢复原shape如有必要。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/layers/base_linear.py",
+              "line": 231,
+              "label": "调用位置",
+              "end": 233
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/punica_wrapper/punica_gpu.py",
+              "line": 206,
+              "label": "实际实现",
+              "end": 217
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/punica_wrapper/punica_gpu.py",
+              "line": 247,
+              "label": "实际实现",
+              "end": 269
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第6步：shrink",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第7步：expand",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第8步：累加输出",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第6步：shrink（交换槽位）",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "shrink",
+          "parent": "punica-linear",
+          "number": "2.1.1.1.1.1",
+          "kind": "调用",
+          "title": "PunicaWrapperGPU.add_shrink()",
+          "summary": "按token mapping选A，把2维压到1维。",
+          "input": "同一X、A_stacked、FP32低秩buffer；scale=1。",
+          "changes": "调用lora_shrink，按每行adapter选择权重。",
+          "output": "有效h=[3,2,−1,0]；base行不产生增量。",
+          "resume": "回到add_lora_linear，接着expand。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/punica_wrapper/punica_gpu.py",
+              "line": 255,
+              "label": "调用位置",
+              "end": 261
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/punica_wrapper/punica_gpu.py",
+              "line": 91,
+              "label": "实际实现",
+              "end": 122
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第6步：低秩结果",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第6步：低秩结果（交换槽位）",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ],
+          "note": "图中h=0表示base行不应用LoRA的数学贡献，不声称未使用的真实empty buffer字节被清零。"
+        },
+        {
+          "id": "expand",
+          "parent": "punica-linear",
+          "number": "2.1.1.1.1.2",
+          "kind": "调用",
+          "title": "PunicaWrapperGPU.add_expand()",
+          "summary": "选同一adapter的B，将增量加到base输出。",
+          "input": "h、B_scaled、token mapping、add_inputs=True。",
+          "changes": "调用lora_expand原位累加；图将Δy与加法拆成观察步骤。",
+          "output": "Δy=[[6,−3],[4,−2],[−2,−4],[0,0]]；Y=[[7,1],[6,−2],[−2,−2],[1,−2]]。",
+          "resume": "返回add_lora_linear，再逐层返回模型forward。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/punica_wrapper/punica_gpu.py",
+              "line": 262,
+              "label": "调用位置",
+              "end": 269
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/lora/punica_wrapper/punica_gpu.py",
+              "line": 124,
+              "label": "实际实现",
+              "end": 172
+            }
+          ],
+          "targets": [
+            {
+              "label": "跳到第7步：增量观察",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第8步：最终累加",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第9步：下游消费",
+              "action": {
+                "step": 9,
+                "params": {
+                  "scenario": "mixed"
+                }
+              }
+            },
+            {
+              "label": "跳到第7步：增量观察（交换槽位）",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "slot-swap"
+                }
+              }
+            }
+          ],
+          "note": "未运行GPU kernel；rank=1、2×2有效矩阵只用于算术解释，真实GPU形状可按max_lora_rank补齐。"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1364 @@
+{
+  "title": "Full+SWA 混合 KV 调用链",
+  "defaultVariant": "allocation",
+  "variants": [
+    {
+      "id": "allocation",
+      "title": "Full+SWA 分配 · APC关闭",
+      "scope": "单卡同步，无在途/spec/connector；运行类 KVCacheCoordinatorNoPrefixCache 继承公共分配。逻辑block4/window5是教学尺寸。入口为已运行A。",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
+        }
+      },
+      "nodes": [
+        {
+          "id": "configuration",
+          "parent": null,
+          "number": "0",
+          "kind": "边界",
+          "title": "get_kv_cache_coordinator()（APC 关闭分支）",
+          "summary": "两组缓存并不总实例化 HybridKVCacheCoordinator。",
+          "input": "enable_caching=False；Full/SWA 两组配置。",
+          "changes": "创建 KVCacheCoordinatorNoPrefixCache；继承公共管理方法。",
+          "output": "单 coordinator 与同一个 BlockPool。",
+          "resume": "进入正常 schedule；这是初始化边界，不是 schedule 子调用。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 993,
+              "label": "实际实现",
+              "end": 1021
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 95,
+              "label": "共享池创建",
+              "end": 101
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 133,
+              "label": "同一 pool 交给逐组 manager",
+              "end": 148
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 2659,
+              "label": "Full / SWA 注册",
+              "end": 2678
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第1步",
+              "action": {
+                "step": 1,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "schedule",
+          "parent": null,
+          "number": "1",
+          "kind": "边界",
+          "title": "Scheduler.schedule()",
+          "summary": "对已运行 A 调度下一 token。",
+          "input": "A computed=12，num_in_flight_tokens=0，new=1。",
+          "changes": "向 KVCacheManager 申请本轮 slots；消费返回的新块。",
+          "output": "SchedulerOutput 的新块和 token 预算。",
+          "resume": "Worker 随后消费调度元数据；CPU 分配本身未执行 Attention。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 580,
+              "label": "实际实现",
+              "end": 595
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 767,
+              "label": "运行请求分配调用",
+              "end": 780
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第2步",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "allocate",
+          "parent": "schedule",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "KVCacheManager.allocate_slots()",
+          "summary": "先释放不需要的页，再计数和分配。",
+          "input": "A 的总目标长度13；无 lookahead、connector、APC。",
+          "changes": "remove_skipped_blocks→容量检查→逐组 allocate_new_blocks。",
+          "output": "本例 Full 新块[5]、SWA 新块[4]；失败路径可返回 None。",
+          "resume": "Scheduler 将结果写到本轮输出；本例只走成功分配。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 767,
+              "label": "调用位置",
+              "end": 780
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 371,
+              "label": "实际实现",
+              "end": 404
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 541,
+              "label": "实际实现",
+              "end": 618
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第2步",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "release-groups",
+          "parent": "allocate",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "KVCacheCoordinator.remove_skipped_blocks()",
+          "summary": "以已处理边界逐组检查可释放 KV。",
+          "input": "processed=total_computed−in_flight=12。",
+          "changes": "逐组调用 manager.remove_skipped_blocks。",
+          "output": "两组请求块表可能出现 NULL。",
+          "resume": "返回 allocate_slots，继续计算新增块需求。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 555,
+              "label": "调用位置",
+              "end": 559
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 439,
+              "label": "实际实现",
+              "end": 460
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第3步",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "release-one",
+          "parent": "release-groups",
+          "number": "1.1.1.1",
+          "kind": "调用",
+          "title": "SingleTypeKVCacheManager.remove_skipped_blocks()",
+          "summary": "Full/SWA 继承公共释放入口，以虚方法求可跳过 token。",
+          "input": "processed=12；各组当前三页。",
+          "changes": "调用 get_num_skipped_tokens；SWA 将 skip token 向下取整为完整页数。",
+          "output": "Full 不释放；SWA 准备释放前2页。",
+          "resume": "如 skip>0，调用 _remove_blocks_in_range；否则返回逐组循环。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 457,
+              "label": "调用位置",
+              "end": 460
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 690,
+              "label": "实际实现",
+              "end": 728
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第3步",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "full-skip",
+          "parent": "release-one",
+          "number": "1.1.1.1.1",
+          "kind": "调用",
+          "title": "SingleTypeKVCacheManager.get_num_skipped_tokens()（Full 继承）",
+          "summary": "FullAttention 保留完整历史。",
+          "input": "processed=12。",
+          "changes": "默认实现不修改状态。",
+          "output": "0。",
+          "resume": "公共释放入口提前返回；Full 的1/2/3继续持有。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 714,
+              "label": "虚调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 730,
+              "label": "实际实现",
+              "end": 741
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 743,
+              "label": "Full 继承绑定",
+              "end": 749
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第3步",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "swa-skip",
+          "parent": "release-one",
+          "number": "1.1.1.1.2",
+          "kind": "调用",
+          "title": "SlidingWindowManager.get_num_skipped_tokens()",
+          "summary": "普通 SWA 根据下一个 query 的窗口起点计算。",
+          "input": "processed=12，window=5，extra_retained_tokens=0。",
+          "changes": "纯计算 max(0,12−5+1)。",
+          "output": "8 个可跳过 token。",
+          "resume": "公共 remove_skipped_blocks 换算 floor(8/4)=2 页。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 714,
+              "label": "虚调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 1163,
+              "label": "实际实现",
+              "end": 1198
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第3步",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "null-range",
+          "parent": "release-one",
+          "number": "1.1.1.1.3",
+          "kind": "调用",
+          "title": "SingleTypeKVCacheManager._remove_blocks_in_range()",
+          "summary": "倒序取出 SWA 的旧逻辑页。",
+          "input": "range=[0,2)，SWA=[4,5,6]。",
+          "changes": "将逻辑页1/0分别置 NULL，收集 freed=[5,4]。",
+          "output": "SWA=[NULL,NULL,6]。",
+          "resume": "调用 BlockPool.free_blocks 后返回公共释放入口。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 728,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 663,
+              "label": "实际实现",
+              "end": 688
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第4步",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "free-window",
+          "parent": "null-range",
+          "number": "1.1.1.1.3.1",
+          "kind": "调用",
+          "title": "BlockPool.free_blocks()",
+          "summary": "引用归零的非缓存块重新可分配。",
+          "input": "ordered_blocks=[5,4]，APC=False。",
+          "changes": "ref 各减1至0；free queue prepend_n([5,4])。",
+          "output": "队列由[7,8]变为[5,4,7,8]。",
+          "resume": "返回 _remove_blocks_in_range；旧物理内存可再分配。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 688,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/block_pool.py",
+              "line": 774,
+              "label": "实际实现",
+              "end": 805
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第4步",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "count",
+          "parent": "allocate",
+          "number": "1.1.2",
+          "kind": "调用",
+          "title": "KVCacheCoordinator.get_num_blocks_to_allocate()",
+          "summary": "累计两个组各自的新增需求。",
+          "input": "num_tokens=13；两组逻辑表长3；无新命中块。",
+          "changes": "对非 CrossAttention 分支逐组求需求并求和。",
+          "output": "1+1=2。",
+          "resume": "allocate_slots 比较 required 与空闲4；本例充足。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 561,
+              "label": "调用位置",
+              "end": 571
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 208,
+              "label": "实际实现",
+              "end": 235
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第5步",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "count-one",
+          "parent": "count",
+          "number": "1.1.2.1",
+          "kind": "调用",
+          "title": "SingleTypeKVCacheManager.get_num_blocks_to_allocate()",
+          "summary": "长度预测保留 NULL 位置，不能只用有效物理页数作分母。",
+          "input": "13 token slots；len(req_blocks)=3；没有 prefix hit。",
+          "changes": "按普通块边界计算当前调度需要的页数。",
+          "output": "每组新增1页。",
+          "resume": "回 coordinator 求和；不在计数阶段分配或 touch。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 225,
+              "label": "调用位置",
+              "end": 234
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 178,
+              "label": "实际实现",
+              "end": 268
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第5步",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "new-groups",
+          "parent": "allocate",
+          "number": "1.1.3",
+          "kind": "调用",
+          "title": "KVCacheCoordinator.allocate_new_blocks()",
+          "summary": "按 single_type_managers 顺序逐组分配。",
+          "input": "Full 在前、SWA 在后；目标长度13。",
+          "changes": "对各组 manager.allocate_new_blocks。",
+          "output": "(Full [5], SWA [4])。",
+          "resume": "回 allocate_slots 封装 KVCacheBlocks 并返回。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 595,
+              "label": "调用位置",
+              "end": 600
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 287,
+              "label": "实际实现",
+              "end": 320
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第6步",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "new-one",
+          "parent": "new-groups",
+          "number": "1.1.3.1",
+          "kind": "调用",
+          "title": "SingleTypeKVCacheManager.allocate_new_blocks()",
+          "summary": "Full/SWA 使用继承的长度扩展分配逻辑。",
+          "input": "目标 ceil(13/4)=4 页，现有逻辑表3页；无 partial-hit CoW。",
+          "changes": "向共享池取1页并 req_blocks.extend。",
+          "output": "Full=[1,2,3,5]；SWA=[NULL,NULL,6,4]。",
+          "resume": "返回当前组新页列表，再处理下一组。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 311,
+              "label": "调用位置",
+              "end": 319
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 372,
+              "label": "实际实现",
+              "end": 412
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第6步",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "get-pool",
+          "parent": "new-one",
+          "number": "1.1.3.1.1",
+          "kind": "调用",
+          "title": "BlockPool.get_new_blocks()",
+          "summary": "从共享空闲队列取头部块。",
+          "input": "num_blocks=1；APC=False。",
+          "changes": "popleft_n(1)；ref 0→1。",
+          "output": "第一次返回5；第二次返回4。",
+          "resume": "单组 manager 把该块追加到请求逻辑表。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 408,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/block_pool.py",
+              "line": 666,
+              "label": "实际实现",
+              "end": 700
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第6步",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "pop-queue",
+          "parent": "get-pool",
+          "number": "1.1.3.1.1.1",
+          "kind": "调用",
+          "title": "FreeKVCacheBlockQueue.popleft_n()",
+          "summary": "批量摘取空闲链表头。",
+          "input": "空闲队列与 n=1。",
+          "changes": "更新 free-list 链接、空闲块计数。",
+          "output": "有序物理块对象列表。",
+          "resume": "BlockPool 设置 ref；队列摘取和引用变化属于不同层。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/block_pool.py",
+              "line": 681,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_utils.py",
+              "line": 336,
+              "label": "实际实现",
+              "end": 382
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第6步",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "device-boundary",
+          "parent": null,
+          "number": "2",
+          "kind": "边界",
+          "title": "SchedulerOutput → Worker Attention（消费边界）",
+          "summary": "分配结果用于不同组的设备块表。",
+          "input": "Full 新块5、SWA新块4；position=12。",
+          "changes": "页图计算每组 slot；实际 worker/kernel 路径在相关主题展开。",
+          "output": "Full slot20，SWA slot16；SWA旧窗口页在6。",
+          "resume": "设备计算完成后 Scheduler 处理模型输出；此节点不伪造跨组件同步父子调用。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 767,
+              "label": "新块分配调用",
+              "end": 780
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 753,
+              "label": "按组输出块号",
+              "end": 759
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第7步",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "free-request",
+          "parent": null,
+          "number": "3",
+          "kind": "边界",
+          "title": "KVCacheManager.free()",
+          "summary": "请求完成后的独立释放入口。",
+          "input": "A；本轮结束后不再继续推理。",
+          "changes": "调用 coordinator.free。",
+          "output": "None。",
+          "resume": "调用方 Scheduler 继续清理请求；不作为 allocate_slots 的子节点。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 2765,
+              "label": "Scheduler 调用位置",
+              "end": 2770
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 620,
+              "label": "实际实现",
+              "end": 629
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第8步",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "free-groups",
+          "parent": "free-request",
+          "number": "3.1",
+          "kind": "调用",
+          "title": "KVCacheCoordinator.free()",
+          "summary": "逐组归还请求引用。",
+          "input": "request_id=A。",
+          "changes": "每个 manager.free(A)。",
+          "output": "None。",
+          "resume": "回 KVCacheManager.free。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 629,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 393,
+              "label": "实际实现",
+              "end": 401
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第8步",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "free-one",
+          "parent": "free-groups",
+          "number": "3.1.1",
+          "kind": "调用",
+          "title": "SingleTypeKVCacheManager.free()",
+          "summary": "删除请求归属并按逆序释放。",
+          "input": "该组的 req_to_blocks[A]。",
+          "changes": "pop_blocks_for_free 删除状态；反转结果交给 BlockPool。",
+          "output": "有效块引用归零；NULL 仍为保留哨兵。",
+          "resume": "返回 coordinator 的逐组循环。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 401,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 565,
+              "label": "实际实现",
+              "end": 592
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第8步",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "free-final",
+          "parent": "free-one",
+          "number": "3.1.1.1",
+          "kind": "调用",
+          "title": "BlockPool.free_blocks()",
+          "summary": "有效块重新入队，NULL 不进入空闲队列。",
+          "input": "Full4个有效块 + SWA2个有效块与NULL占位。",
+          "changes": "有效块ref 1→0；仅 ref=0 且非NULL进入空闲队列。",
+          "output": "0 held + 8 free = 8 usable。",
+          "resume": "返回上层释放链；GPU内存池仍存在。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 592,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/block_pool.py",
+              "line": 787,
+              "label": "实际实现",
+              "end": 803
+            }
+          ],
+          "targets": [
+            {
+              "label": "allocate：第8步",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "allocate"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "prefix",
+      "title": "Full+SWA 共同前缀 · APC开启",
+      "scope": "Full/SWA 两组；普通SWA；hash粒度=block=alignment=4；simple hybrid；无Mamba/R-SWA/EAGLE/CP。缓存可用性是给定教学快照。",
+      "repositories": {
+        "vllm": {
+          "url": "https://github.com/vllm-project/vllm",
+          "commit": "295c062db8a48ea73bbd05d1174cb37d24bf86f9",
+          "label": "vLLM"
+        }
+      },
+      "nodes": [
+        {
+          "id": "configuration",
+          "parent": null,
+          "number": "0",
+          "kind": "边界",
+          "title": "get_kv_cache_coordinator()（APC 开启、多组分支）",
+          "summary": "两组 APC 命中采用 Hybrid coordinator。",
+          "input": "enable_caching=True；Full/SWA 两组。",
+          "changes": "构造 HybridKVCacheCoordinator。",
+          "output": "按 attention type 协调命中的实例。",
+          "resume": "后续 Scheduler 查询；初始化与请求调度分开。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 1022,
+              "label": "实际实现",
+              "end": 1051
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 133,
+              "label": "分组 manager 共用 pool",
+              "end": 148
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 2659,
+              "label": "类型注册",
+              "end": 2678
+            }
+          ],
+          "targets": [
+            {
+              "label": "prefix：第1步",
+              "action": {
+                "step": 1,
+                "params": {
+                  "scenario": "prefix"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "schedule",
+          "parent": null,
+          "number": "1",
+          "kind": "边界",
+          "title": "Scheduler.schedule()",
+          "summary": "waiting 请求尚未计算时查询本地前缀。",
+          "input": "B prompt长度17；computed=0；无 connector。",
+          "changes": "调用 KVCacheManager.get_computed_blocks。",
+          "output": "候选块、共同命中计数、保留边界。",
+          "resume": "继续 token预算与 allocate_slots；查询本身未取得请求块引用。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1014,
+              "label": "waiting 分支调用位置",
+              "end": 1031
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1245,
+              "label": "后续分配续点",
+              "end": 1260
+            }
+          ],
+          "targets": [
+            {
+              "label": "prefix：第2步",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "prefix"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "lookup",
+          "parent": "schedule",
+          "number": "1.1",
+          "kind": "调用",
+          "title": "KVCacheManager.get_computed_blocks()",
+          "summary": "限制最大命中长度并转换 coordinator 返回值。",
+          "input": "请求的链式 block_hashes，num_tokens=17。",
+          "changes": "max_hit=16；调用 find_longest_cache_hit；gap转换为保留边界。",
+          "output": "(blocks,12,16)。",
+          "resume": "回 Scheduler；12为实际复用量，16为后续稀疏保留提示。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1026,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 264,
+              "label": "实际实现",
+              "end": 321
+            }
+          ],
+          "targets": [
+            {
+              "label": "prefix：第2步",
+              "action": {
+                "step": 2,
+                "params": {
+                  "scenario": "prefix"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "hybrid-hit",
+          "parent": "lookup",
+          "number": "1.1.1",
+          "kind": "调用",
+          "title": "HybridKVCacheCoordinator.find_longest_cache_hit()",
+          "summary": "先 Full 再 SWA，求共同可恢复边界。",
+          "input": "最大16；group0 Full/group1 SWA；hash/block/alignment=4。",
+          "changes": "按 manager_cls.find_longest_cache_hit 分派；simple-hybrid 一轮即可。",
+          "output": "共同12、最长单组16、gap4。",
+          "resume": "get_computed_blocks 对 gap做后处理。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 296,
+              "label": "调用位置",
+              "end": 300
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 809,
+              "label": "实际实现",
+              "end": 944
+            }
+          ],
+          "targets": [
+            {
+              "label": "prefix：第3步",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "prefix"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "full-hit",
+          "parent": "hybrid-hit",
+          "number": "1.1.1.1",
+          "kind": "调用",
+          "title": "FullAttentionManager.find_longest_cache_hit()",
+          "summary": "从头查找连续已缓存 Full 页。",
+          "input": "4个 hash，max_length16，Full group ID。",
+          "changes": "逐页 get_cached_block；遇 miss才停止。",
+          "output": "[1,2,3,4]，16 tokens。",
+          "resume": "coordinator 接着检查 SWA；此结果尚未成为共同命中。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 889,
+              "label": "类型分派调用位置",
+              "end": 903
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 751,
+              "label": "实际实现",
+              "end": 808
+            }
+          ],
+          "targets": [
+            {
+              "label": "prefix：第3步",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "prefix"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "full-hash",
+          "parent": "full-hit",
+          "number": "1.1.1.1.1",
+          "kind": "调用",
+          "title": "BlockPool.get_cached_block()（Full）",
+          "summary": "将 hash 与 Full group ID 组合后查询。",
+          "input": "每页 hash 和 group_ids=[Full]。",
+          "changes": "只读 cached_block_hash_to_block；不 touch/ref++。",
+          "output": "对应 Full block 或 miss。",
+          "resume": "Full finder 追加命中块或结束前缀扫描。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 803,
+              "label": "调用位置"
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/block_pool.py",
+              "line": 198,
+              "label": "实际实现",
+              "end": 224
+            }
+          ],
+          "targets": [
+            {
+              "label": "prefix：第3步",
+              "action": {
+                "step": 3,
+                "params": {
+                  "scenario": "prefix"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "swa-hit",
+          "parent": "hybrid-hit",
+          "number": "1.1.1.2",
+          "kind": "调用",
+          "title": "SlidingWindowManager.find_longest_cache_hit()",
+          "summary": "从候选尾部向左检查足够长的窗口后缀。",
+          "input": "max_length16，window5，block4；SWA页3缺失、页2有block7。",
+          "changes": "以NULL初始化；倒序查询，满足所需连续页后裁尾。",
+          "output": "[NULL,NULL,7]，12 tokens。",
+          "resume": "coordinator 将共同边界缩到12。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 889,
+              "label": "类型分派调用位置",
+              "end": 903
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 984,
+              "label": "实际实现",
+              "end": 1079
+            }
+          ],
+          "targets": [
+            {
+              "label": "prefix：第4步",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "prefix"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "window-count",
+          "parent": "swa-hit",
+          "number": "1.1.1.2.1",
+          "kind": "调用",
+          "title": "SlidingWindowManager._contiguous_blocks_for_hit()",
+          "summary": "求恢复点前需要的完整旧 KV 页数。",
+          "input": "window=5，block=4，use_eagle=False。",
+          "changes": "ceil((window−1)/block)。",
+          "output": "1页。",
+          "resume": "SWA finder 的右向左扫描以此作为满足条件。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 1013,
+              "label": "调用位置",
+              "end": 1015
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 970,
+              "label": "实际实现",
+              "end": 981
+            }
+          ],
+          "targets": [
+            {
+              "label": "prefix：第4步",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "prefix"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "swa-hash",
+          "parent": "swa-hit",
+          "number": "1.1.1.2.2",
+          "kind": "调用",
+          "title": "BlockPool.get_cached_block()（SWA）",
+          "summary": "用 SWA group ID 查找，不能复用 Full 的同 hash块。",
+          "input": "页3/2的hash，group_ids=[SWA]。",
+          "changes": "只读索引；页3 miss，页2返回7。",
+          "output": "None，然后[block7]。",
+          "resume": "SWA finder 达到连续页要求并返回12。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 1032,
+              "label": "调用位置",
+              "end": 1034
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/block_pool.py",
+              "line": 198,
+              "label": "实际实现",
+              "end": 224
+            }
+          ],
+          "targets": [
+            {
+              "label": "prefix：第4步",
+              "action": {
+                "step": 4,
+                "params": {
+                  "scenario": "prefix"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "reconcile",
+          "parent": "hybrid-hit",
+          "number": "1.1.1.3",
+          "kind": "动作",
+          "title": "Full 候选裁剪与 gap 计算",
+          "summary": "simple-hybrid 收敛后裁掉 Full 的多余返回页。",
+          "input": "Full16、SWA12。",
+          "changes": "只裁返回候选列表；不会驱逐缓存中的Full块4。",
+          "output": "Full[1,2,3]、SWA[NULL,NULL,7]；hit12、gap4。",
+          "resume": "返回 KVCacheManager.get_computed_blocks。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 916,
+              "label": "实际实现",
+              "end": 944
+            }
+          ],
+          "targets": [
+            {
+              "label": "prefix：第5步",
+              "action": {
+                "step": 5,
+                "params": {
+                  "scenario": "prefix"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "return-coordinator",
+          "parent": "hybrid-hit",
+          "number": "1.1.1.4",
+          "kind": "返回",
+          "title": "返回 cache_hit_blocks, hit_length, gap",
+          "summary": "分组块列表保留NULL位置。",
+          "input": "共同边界12、最长候选16。",
+          "changes": "不修改请求 ref；包装 tuple。",
+          "output": "按组候选块、12、4。",
+          "resume": "调用者将gap转成shared_prefix_boundary。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_coordinator.py",
+              "line": 937,
+              "label": "实际实现",
+              "end": 944
+            }
+          ],
+          "targets": [
+            {
+              "label": "prefix：第6步",
+              "action": {
+                "step": 6,
+                "params": {
+                  "scenario": "prefix"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "boundary",
+          "parent": "lookup",
+          "number": "1.1.2",
+          "kind": "返回",
+          "title": "计算 shared_prefix_boundary 并返回",
+          "summary": "hit 与 gap 的用途不同。",
+          "input": "num_new_computed_tokens=12；num_uncached=4。",
+          "changes": "shared_prefix_boundary=12+4。",
+          "output": "(KVCacheBlocks,12,16)。",
+          "resume": "Scheduler 从12继续prefill，后续保留策略可补齐16这个共同前缀分叉点。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 312,
+              "label": "实际实现",
+              "end": 321
+            }
+          ],
+          "targets": [
+            {
+              "label": "prefix：第7步",
+              "action": {
+                "step": 7,
+                "params": {
+                  "scenario": "prefix"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "continuation",
+          "parent": null,
+          "number": "2",
+          "kind": "边界",
+          "title": "后续 allocate_slots → allocate_new_computed_blocks（边界）",
+          "summary": "lookup 返回候选不等于已占用块。",
+          "input": "Scheduler 决定接纳B，持有上述候选引用描述。",
+          "changes": "只有后续成功分配流程才调用 touch 并挂接到请求。",
+          "output": "实际块引用增加；本页未模拟这一步的完整分配。",
+          "resume": "Worker 后续计算 positions12..16；回到分配主题查看一般引用规则。",
+          "note": "目标是包含该子过程的教学阶段快照；不表示跳转后真实调用 Python/GPU 函数。",
+          "evidence": [
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/sched/scheduler.py",
+              "line": 1245,
+              "label": "调度后续调用",
+              "end": 1260
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/kv_cache_manager.py",
+              "line": 581,
+              "label": "新命中块分配",
+              "end": 593
+            },
+            {
+              "repo": "vllm",
+              "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+              "line": 289,
+              "label": "touch 命中块",
+              "end": 309
+            }
+          ],
+          "targets": [
+            {
+              "label": "prefix：第8步",
+              "action": {
+                "step": 8,
+                "params": {
+                  "scenario": "prefix"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

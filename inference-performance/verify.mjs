@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+const context={window:{}};vm.runInNewContext(fs.readFileSync(new URL('./lesson.js',import.meta.url),'utf8'),context);
+const lesson=context.window.LESSON,p=Object.fromEntries(lesson.controls.map(c=>[c.id,c.value]));
+const c=lesson.calculate(p);assert.equal(c.requests[0].ttft,100);assert.equal(c.requests[1].ttft,90);
+assert.equal(c.requests[0].tpot,35/3);assert.equal(c.requests[1].tpot,40/3);
+assert.equal(c.duration,150);assert.equal(c.totalTokens,8);assert.equal(c.tokenThroughput,8/0.15);
+assert.equal(c.requestThroughput,2/0.15);assert.deepEqual(Array.from(c.requests[0].gaps),[10,10,15]);
+const single=lesson.calculate({...p,scenario:'single'});assert(single.requests.every(r=>r.tpot===null));assert.equal(single.totalTokens,2);assert.equal(single.duration,110);
+const slow=lesson.calculate({...p,timeScale:2});assert.equal(slow.tokenThroughput,c.tokenThroughput/2);assert.equal(slow.requests[0].ttft,200);
+const decode=lesson.calculate({...p,scenario:'roofline',rows:'1'}),prefill=lesson.calculate({...p,scenario:'roofline',rows:'128'});
+assert.equal(decode.flops,33_554_432);assert.equal(decode.bytes,33_570_816);assert(Math.abs(decode.memoryMs-0.033570816)<1e-12);
+assert.equal(prefill.flops,4_294_967_296);assert.equal(prefill.bytes,35_651_584);assert(Math.abs(prefill.computeMs-0.04294967296)<1e-12);
+assert.equal(decode.lowerMs,decode.memoryMs);assert.equal(prefill.lowerMs,prefill.computeMs);assert(prefill.intensity>decode.intensity);
+assert.notEqual(lesson.build({...p,scenario:'roofline',rows:'1',peak:2000}).tables[0].rows[5][1],'0 ms');
+for(const scenario of ['stream','single','roofline'])assert.equal(lesson.build({...p,scenario}).steps.length,7);
+console.log('inference-performance: timestamp boundaries, N=1, common window, units and roofline arithmetic passed');

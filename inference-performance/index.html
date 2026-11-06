@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="zh-CN" data-lesson-topic="inference-performance" data-lesson-palette="mcp">
+<head>
+<meta charset="utf-8">
+<!-- learning-scope-style:start -->
+<style>
+.learning-scope-shell{box-sizing:border-box;max-width:960px;width:calc(100% - 32px);margin:16px auto 0;font:13px/1.6 system-ui,"Microsoft YaHei",sans-serif;color:#344454}
+.learning-scope{border:1px solid #dce3e9;border-radius:8px;background:#f7f9fb;overflow-wrap:anywhere}
+.learning-scope>summary{display:list-item;list-style:disclosure-closed inside;cursor:pointer;padding:9px 12px;font-size:13px;line-height:1.6;color:inherit}
+.learning-scope[open]>summary{list-style-type:disclosure-open}
+.learning-scope>summary:focus-visible{outline:2px solid #287cb8;outline-offset:3px}
+.learning-scope-kind{font-weight:650;color:#24668f}
+.learning-scope-hint{font-size:11px;opacity:.7;margin-left:6px}
+.learning-scope[open] .learning-scope-hint{display:none}
+.learning-scope dl{display:grid;grid-template-columns:88px minmax(0,1fr);gap:7px 12px;margin:0;padding:3px 12px 13px}
+.learning-scope dt{font-weight:600}.learning-scope dd{margin:0}
+@media(max-width:480px){.learning-scope dl{grid-template-columns:1fr;gap:3px}.learning-scope dd+dt{margin-top:6px}}
+:root[data-theme=dark] .learning-scope-shell{color:#c5d1dc}:root[data-theme=dark] .learning-scope{background:#1b242d;border-color:#384550}:root[data-theme=dark] .learning-scope-kind{color:#9bcaf0}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .learning-scope-shell{color:#c5d1dc}:root:not([data-theme=light]) .learning-scope{background:#1b242d;border-color:#384550}:root:not([data-theme=light]) .learning-scope-kind{color:#9bcaf0}}
+</style>
+<!-- learning-scope-style:end -->
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>交互学习 · vLLM 学习笔记</title>
+<style>body{margin:0}</style>
+<!-- lesson-theme:start -->
+<style>
+/* Scheduler palette. Inlined into each document by scripts/build_learning_ui.py. */
+:root {
+  color-scheme:light !important;
+  --lesson-bg:#f5f5ef; --lesson-panel:#fffefa; --lesson-ink:#192923;
+  --lesson-muted:#52655b; --lesson-line:#d5ddd2; --lesson-grid:#e4e8e0;
+  --lesson-green:#12634b; --lesson-mint:#e7f3e8; --lesson-amber:#8a4a18;
+  --lesson-sand:#fcf0dc; --lesson-shade:#f0f3eb;
+}
+@media(prefers-color-scheme:dark) {
+  :root:not([data-theme=light]) {
+    color-scheme:dark !important;
+    --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+    --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+    --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+    --lesson-sand:#473625; --lesson-shade:#212f27;
+  }
+}
+:root[data-theme=dark] {
+  color-scheme:dark !important;
+  --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+  --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+  --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+  --lesson-sand:#473625; --lesson-shade:#212f27;
+}
+:root {
+  --bg:var(--lesson-bg) !important; --background:var(--lesson-bg) !important;
+  --panel:var(--lesson-panel) !important; --surface:var(--lesson-panel) !important;
+  --card:var(--lesson-panel) !important; --popover:var(--lesson-panel) !important;
+  --ink:var(--lesson-ink) !important; --fg:var(--lesson-ink) !important;
+  --text:var(--lesson-ink) !important; --foreground:var(--lesson-ink) !important;
+  --card-foreground:var(--lesson-ink) !important; --popover-foreground:var(--lesson-ink) !important;
+  --muted-foreground:var(--lesson-muted) !important; --sub:var(--lesson-muted) !important;
+  --line:var(--lesson-line) !important; --border:var(--lesson-line) !important;
+  --grid:var(--lesson-grid) !important; --shade:var(--lesson-shade) !important;
+  --muted:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+  --accent-foreground:var(--lesson-ink) !important;
+  --primary:var(--lesson-green) !important; --primary-foreground:var(--lesson-panel) !important;
+  --accent-soft:var(--lesson-mint) !important; --hover:var(--lesson-shade) !important;
+  --mint:var(--lesson-mint) !important; --sand:var(--lesson-sand) !important;
+  --color-background-primary:var(--lesson-bg) !important;
+  --color-background-secondary:var(--lesson-panel) !important;
+  --color-background-tertiary:var(--lesson-shade) !important;
+  --color-text-primary:var(--lesson-ink) !important;
+  --color-text-secondary:var(--lesson-muted) !important;
+  --color-border-secondary:var(--lesson-line) !important;
+  --viz-panel:var(--lesson-panel) !important;
+  --viz-border:var(--lesson-line) !important;
+  --viz-muted:var(--lesson-muted) !important;
+  background:var(--lesson-bg) !important;
+}
+:root[data-lesson-palette=text] {
+  --muted:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+}
+:root[data-lesson-topic=model-architecture] {
+  --soft:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+}
+:root[data-lesson-palette=matrix] {
+  --soft:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+  --wash:var(--lesson-mint) !important;
+}
+body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !important; }
+.learning-scope-shell { color:var(--lesson-muted) !important; }
+.learning-scope { background:var(--lesson-shade) !important; border-color:var(--lesson-line) !important; }
+.learning-scope-kind { color:var(--lesson-green) !important; }
+</style>
+<!-- lesson-theme:end -->
+</head>
+<body>
+<!-- learning-scope:start -->
+<aside class="learning-scope-shell" aria-label="本页范围与源码版本">
+<details class="learning-scope">
+<summary><span class="learning-scope-kind">基础知识</span> 本页范围与源码版本 <span class="learning-scope-hint">展开查看</span></summary>
+<dl><dt>源码基线</dt><dd>vLLM benchmark 指标文档；NVIDIA 性能背景文档</dd>
+<dt>后端与配置</dt><dd>客户端观测与单个 GEMM 理论模型</dd>
+<dt>流程范围</dt><dd>逐请求延迟、共同窗口吞吐、算术强度及理想耗时下界。</dd>
+<dt>教学假设</dt><dd>时间戳、算力和带宽都是教学输入，没有硬件测速。</dd></dl>
+</details>
+</aside>
+<!-- learning-scope:end -->
+<!-- lesson-workbench:start -->
+<style>
+.lesson-workbench { max-width:960px; margin:24px auto; padding:0 16px 24px; box-sizing:border-box; font:14px/1.65 system-ui,"Microsoft YaHei",sans-serif; color:var(--lesson-ink); }
+.lesson-workbench * { box-sizing:border-box; }
+.lesson-workbench [hidden] { display:none !important; }
+.lesson-workbench h1,.lesson-workbench h2,.lesson-workbench h3,.lesson-workbench p { margin:0; }
+.lesson-workbench a { color:var(--lesson-green); text-underline-offset:3px; overflow-wrap:anywhere; }
+.lw-header>a { font-size:12px; text-decoration:none; }
+.lw-kicker { margin-top:20px !important; color:var(--lesson-green); font-size:12px; letter-spacing:.06em; }
+.lw-header h1 { font-size:clamp(25px,4vw,36px); line-height:1.3; margin:7px 0 12px; letter-spacing:-.03em; }
+.lw-subtitle { color:var(--lesson-muted); font-size:15px; }
+.lw-scope { margin:18px 0 !important; padding:12px 14px; background:var(--lesson-shade); border-left:3px solid var(--lesson-green); font-size:12px; overflow-wrap:anywhere; }
+.lw-controls { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr)); gap:12px; margin:20px 0; }
+.lw-field { display:flex; flex-direction:column; gap:5px; min-width:0; color:var(--lesson-muted); font-size:12px; }
+.lw-field input,.lw-field select { width:100%; min-width:0; padding:8px 10px; color:var(--lesson-ink); background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:6px; font:14px system-ui,"Microsoft YaHei",sans-serif; }
+.lw-field input[type=range] { padding:9px 0; accent-color:var(--lesson-green); }
+.lw-field output { color:var(--lesson-green); font-variant-numeric:tabular-nums; }
+.lw-toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:12px 0; border-block:1px solid var(--lesson-line); }
+.lesson-workbench button { cursor:pointer; color:var(--lesson-ink); font:inherit; }
+.lw-toolbar button { padding:6px 11px; background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:6px; font-size:13px; }
+.lw-toolbar button[aria-pressed=true] { background:var(--lesson-mint); border-color:var(--lesson-green); color:var(--lesson-green); }
+.lw-toolbar button:disabled { cursor:default; opacity:.4; }
+.lw-counter { margin-left:auto; color:var(--lesson-muted); font-size:12px; }
+.lesson-workbench :is(button,input,select,a,summary):focus-visible { outline:3px solid var(--lesson-amber); outline-offset:3px; }
+.lw-current { padding:17px 0 12px; }
+.lw-current h2 { font-size:19px; line-height:1.45; }
+.lw-current p { margin-top:6px; color:var(--lesson-muted); }
+.lw-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr)); gap:9px; margin:10px 0 18px; }
+.lw-metric { min-width:0; padding:10px 13px; background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:8px; }
+.lw-metric span { display:block; color:var(--lesson-muted); font-size:11px; }
+.lw-metric strong { display:block; font-size:19px; line-height:1.45; color:var(--lesson-green); overflow-wrap:anywhere; }
+.lw-figure { margin:0; border:1px solid var(--lesson-line); border-radius:12px; background:var(--lesson-panel); padding:10px; }
+.lw-figure svg { display:block; width:100%; height:auto; overflow:visible; font-family:system-ui,"Microsoft YaHei",sans-serif; }
+.lw-figure figcaption { padding:5px 5px 8px; color:var(--lesson-muted); font-size:11px; }
+.lw-equation { margin-top:16px; padding:12px; border:1px solid var(--lesson-line); border-radius:7px; background:var(--lesson-mint); font:13px/1.8 ui-monospace,Consolas,"Microsoft YaHei",monospace; overflow-wrap:anywhere; white-space:pre-wrap; }
+.lw-details { display:grid; gap:16px; margin:16px 0; }
+.lw-table-card,.lw-plot { min-width:0; padding:14px; border:1px solid var(--lesson-line); background:var(--lesson-panel); border-radius:9px; }
+.lw-table-card h3,.lw-plot h3 { margin-bottom:9px; font-size:15px; }
+.lw-table-scroll { overflow:auto; max-width:100%; }
+.lw-table-card table { border-collapse:collapse; width:100%; table-layout:fixed; font-size:12px; }
+.lw-table-card th,.lw-table-card td { text-align:left; padding:7px 8px; border:1px solid var(--lesson-line); overflow-wrap:anywhere; vertical-align:top; white-space:pre-wrap; }
+.lw-table-card th { background:var(--lesson-shade); font-weight:650; }
+.lw-plot svg { display:block; width:100%; height:auto; font-family:system-ui,"Microsoft YaHei",sans-serif; }
+.lw-legend { display:flex; flex-wrap:wrap; gap:4px 15px; color:var(--lesson-muted); font-size:12px; margin-top:8px; }
+.lw-legend span::before { content:''; display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; background:var(--swatch,var(--lesson-green)); }
+.lw-plot-caption { color:var(--lesson-muted); font-size:11px; margin-top:8px !important; overflow-wrap:anywhere; }
+.lw-notes { margin:18px 0; padding:13px 15px; background:var(--lesson-sand); border-left:3px solid var(--lesson-amber); border-radius:0 6px 6px 0; font-size:12px; }
+.lw-notes p+p { margin-top:6px; }
+.lw-steps { margin:22px 0; }
+.lw-steps h2 { margin-bottom:10px; font-size:19px; }
+.lw-steps ol { margin:0; padding:0; list-style:none; display:grid; gap:7px; }
+.lw-step-button { display:grid; grid-template-columns:30px minmax(0,1fr); width:100%; padding:10px; gap:8px; text-align:left; background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:7px; }
+.lw-step-button[aria-current=true] { border-color:var(--lesson-green); background:var(--lesson-mint); }
+.lw-step-button b { font-size:12px; color:var(--lesson-green); }
+.lw-step-button strong { display:block; font-size:13px; }
+.lw-step-button small { display:block; margin-top:3px; color:var(--lesson-muted); font-size:12px; }
+.lw-sources { border-top:1px solid var(--lesson-line); padding-top:16px; margin-top:24px; font-size:12px; }
+.lw-sources summary { cursor:pointer; font-weight:650; }
+.lw-sources a,.lw-related a { display:block; margin-top:6px; }
+.lw-related { margin-top:20px; font-size:12px; }
+.lw-status { color:var(--lesson-amber); font-size:12px; min-height:1.5em; }
+@media(max-width:500px) { .lw-table-card,.lw-plot { padding:10px; } .lw-table-card td,.lw-table-card th { padding:6px 4px; } .lw-counter { flex-basis:100%; margin:0; } .lw-figure { padding:4px; } }
+@media print { .lw-controls,.lw-toolbar,.lw-step-button { break-inside:avoid; } }
+</style>
+<main class="lesson-workbench" id="lesson-workbench" data-topic="inference-performance"></main>
+<noscript>请启用 JavaScript 查看逐步演算；源码与范围说明仍可阅读。</noscript>
+<script>
+/* Deterministic metric arithmetic; timestamps and hardware ceilings are teaching inputs. */
+(() => {
+  const f=x=>x!==0&&Math.abs(x)<0.001?x.toExponential(3):Number(x.toFixed(4)).toLocaleString('en-US');
+  function requestMetrics(request) {
+    const first=request.tokens[0],last=request.tokens.at(-1),count=request.tokens.length;
+    const gaps=request.tokens.slice(1).map((t,i)=>t-request.tokens[i]);
+    return {...request,count,first,last,ttft:first-request.submit,e2e:last-request.submit,gaps,tpot:count>1?(last-first)/(count-1):null};
+  }
+  function calculate(p) {
+    if(p.scenario==='roofline') {
+      const m=Number(p.rows),k=4096,n=4096,bytesPerElement=2;
+      const flops=2*m*k*n,bytes=(m*k+k*n+m*n)*bytesPerElement;
+      const intensity=flops/bytes,computeMs=flops/(p.peak*1e12)*1000,memoryMs=bytes/(p.bandwidth*1e9)*1000;
+      return {m,k,n,bytesPerElement,flops,bytes,intensity,computeMs,memoryMs,lowerMs:Math.max(computeMs,memoryMs),ridge:p.peak*1e12/(p.bandwidth*1e9),bound:computeMs>=memoryMs?'计算上限约束':'带宽上限约束'};
+    }
+    const scale=p.timeScale,single=p.scenario==='single';
+    const requests=[{id:'A',submit:0,tokens:single?[100]:[100,110,120,135]},{id:'B',submit:20,tokens:single?[110]:[110,120,130,150]}]
+      .map(r=>requestMetrics({...r,submit:r.submit*scale,tokens:r.tokens.map(t=>t*scale)}));
+    const start=Math.min(...requests.map(r=>r.submit)),end=Math.max(...requests.map(r=>r.last));
+    const duration=end-start,totalTokens=requests.reduce((a,r)=>a+r.count,0);
+    return {requests,start,end,duration,totalTokens,tokenThroughput:totalTokens/(duration/1000),requestThroughput:requests.length/(duration/1000)};
+  }
+  const stream=p=>p.scenario!=='roofline';
+  window.LESSON={
+    title:'推理性能：时间指标与计算 / 带宽约束',kind:'基础知识',
+    subtitle:'先从明确的时间戳计算 TTFT、ITL、TPOT 和吞吐，再用单个矩阵乘的 FLOPs 与字节数估算理论耗时下界。',
+    controls:[
+      {id:'scenario',label:'分析场景',type:'select',value:'stream',options:[{value:'stream',label:'双请求流式输出指标'},{value:'single',label:'每请求只输出一个 token'},{value:'roofline',label:'单次 GEMM 的理论下界'}]},
+      {id:'timeScale',label:'时间戳倍率',type:'number',value:1,min:0.5,max:3,step:0.5,showIf:stream},
+      {id:'rows',label:'GEMM 的 M（输入行数）',type:'select',value:'128',options:[{value:'1',label:'1 行：单 token 小批量示意'},{value:'128',label:'128 行：多 token / 合批示意'},{value:'2048',label:'2048 行：较大矩阵示意'}],showIf:p=>!stream(p)},
+      {id:'peak',label:'假设峰值算力（TFLOP/s）',type:'number',value:100,min:1,max:2000,step:1,showIf:p=>!stream(p)},
+      {id:'bandwidth',label:'假设带宽（GB/s）',type:'number',value:1000,min:10,max:10000,step:10,showIf:p=>!stream(p)}
+    ],calculate,requestMetrics,
+    build(p) {
+      const c=calculate(p);
+      if(p.scenario==='roofline') {
+        const tables=[{title:'单个 GEMM 的计算与存储假设',headers:['量','数值','口径'],rows:[
+          ['形状',`X[${c.m},4096] × W[4096,4096] → Y[${c.m},4096]`,'不含其他算子'],
+          ['运算量',f(c.flops)+' FLOPs','每个乘加计 2 FLOPs'],
+          ['访存量',f(c.bytes)+' bytes','X/W 各读一次，Y 写一次；均为 2 bytes/元素'],
+          ['算术强度',f(c.intensity)+' FLOPs/byte','FLOPs / bytes'],
+          ['机器拐点',f(c.ridge)+' FLOPs/byte','峰值 FLOP/s / 带宽 bytes/s'],
+          ['计算耗时下界',f(c.computeMs)+' ms','FLOPs / 峰值算力'],
+          ['传输耗时下界',f(c.memoryMs)+' ms','bytes / 带宽'],
+          ['理想重叠下界',f(c.lowerMs)+' ms','max(计算,传输)；不是二者相加']
+        ]}];
+        const plots=[{type:'bars',title:'两项理论耗时下界（ms）',labels:['计算','传输','理想重叠'],series:[{label:'耗时下界',values:[c.computeMs,c.memoryMs,c.lowerMs]}],unit:'ms'}];
+        return {
+          scope:'单个 dense GEMM 教学模型，K=N=4096、2 bytes/元素。峰值算力与带宽均为假设输入，不对应具体 GPU/NPU；不预测完整模型性能。',
+          nodes:[
+            {id:'shape',title:'输入与权重形状',lane:'输入 · 矩阵',detail:`X[${c.m},4096]\nW[4096,4096]`,row:0,col:0},
+            {id:'hardware',title:'假设硬件上限',lane:'输入 · 理想上界',detail:p.peak+' TFLOP/s\n'+p.bandwidth+' GB/s',row:0,col:1},
+            {id:'flops',title:'计算工作量',lane:'乘加计数',detail:f(c.flops)+' FLOPs\n2 × M × K × N',row:1,col:0,readyAt:2},
+            {id:'bytes',title:'数据传输量',lane:'一次读写模型',detail:f(c.bytes)+' bytes\nX + W + Y',row:1,col:1,readyAt:3},
+            {id:'intensity',title:'算术强度与拐点',lane:'比例比较',detail:f(c.intensity)+' FLOPs/byte\n拐点 '+f(c.ridge),row:2,col:0,readyAt:4},
+            {id:'time',title:'两种耗时下界',lane:'单位换算',detail:'计算 '+f(c.computeMs)+' ms\n传输 '+f(c.memoryMs)+' ms',row:2,col:1,readyAt:5},
+            {id:'bound',title:'取较大的下界',lane:'理想重叠',detail:f(c.lowerMs)+' ms\n'+c.bound,row:3,col:0,readyAt:6},
+            {id:'consumer',title:'选择后续测量方向',lane:'消费者 · 性能分析',detail:'观察实际算子耗时、有效带宽与利用率\n此图没有实测值',row:4,col:0,readyAt:7}
+          ],edges:[
+            {id:'count',from:'shape',to:'flops',label:'矩阵形状 → 运算量',steps:[1,2]},
+            {id:'traffic',from:'shape',to:'bytes',label:'形状与 dtype → 字节数',steps:[3]},
+            {id:'ratioF',from:'flops',to:'intensity',label:'FLOPs',steps:[4]},
+            {id:'ratioB',from:'bytes',to:'intensity',label:'bytes',steps:[4]},
+            {id:'ridge',from:'hardware',to:'intensity',label:'算力 / 带宽 → 拐点',steps:[4]},
+            {id:'ceiling',from:'hardware',to:'time',label:'峰值算力 / 带宽',steps:[5]},
+            {id:'timingF',from:'flops',to:'time',label:'计算工作量',steps:[5]},
+            {id:'timingB',from:'bytes',to:'time',label:'传输工作量',steps:[5]},
+            {id:'max',from:'time',to:'bound',label:'max(t_compute, t_memory)',steps:[6]},
+            {id:'judge',from:'intensity',to:'bound',label:'强度相对拐点的位置',steps:[6]},
+            {id:'profile',from:'bound',to:'consumer',label:'理论约束 → 实测问题',steps:[7]}
+          ],steps:[
+            {title:'固定一次 GEMM 的边界',summary:'只分析 X × W → Y。M 是此次矩阵乘的输入行数，可以来自多 token 或多个请求，不能仅凭 M 判断整个推理阶段。',activeNodes:['shape','hardware'],activeEdges:[],tables:[],plots:[]},
+            {title:'按乘加数计算 FLOPs',summary:'每个输出元素执行 K 次乘加，一次乘加记两个浮点操作；共有 M×N 个输出元素。',activeNodes:['shape','flops'],activeEdges:['count'],equation:`2 × ${c.m} × 4096 × 4096 = ${f(c.flops)} FLOPs`,tables:[],plots:[]},
+            {title:'按数据边界计算字节数',summary:'假设 X 与 W 各从所分析的内存层读一次，Y 写一次；省略额外读写、缓存重用差异和工作区。',activeNodes:['shape','bytes'],activeEdges:['traffic'],equation:`(${c.m}×4096 + 4096×4096 + ${c.m}×4096) × 2 = ${f(c.bytes)} bytes`,tables:[],plots:[]},
+            {title:'比较算术强度与机器拐点',summary:'算术强度描述每搬运一字节能完成多少计算；拐点由该假设设备的算力与带宽之比给出。',activeNodes:['hardware','flops','bytes','intensity'],activeEdges:['ratioF','ratioB','ridge'],equation:'强度 = '+f(c.intensity)+'；拐点 = '+f(c.ridge)+' FLOPs/byte',tables:[],plots:[]},
+            {title:'换算计算和传输各自的下界',summary:'TFLOP/s 按 10¹² FLOP/s，GB/s 按 10⁹ bytes/s，再由秒换算到毫秒。',activeNodes:['hardware','flops','bytes','time'],activeEdges:['ceiling','timingF','timingB'],equation:'计算 '+f(c.computeMs)+' ms；传输 '+f(c.memoryMs)+' ms'},
+            {title:'理想重叠时取两者最大值',summary:'即便计算和传输完全重叠，总时间也不能低于较大的一项。真实执行存在其他开销，通常更慢。',activeNodes:['intensity','time','bound'],activeEdges:['max','judge'],equation:'max('+f(c.computeMs)+', '+f(c.memoryMs)+') = '+f(c.lowerMs)+' ms'},
+            {title:'把理论结果交给实际 profiling',summary:'改变 M 观察权重读入如何被更多计算摊薄；这能提出测量方向，不能证明某次 Decode 必然受带宽限制。',activeNodes:['bound','consumer'],activeEdges:['profile']}
+          ],metrics:[{label:'算术强度',value:f(c.intensity)+' FLOPs/byte'},{label:'理想耗时下界',value:f(c.lowerMs)+' ms'},{label:'本算例约束',value:c.bound}],tables,plots,
+          notes:['所有性能数值均为理论算例，不是硬件测量。有效峰值、访存层级、融合、缓存、kernel 启动与通信会改变实测结果。','该模型只覆盖一次 GEMM；完整 Attention、MLP、KV 访问和调度不能直接用此耗时替代。']
+        };
+      }
+      const requests=c.requests,[a,b]=requests;
+      const timeline={type:'timeline',title:'客户端观测时间线（每个圆点恰好一个输出 token）',unit:'ms',rows:requests.map(r=>({label:r.id,segments:[{label:'首 token 前',start:r.submit,end:r.first},{label:'首 token 后',start:r.first,end:r.last}],events:r.tokens.map((time,i)=>({label:'token '+(i+1),time}))}))};
+      const tables=[
+        {title:'原始时间戳与逐请求指标',headers:['请求','提交 / 输出时刻（ms）','TTFT / E2E（ms）','ITL / TPOT（ms）'],rows:requests.map(r=>[r.id,f(r.submit)+' / ['+r.tokens.map(f).join(', ')+']',f(r.ttft)+' / '+f(r.e2e),r.gaps.length?'['+r.gaps.map(f).join(', ')+'] / '+f(r.tpot):'无间隔 / 不适用'])},
+        {title:'统一观测窗口内的吞吐',headers:['量','计算','结果'],rows:[['时间窗口',f(c.end)+' − '+f(c.start),f(c.duration)+' ms'],['输出 token 吞吐',c.totalTokens+' / '+f(c.duration/1000),f(c.tokenThroughput)+' tokens/s'],['请求吞吐',requests.length+' / '+f(c.duration/1000),f(c.requestThroughput)+' requests/s']]}
+      ];
+      const ttft=requests.map(r=>r.id+'='+f(r.ttft)).join('，'),tpot=requests.map(r=>r.id+'='+(r.tpot===null?'不适用':f(r.tpot))).join('，');
+      return {
+        scope:'客户端时间戳教学数据；每个事件输出一个 token，E2E 截止最后一个 token。本页不推断实际服务器资源排布，也不把首 token 前的时间全部叫作 Prefill。',
+        nodes:[
+          {id:'events',title:'请求与输出事件',lane:'输入 · 客户端日志',detail:requests.map(r=>r.id+' 提交 '+f(r.submit)+'；输出 ['+r.tokens.map(f).join(', ')+']').join('\n'),row:0,col:0},
+          {id:'first',title:'首 token 等待',lane:'逐请求 · TTFT',detail:ttft+' ms',row:1,col:0,readyAt:2},
+          {id:'gaps',title:'相邻输出间隔',lane:'逐事件 · ITL',detail:requests.map(r=>r.id+' ['+r.gaps.map(f).join(', ')+'] ms').join('\n'),row:1,col:1,readyAt:3},
+          {id:'average',title:'首 token 后的平均间隔',lane:'逐请求 · TPOT',detail:tpot+(a.tpot===null?'':' ms'),row:2,col:1,readyAt:4},
+          {id:'e2e',title:'提交到最后 token',lane:'逐请求 · E2E',detail:requests.map(r=>r.id+'='+f(r.e2e)+' ms').join('\n'),row:2,col:0,readyAt:5},
+          {id:'window',title:'全体请求的共同窗口',lane:'聚合口径',detail:f(c.start)+' → '+f(c.end)+' ms\n'+c.totalTokens+' 个输出 token / '+requests.length+' 个请求',row:3,col:0,readyAt:6},
+          {id:'consumer',title:'延迟与吞吐一起阅读',lane:'消费者 · 基准分析',detail:f(c.tokenThroughput)+' tokens/s\n'+f(c.requestThroughput)+' requests/s',row:4,col:0,readyAt:7}
+        ],edges:[
+          {id:'ttft',from:'events',to:'first',label:'首输出 − 提交',steps:[1,2]},
+          {id:'itl',from:'events',to:'gaps',label:'逐对相邻输出时间戳',steps:[3]},
+          {id:'tpot',from:'gaps',to:'average',label:'间隔之和 / (N − 1)',steps:[4]},
+          {id:'end',from:'events',to:'e2e',label:'末输出 − 提交',steps:[5]},
+          {id:'windowdata',from:'events',to:'window',label:'最早提交、最晚输出、总数',steps:[6]},
+          {id:'throughput',from:'window',to:'consumer',label:'完成量 / 共同窗口秒数',steps:[7]},
+          {id:'latency',from:'first',to:'consumer',label:'逐请求首 token 延迟',steps:[7]},
+          {id:'decode',from:'average',to:'consumer',label:'逐请求生成间隔',steps:[7]},
+          {id:'complete',from:'e2e',to:'consumer',label:'逐请求端到端延迟',steps:[7]}
+        ],steps:[
+          {title:'先固定测量边界和时间戳',summary:'事件时间来自同一时钟；提交是客户端发送请求的时刻。本例每个流式事件对应一个 token。先读取原始事件，再选择统计口径。',activeNodes:['events'],activeEdges:[],plots:[timeline],tables:[tables[0]]},
+          {title:'TTFT：首输出减去提交时刻',summary:'TTFT 包含提交到首 token 的全部可观察延迟，可能含网络、排队、预处理和 Prefill，不能直接等同于纯 Prefill 计算。',activeNodes:['events','first'],activeEdges:['ttft'],equation:ttft+' ms',plots:[timeline],tables:[]},
+          {title:'ITL：逐个相邻输出间隔',summary:'请求内部相邻输出事件相减。真实流若一次发出多个 token，事件间隔与 token 间隔需要额外区分。',activeNodes:['events','gaps'],activeEdges:['itl'],equation:requests.map(r=>r.id+': ['+r.gaps.map(f).join(', ')+'] ms').join('；'),plots:[timeline],tables:[]},
+          {title:'TPOT：首 token 后的平均耗时',summary:a.tpot===null?'只有一个输出 token，分母 N−1 为零。TPOT 应标为不适用，不能写成 0 ms。':'按请求分别计算 (E2E−TTFT)/(输出 tokens−1)，等于本例 ITL 的算术平均。不同请求先分别计算。',activeNodes:['gaps','average'],activeEdges:['tpot'],equation:tpot+(a.tpot===null?'':' ms'),plots:[timeline],tables:[]},
+          {title:'E2E：最后输出减去提交时刻',summary:'本页截止点是最后一个输出 token。若基准把连接结束或客户端后处理计入结束时间，必须重新声明边界。',activeNodes:['events','e2e'],activeEdges:['end'],equation:'A='+f(a.e2e)+' ms；B='+f(b.e2e)+' ms',plots:[timeline],tables:[]},
+          {title:'为吞吐选一个共同时间窗口',summary:'从最早提交到最晚输出统计所有请求。重叠请求的持续时间不能相加当作整体墙钟时长。',activeNodes:['events','window'],activeEdges:['windowdata'],equation:f(c.end)+' − '+f(c.start)+' = '+f(c.duration)+' ms',plots:[timeline],tables:[tables[1]]},
+          {title:'按完成量除以窗口秒数',summary:'同时报告输出 token 吞吐、请求吞吐和逐请求延迟。此短窗口算例不代表稳态服务容量，也不包含输入 token 吞吐。',activeNodes:['first','average','e2e','window','consumer'],activeEdges:['throughput','latency','decode','complete'],equation:c.totalTokens+' / '+f(c.duration/1000)+' = '+f(c.tokenThroughput)+' tokens/s'}
+        ],metrics:[{label:'输出 token 吞吐',value:f(c.tokenThroughput)+' tokens/s'},{label:'请求吞吐',value:f(c.requestThroughput)+' requests/s'},{label:'共同窗口',value:f(c.duration)+' ms'}],tables,plots:[timeline],
+        notes:['时间戳属于教学数据，没有运行模型或测量硬件。请求时间线只表示客户端观测，不表示同一设备能并行执行图中所有阶段。','TPOT 是逐请求平均间隔；平均、分位数及按 token 加权的汇总不是同一个指标。这里保留逐请求数值，不混合这些口径。']
+      };
+    },
+    sources:[
+      {label:'vLLM Benchmark CLI：TTFT、TPOT 与 ITL 的定义',url:'https://docs.vllm.ai/en/latest/benchmarking/cli/'},
+      {label:'NVIDIA：算术强度、计算与内存带宽限制',url:'https://docs.nvidia.com/deeplearning/performance/dl-performance-gpu-background/index.html'}
+    ],related:[{label:'显存预算',href:'../memory-budget/index.html'},{label:'连续批处理',href:'../batching/index.html'},{label:'异步调度',href:'../async-scheduling/index.html'}]
+  };
+})();
+/* Shared offline renderer. Lesson definitions own the calculations and state transitions. */
+(() => {
+  function mount() {
+    const root = document.getElementById('lesson-workbench'), lesson = window.LESSON;
+    if (!root || !lesson || window.lessonController) return;
+    const topic = root.dataset.topic, key = 'lesson-workbench:' + topic;
+    const controls = lesson.controls || [], defaults = Object.fromEntries(controls.map(c => [c.id,c.value]));
+    let params = {...defaults}, step = 0, result, resizeFrame;
+    const make = (tag,text,cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = String(text); if (cls) e.className = cls; return e; };
+    const svg = (tag,attrs = {},text) => { const e = document.createElementNS('http://www.w3.org/2000/svg',tag); for (const [k,v] of Object.entries(attrs)) e.setAttribute(k,String(v)); if (text !== undefined) e.textContent=String(text); return e; };
+    const context = document.createElement('canvas').getContext('2d');
+    function wrap(text,width,size=12) {
+      context.font = size + 'px system-ui,"Microsoft YaHei",sans-serif';
+      const lines = [];
+      for (const paragraph of String(text ?? '').split('\n')) {
+        let line = '';
+        for (const token of paragraph.match(/[A-Za-z0-9_.+-]+|./gu)||[]) {
+          const pieces=context.measureText(token).width>width?[...token]:[token];
+          for(const piece of pieces){
+            if (line && context.measureText(line+piece).width > width) { lines.push(line); line = piece; }
+            else line += piece;
+          }
+        }
+        lines.push(line);
+      }
+      return lines;
+    }
+    function textLines(parent,lines,x,y,size=12,color,anchor='start') {
+      const t = svg('text',{x,y,'font-size':size,fill:color,'text-anchor':anchor});
+      lines.forEach((line,i)=>t.append(svg('tspan',{x,dy:i ? size*1.5 : 0},line))); parent.append(t); return t;
+    }
+    const fmt = value => typeof value !== 'number' ? String(value) : !Number.isFinite(value) ? '—' : Math.abs(value)>=10000 || Math.abs(value)>0 && Math.abs(value)<.001 ? value.toExponential(2) : Number(value.toFixed(4)).toString();
+    function colors() {
+      const style = getComputedStyle(document.documentElement), get = name => style.getPropertyValue('--lesson-'+name).trim();
+      return {ink:get('ink'),muted:get('muted'),panel:get('panel'),line:get('line'),green:get('green'),mint:get('mint'),shade:get('shade'),sand:get('sand'),amber:get('amber'),series:[get('green'),get('amber'),'#568aad','#ad7099','#89954e','#856eb3']};
+    }
+    root.innerHTML = `<header class="lw-header"><a href="../index.html">← 学习流程目录</a><p class="lw-kicker"></p><h1></h1><p class="lw-subtitle"></p></header>
+      <p class="lw-scope"></p><form class="lw-controls" aria-label="教学参数"></form>
+      <nav class="lw-toolbar" aria-label="流程步骤"><button type="button" data-lw-global>全局关系</button><button type="button" data-lw-prev>上一步</button><button type="button" data-lw-next>下一步</button><button type="button" data-lw-reset>重置参数</button><span class="lw-counter"></span></nav>
+      <div class="lw-current" aria-live="polite"><h2></h2><p></p></div><div class="lw-metrics"></div>
+      <figure class="lw-figure"><svg role="img" aria-label="端到端数据流程"></svg><figcaption>箭头开头的数字对应下方执行步骤；卡片中的圈号仅标识组件。箭头表示字段、数据或通知的去向；数值和时间属于所声明的教学示例。</figcaption></figure>
+      <div class="lw-equation" hidden></div><div class="lw-details"></div><aside class="lw-notes"></aside>
+      <section class="lw-steps"><h2>完整编号流程</h2><ol></ol></section><details class="lw-sources"><summary>依据与适用范围</summary><div></div></details><nav class="lw-related" aria-label="相关学习主题"></nav><p class="lw-status" role="status"></p>`;
+    const $ = q => root.querySelector(q);
+    document.title = lesson.title + ' · vLLM 学习笔记';
+    $('.lw-header h1').textContent=lesson.title; $('.lw-kicker').textContent=lesson.kind || '交互学习'; $('.lw-subtitle').textContent=lesson.subtitle || '';
+    function validated(values,strict=false) {
+      const out={...defaults};
+      if (strict) for (const key of Object.keys(values)) if (!controls.some(c=>c.id===key)) throw new Error('未知参数：'+key);
+      for (const control of controls) {
+        const value=values[control.id] ?? control.value;
+        if (control.type==='select') {
+          if ((control.options||[]).some(o=>String(o.value)===String(value))) out[control.id]=String(value);
+          else if(strict) throw new Error('无效场景或选项：'+control.id);
+        } else {
+          const number=Number(value);
+          const ticks=(number-(control.min??0))/(Number(control.step)||1);
+          if (!Number.isFinite(number) || number<control.min || number>control.max || Math.abs(ticks-Math.round(ticks))>1e-7) {
+            if(strict) throw new Error('参数超出范围：'+control.id);
+          } else out[control.id]=number;
+        }
+      }
+      return out;
+    }
+    try { const saved=JSON.parse(localStorage.getItem(key)); if(saved) { params=validated(saved.params || {}); step=Number.isInteger(saved.step)?saved.step:0; } } catch {}
+    for (const control of controls) {
+      const field=make('label',undefined,'lw-field');field.dataset.control=control.id;
+      field.append(make('span',control.label));
+      const input=make(control.type==='select'?'select':'input'); input.name=control.id; input.setAttribute('aria-label',control.label);
+      if (control.type==='select') for(const option of control.options||[]) { const el=make('option',option.label);el.value=String(option.value);input.append(el); }
+      else {input.type=control.type || 'number'; for(const attr of ['min','max','step']) if(control[attr]!==undefined) input[attr]=control[attr];}
+      field.append(input);if(control.type==='range')field.append(make('output'));
+      input.addEventListener('change',()=>{
+        try {params=validated({...params,[control.id]:input.value},true);step=0;$('.lw-status').textContent='';compute();}
+        catch(error){$('.lw-status').textContent=error.message;input.value=params[control.id];}
+      });
+      $('.lw-controls').append(field);
+    }
+    $('.lw-controls').addEventListener('submit',event=>event.preventDefault());
+    function verifyResult(model) {
+      if(!model || !Array.isArray(model.nodes) || !Array.isArray(model.steps) || !model.steps.length)throw new Error('教学流程缺少节点或步骤');
+      const ids=new Set(model.nodes.map(n=>n.id));if(ids.size!==model.nodes.length)throw new Error('流程节点重复');
+      const edges=new Set();
+      for(const edge of model.edges||[]) {
+        if(edges.has(edge.id) || !ids.has(edge.from) || !ids.has(edge.to))throw new Error('流程边引用错误：'+edge.id);
+        edges.add(edge.id);
+        for(const n of edge.steps||[])if(!Number.isInteger(n)||n<1||n>model.steps.length)throw new Error('边的步骤编号错误');
+      }
+      for(const node of model.nodes)if(node.readyAt!==undefined&&(!Number.isInteger(node.readyAt)||node.readyAt<0||node.readyAt>model.steps.length))throw new Error('节点就绪步骤错误：'+node.id);
+      for(const item of model.steps){
+        for(const id of item.activeNodes||[])if(!ids.has(id))throw new Error('步骤引用未知节点：'+id);
+        for(const id of item.activeEdges||[])if(!edges.has(id))throw new Error('步骤引用未知边：'+id);
+        for(const id of Object.keys(item.state||{}))if(!ids.has(id))throw new Error('状态引用未知节点：'+id);
+      }
+    }
+    function remember(){try{localStorage.setItem(key,JSON.stringify({params,step}));}catch{}}
+    function compute(){result=lesson.build({...params});verifyResult(result);step=Math.max(0,Math.min(step,result.steps.length));render();}
+    function drawFlow(){
+      if(!root.getBoundingClientRect().width)return;
+      const drawing=$('.lw-figure svg'),c=colors(),width=Math.max(220,$('.lw-figure').clientWidth-20);
+      const nodes=[...result.nodes].sort((a,b)=>(a.row??result.nodes.indexOf(a))-(b.row??result.nodes.indexOf(b))||(a.col||0)-(b.col||0));
+      const columns=width<620?1:Math.min(3,Math.max(...nodes.map(n=>(n.col||0)+1)));
+      const current=step?result.steps[step-1]:null,positions=new Map(),rows=new Map();
+      nodes.forEach((n,i)=>positions.set(n.id,{...n,row:columns===1?i:(n.row??i),col:columns===1?0:Math.min(columns-1,n.col||0)}));
+      const edges=result.edges||[],longEdges=edges.filter(e=>positions.get(e.to).row-positions.get(e.from).row!==1);
+      const margin=12,gap=30,railGap=columns===1?5:7,rail=longEdges.length?18+longEdges.length*railGap:4;
+      const cardWidth=(width-2*margin-rail-gap*(columns-1))/columns;
+      const labels=new Map(),rowGaps=new Map(),outgoing=new Map(),incoming=new Map(),rowIncoming=new Map();
+      for(const edge of edges){
+        const a=positions.get(edge.from),b=positions.get(edge.to);
+        const out=outgoing.get(a.id)||[];out.push(edge);outgoing.set(a.id,out);
+        const ins=incoming.get(b.id)||[];ins.push(edge);incoming.set(b.id,ins);
+        const rowIns=rowIncoming.get(b.row)||[];rowIns.push(edge);rowIncoming.set(b.row,rowIns);
+        const label=(edge.steps||[]).join('·')+' '+String(edge.label).replace(/^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]+\s*/u,'');
+        labels.set(edge.id,wrap(label,cardWidth-8,11));
+      }
+      for(const n of positions.values()){
+        const detail=current?.state && Object.hasOwn(current.state,n.id)?current.state[n.id]:step && step<(n.readyAt||0)?'等待上游产出':n.detail;
+        n.titleLines=wrap(n.title,cardWidth-24,14);n.lines=wrap(detail,cardWidth-24,12);n.laneLines=wrap(n.lane||'数据 / 计算',cardWidth-24,10);
+        n.titleY=24+n.laneLines.length*15;n.detailY=n.titleY+4+n.titleLines.length*21;
+        n.height=n.detailY+n.lines.length*18+10;n.x=margin+n.col*(cardWidth+gap);n.width=cardWidth;
+        rows.set(n.row,Math.max(rows.get(n.row)||0,n.height));
+      }
+      const labelOffsets=new Map();
+      for(const row of rows.keys()){
+        let used=22;
+        for(const edge of edges.filter(e=>positions.get(e.from).row===row)){
+          labelOffsets.set(edge.id,used);used+=labels.get(edge.id).length*16.5+16;
+        }
+        const incomingLanes=Math.max(1,(rowIncoming.get(row+1)||[]).length+(rowIncoming.get(row)||[]).filter(e=>positions.get(e.from).row===row).length);
+        rowGaps.set(row,used+24+incomingLanes*8);
+      }
+      let y=20+(rowIncoming.get(0)||[]).length*8;const bottoms=new Map();for(const row of [...rows.keys()].sort((a,b)=>a-b)){
+        for(const n of positions.values())if(n.row===row)n.y=y;
+        bottoms.set(row,y+rows.get(row));y+=rows.get(row)+rowGaps.get(row);
+      }
+      const height=Math.max(180,y+15);drawing.replaceChildren();drawing.setAttribute('viewBox',`0 0 ${width} ${height}`);
+      drawing.setAttribute('aria-label',lesson.title+'：'+(current?.title||'全局输入、处理和消费者'));
+      const defs=svg('defs'),marker=svg('marker',{id:'lw-flow-arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:6,markerHeight:6,orient:'auto-start-reverse'});
+      marker.append(svg('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:c.green}));defs.append(marker);drawing.append(defs);
+      const labelPositions=[];
+      for(const edge of edges){
+        const a=positions.get(edge.from),b=positions.get(edge.to),outs=outgoing.get(a.id),ins=incoming.get(b.id);
+        const active=!current||(current.activeEdges||[]).includes(edge.id)||(edge.steps||[]).includes(step);
+        const sx=a.x+18+(a.width-36)*(outs.indexOf(edge)+1)/(outs.length+1);
+        const tx=b.x+18+(b.width-36)*(ins.indexOf(edge)+1)/(ins.length+1);
+        const sy=a.y+a.height,ly=bottoms.get(a.row)+labelOffsets.get(edge.id),mid=ly+labels.get(edge.id).length*16.5-7;
+        let d;
+        if(b.row-a.row===1)d=`M ${sx} ${sy} V ${mid} H ${tx} V ${b.y-3}`;
+        else {
+          const rx=width-margin-rail+12+longEdges.indexOf(edge)*railGap;
+          if(a.row===b.row)d=`M ${sx} ${sy} V ${mid} H ${rx} V ${bottoms.get(a.row)+rowGaps.get(a.row)-12-rowIncoming.get(b.row).indexOf(edge)*8} H ${tx} V ${b.y+b.height+3}`;
+          else {const entryY=b.y-12-rowIncoming.get(b.row).indexOf(edge)*8;d=`M ${sx} ${sy} V ${mid} H ${rx} V ${entryY} H ${tx} V ${b.y-3}`;}
+        }
+        const path=svg('path',{d,fill:'none',stroke:active?c.green:c.line,'stroke-width':active?1.7:1,'stroke-dasharray':edge.kind==='control'?'5 4':'none','marker-end':'url(#lw-flow-arrow)',opacity:active?1:.45,'data-lw-edge':edge.id});
+        path.append(svg('title',{},(edge.steps||[]).join('·')+' '+a.title+' → '+b.title+'：'+edge.label));drawing.append(path);
+        labelPositions.push({edge,x:a.x+a.width/2,y:ly,active});
+      }
+      for(const n of positions.values()){
+        const active=current&&(current.activeNodes||[]).includes(n.id);
+        drawing.append(svg('rect',{x:n.x,y:n.y,width:n.width,height:n.height,rx:9,fill:active?c.mint:c.panel,stroke:active?c.green:c.line,'stroke-width':active?2:1,'data-lw-node':n.id}));
+        textLines(drawing,n.laneLines,n.x+12,n.y+18,10,c.muted);
+        textLines(drawing,n.titleLines,n.x+12,n.y+n.titleY,14,c.ink).setAttribute('font-weight','650');
+        textLines(drawing,n.lines,n.x+12,n.y+n.detailY,12,c.muted);
+      }
+      for(const item of labelPositions){
+        const lines=labels.get(item.edge.id),maxWidth=cardWidth-8;
+        context.font='11px system-ui,"Microsoft YaHei",sans-serif';
+        const w=Math.min(maxWidth+8,Math.max(...lines.map(line=>context.measureText(line).width))+8),h=lines.length*16.5+4;
+        drawing.append(svg('rect',{x:item.x-w/2,y:item.y-12,width:w,height:h,rx:3,fill:c.panel,opacity:.96,'data-lw-edge-label':item.edge.id}));
+        textLines(drawing,lines,item.x,item.y,11,item.active?c.green:c.muted,'middle');
+      }
+    }
+    function drawPlot(box,plot,index){
+      const c=colors(),width=Math.max(210,box.clientWidth-28),drawing=svg('svg',{role:'img','aria-label':plot.title||plot.type});box.append(drawing);
+      let height=210;
+      const legend=(labels)=>{const el=make('div',undefined,'lw-legend');labels.forEach((entry,i)=>{const item=make('span',typeof entry==='string'?entry:entry.label);item.style.setProperty('--swatch',entry.color||c.series[i%c.series.length]);el.append(item);});box.append(el);};
+      if(plot.type==='bars'){
+        const labels=plot.labels||[],series=plot.series||[],values=series.flatMap(s=>s.values).filter(Number.isFinite),low=Math.min(0,...values),high=Math.max(0,...values),span=high-low||1;
+        const left=Math.min(110,width*.32),right=65,usable=Math.max(60,width-left-right),x=v=>left+(v-low)/span*usable,rowHeight=Math.max(45,series.length*18+20);height=labels.length*rowHeight+35;
+        drawing.append(svg('line',{x1:x(0),x2:x(0),y1:8,y2:height-20,stroke:c.line}));
+        labels.forEach((label,row)=>{const y=17+row*rowHeight;textLines(drawing,wrap(label,left-9,11),3,y+9,11,c.ink);series.forEach((s,col)=>{const value=s.values[row];if(!Number.isFinite(value))return;const py=y+col*18;drawing.append(svg('rect',{x:Math.min(x(0),x(value)),y:py,width:Math.max(1,Math.abs(x(value)-x(0))),height:12,rx:2,fill:c.series[col%c.series.length]}));textLines(drawing,[fmt(value)],width-right+6,py+10,10,c.muted);});});legend(series.map(s=>s.label));
+      }else if(plot.type==='vectors'){
+        height=Math.min(370,width+45);const cx=width/2,cy=(height-25)/2,r=Math.min(width,height-25)*.32,vectors=plot.vectors||[],bound=Math.max(1,...vectors.map(v=>Math.hypot(v.x,v.y)))*1.18,scale=r/bound;
+        drawing.append(svg('circle',{cx,cy,r:scale,fill:'none',stroke:c.line,'stroke-dasharray':'4 4'}));
+        drawing.append(svg('path',{d:`M 15 ${cy} H ${width-15} M ${cx} 12 V ${height-35}`,stroke:c.line,fill:'none'}));textLines(drawing,['x'],width-12,cy-6,11,c.muted);textLines(drawing,['y'],cx+6,15,11,c.muted);
+        vectors.forEach((v,i)=>{const x=cx+v.x*scale,y=cy-v.y*scale,color=c.series[i%c.series.length],angle=Math.atan2(y-cy,x-cx),tip=6;drawing.append(svg('line',{x1:cx,y1:cy,x2:x,y2:y,stroke:color,'stroke-width':2}));drawing.append(svg('path',{d:`M ${x-tip*Math.cos(angle-.45)} ${y-tip*Math.sin(angle-.45)} L ${x} ${y} L ${x-tip*Math.cos(angle+.45)} ${y-tip*Math.sin(angle+.45)}`,stroke:color,fill:'none','stroke-width':2}));textLines(drawing,[String(i+1)],Math.max(12,Math.min(width-18,x+6)),Math.max(14,Math.min(height-30,y-7+i%2*18)),12,color);});legend(vectors.map((v,i)=>(i+1)+'. '+v.label+' ['+fmt(v.x)+', '+fmt(v.y)+']'));
+      }else if(plot.type==='timeline'){
+        const rows=plot.rows||[],max=Math.max(1,...rows.flatMap(r=>[...(r.segments||[]).map(s=>s.end),...(r.events||[]).map(e=>e.time)])),left=45,usable=width-left-16,x=v=>left+v/max*usable; height=rows.length*94+45;
+        rows.forEach((row,i)=>{const y=25+i*94;textLines(drawing,wrap(row.label,39,11),2,y+13,11,c.ink);drawing.append(svg('line',{x1:left,x2:width-15,y1:y+17,y2:y+17,stroke:c.line}));(row.segments||[]).forEach((s,j)=>{drawing.append(svg('rect',{x:x(s.start),y,width:Math.max(1,x(s.end)-x(s.start)),height:24,fill:c.series[j%c.series.length],opacity:.65}));});(row.events||[]).forEach((e,j)=>{drawing.append(svg('circle',{cx:x(e.time),cy:y+12,r:4,fill:c.green,stroke:c.panel}));textLines(drawing,[String(j+1)],x(e.time),y+43+(j%2)*15,10,c.muted,'middle');});});textLines(drawing,['0'],left,height-8,11,c.muted);textLines(drawing,[fmt(max)+' '+(plot.unit||'ms')],width-12,height-8,11,c.muted,'end');
+        legend(rows.flatMap(row=>(row.segments||[]).map((s,i)=>({label:row.label+' · '+s.label+' '+fmt(s.start)+'–'+fmt(s.end)+' '+(plot.unit||'ms'),color:c.series[i%c.series.length]}))));
+        for(const row of rows){const caption=make('p',row.label+' 输出事件：'+(row.events||[]).map((e,i)=>(i+1)+'. '+e.label+' @ '+fmt(e.time)+' '+(plot.unit||'ms')).join('；'),'lw-plot-caption');box.append(caption);}
+      }else if(plot.type==='stack'){
+        const parts=plot.parts||[],sum=parts.reduce((a,p)=>a+p.value,0),limit=Math.max(plot.total||0,sum,1),left=6,usable=width-12; height=90;
+        drawing.append(svg('rect',{x:left,y:23,width:usable,height:26,fill:c.shade,rx:4}));let used=0;parts.forEach((p,i)=>{drawing.append(svg('rect',{x:left+used/limit*usable,y:23,width:p.value/limit*usable,height:26,fill:c.series[i%c.series.length]}));used+=p.value;});const capacity=left+(plot.total||0)/limit*usable;drawing.append(svg('line',{x1:capacity,x2:capacity,y1:14,y2:60,stroke:c.amber,'stroke-width':2}));const capacityLabel='容量 '+fmt(plot.total)+' '+(plot.unit||'');context.font='11px system-ui,"Microsoft YaHei",sans-serif';textLines(drawing,[capacityLabel],Math.max(context.measureText(capacityLabel).width+5,Math.min(width-5,capacity)),12,11,c.amber,'end');textLines(drawing,['合计 '+fmt(sum)+' '+(plot.unit||'')],6,77,12,c.ink);legend(parts.map(p=>p.label+' '+fmt(p.value)+' '+(plot.unit||'')));
+      }else {textLines(drawing,['此图表类型尚未实现：'+plot.type],5,25,12,c.amber);}
+      drawing.setAttribute('viewBox',`0 0 ${width} ${height}`);
+    }
+    function renderDetails(){
+      const current=step?result.steps[step-1]:null,holder=$('.lw-details');holder.replaceChildren();
+      for(const table of current?.tables ?? result.tables ?? []){
+        const card=make('section',undefined,'lw-table-card');card.append(make('h3',table.title||'数据变化'));const scroll=make('div',undefined,'lw-table-scroll'),el=make('table'),head=make('thead'),row=make('tr');
+        for(const value of table.headers||[])row.append(make('th',value));head.append(row);el.append(head);const body=make('tbody');
+        for(const values of table.rows||[]){const row=make('tr');for(const value of values)row.append(make('td',fmt(value)));body.append(row);}el.append(body);scroll.append(el);card.append(scroll);holder.append(card);
+      }
+      for(const [i,plot]of(current?.plots ?? result.plots ?? []).entries()){const box=make('section',undefined,'lw-plot');box.append(make('h3',plot.title||'数值视图'));holder.append(box);drawPlot(box,plot,i);}
+      const equation=current?.equation ?? result.equation;$('.lw-equation').hidden=!equation;$('.lw-equation').textContent=equation||'';
+      const notes=[...(result.notes||[]),...(current?.notes||[])];$('.lw-notes').replaceChildren(...notes.map(note=>make('p',note)));$('.lw-notes').hidden=!notes.length;
+    }
+    function render(){
+      root.dataset.step=String(step);root.dataset.ready='true';
+      $('.lw-scope').textContent=result.scope||'';
+      for(const control of controls){const field=root.querySelector('[data-control="'+control.id+'"]'),input=field.querySelector('input,select');input.value=params[control.id];field.hidden=control.showIf?!control.showIf(params):false;if(field.querySelector('output'))field.querySelector('output').textContent=fmt(params[control.id]);}
+      const current=step?result.steps[step-1]:null;
+      $('.lw-current h2').textContent=current?'第 '+step+' 步 · '+current.title:'全局关系 · 输入、计算与消费者';
+      $('.lw-current p').textContent=current?.summary || lesson.subtitle || '';
+      $('[data-lw-global]').setAttribute('aria-pressed',String(step===0));$('[data-lw-prev]').disabled=step===0;$('[data-lw-next]').disabled=step===result.steps.length;
+      $('.lw-counter').textContent=step+' / '+result.steps.length+' · 0 为全局';
+      $('.lw-metrics').replaceChildren(...(result.metrics||[]).map(metric=>{const e=make('div',undefined,'lw-metric');e.append(make('span',metric.label),make('strong',metric.value));return e;}));
+      const list=$('.lw-steps ol');list.replaceChildren();result.steps.forEach((item,i)=>{const li=make('li'),button=make('button',undefined,'lw-step-button');button.type='button';button.dataset.lwStep=String(i+1);if(step===i+1)button.setAttribute('aria-current','true');const text=make('span');text.append(make('strong',item.title),make('small',item.summary));button.append(make('b',String(i+1).padStart(2,'0')),text);li.append(button);list.append(li);});
+      drawFlow();renderDetails();remember();
+    }
+    function select(next){if(!Number.isInteger(next)||next<0||next>result.steps.length)throw new Error('无效步骤：'+next);step=next;render();}
+    root.addEventListener('click',event=>{const button=event.target.closest('button');if(!button)return;if(button.hasAttribute('data-lw-global'))select(0);if(button.hasAttribute('data-lw-prev'))select(Math.max(0,step-1));if(button.hasAttribute('data-lw-next'))select(Math.min(result.steps.length,step+1));if(button.hasAttribute('data-lw-reset')){params={...defaults};step=0;compute();}if(button.dataset.lwStep)select(Number(button.dataset.lwStep));});
+    for(const source of lesson.sources||[]){const a=make('a',source.label);a.href=source.url;a.target='_blank';a.rel='noopener noreferrer';$('.lw-sources>div').append(a);}
+    for(const related of lesson.related||[]){const a=make('a',related.label+' →');a.href=related.href;$('.lw-related').append(a);}
+    function redraw(){cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(()=>{if(root.getBoundingClientRect().width){drawFlow();renderDetails();}});}
+    window.addEventListener('resize',redraw);matchMedia('(prefers-color-scheme:dark)').addEventListener('change',redraw);
+    window.lessonController={
+      getState:()=>({params:{...params},step,result}),
+      setParams:values=>{const next=validated({...params,...values},true),built=lesson.build({...next});verifyResult(built);params=next;result=built;step=0;render();},
+      openTarget:async action=>{
+        if(!action||!Number.isInteger(action.step))throw new Error('目标缺少有效步骤');
+        const next=validated({...defaults,...(action.params||{})},true),built=lesson.build({...next});verifyResult(built);
+        if(action.step<0||action.step>built.steps.length)throw new Error('无效步骤：'+action.step);
+        params=next;result=built;step=action.step;render();
+        await new Promise(resolve=>requestAnimationFrame(resolve));drawFlow();
+        return {label:action.step?'第 '+action.step+' 步 · '+result.steps[action.step-1].title:'全局关系'};
+      }
+    };
+    compute();
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
+})();
+</script>
+<!-- lesson-workbench:end -->
+</body>
+</html>

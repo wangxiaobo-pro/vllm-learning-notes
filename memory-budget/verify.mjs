@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+const context={window:{}}; vm.runInNewContext(fs.readFileSync(new URL('./lesson.js',import.meta.url),'utf8'),context);
+const lesson=context.window.LESSON, p=Object.fromEntries(lesson.controls.map(c=>[c.id,c.value]));
+const base=lesson.calculate(p), GiB=2**30;
+assert.equal(base.weights,14_000_000_000);
+assert.equal(base.kv,2*GiB);
+assert.equal(lesson.calculate({...p,scenario:'mha'}).kv,8*GiB);
+assert.equal(lesson.calculate({...p,scenario:'mla'}).kv,0.5625*GiB);
+assert.equal(base.maxRequests,17);
+assert.equal(lesson.calculate({...p,tokens:4097}).roundedTokens,4112);
+assert.equal(lesson.calculate({...p,tokens:16}).kv,lesson.calculate({...p,tokens:1}).kv);
+assert.equal(lesson.calculate({...p,concurrency:8}).kv,base.kv*2);
+assert.equal(lesson.calculate({...p,layers:64}).kv,base.kv*2);
+assert.equal(lesson.calculate({...p,weightBits:'4'}).weights,3_500_000_000);
+const over=lesson.calculate({...p,capacity:1});assert(over.remaining<0);assert.equal(over.maxRequests,0);
+assert.notEqual(lesson.build({...p,scenario:'mla',layers:1,tokens:1,concurrency:1}).metrics[2].value,'0 GiB');
+for(const scenario of ['gqa','mha','mla']) {const r=lesson.build({...p,scenario});assert.equal(r.steps.length,7);assert.equal(r.plots[0].parts.reduce((s,x)=>s+x.value,0),lesson.calculate({...p,scenario}).total/GiB);}
+console.log('memory-budget: exact storage, GiB conversion, block rounding, concurrency, MLA and over-capacity checks passed');

@@ -1,0 +1,946 @@
+<!doctype html>
+<html lang="zh-CN" data-lesson-topic="modelrunner-inputs" data-lesson-palette="mcp">
+<head>
+<meta charset="utf-8">
+<!-- learning-scope-style:start -->
+<style>
+.learning-scope-shell{box-sizing:border-box;max-width:960px;width:calc(100% - 32px);margin:16px auto 0;font:13px/1.6 system-ui,"Microsoft YaHei",sans-serif;color:#344454}
+.learning-scope{border:1px solid #dce3e9;border-radius:8px;background:#f7f9fb;overflow-wrap:anywhere}
+.learning-scope>summary{display:list-item;list-style:disclosure-closed inside;cursor:pointer;padding:9px 12px;font-size:13px;line-height:1.6;color:inherit}
+.learning-scope[open]>summary{list-style-type:disclosure-open}
+.learning-scope>summary:focus-visible{outline:2px solid #287cb8;outline-offset:3px}
+.learning-scope-kind{font-weight:650;color:#24668f}
+.learning-scope-hint{font-size:11px;opacity:.7;margin-left:6px}
+.learning-scope[open] .learning-scope-hint{display:none}
+.learning-scope dl{display:grid;grid-template-columns:88px minmax(0,1fr);gap:7px 12px;margin:0;padding:3px 12px 13px}
+.learning-scope dt{font-weight:600}.learning-scope dd{margin:0}
+@media(max-width:480px){.learning-scope dl{grid-template-columns:1fr;gap:3px}.learning-scope dd+dt{margin-top:6px}}
+:root[data-theme=dark] .learning-scope-shell{color:#c5d1dc}:root[data-theme=dark] .learning-scope{background:#1b242d;border-color:#384550}:root[data-theme=dark] .learning-scope-kind{color:#9bcaf0}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .learning-scope-shell{color:#c5d1dc}:root:not([data-theme=light]) .learning-scope{background:#1b242d;border-color:#384550}:root:not([data-theme=light]) .learning-scope-kind{color:#9bcaf0}}
+</style>
+<!-- learning-scope-style:end -->
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>交互学习 · vLLM 学习笔记</title>
+<style>body{margin:0}</style>
+<!-- lesson-theme:start -->
+<style>
+/* Scheduler palette. Inlined into each document by scripts/build_learning_ui.py. */
+:root {
+  color-scheme:light !important;
+  --lesson-bg:#f5f5ef; --lesson-panel:#fffefa; --lesson-ink:#192923;
+  --lesson-muted:#52655b; --lesson-line:#d5ddd2; --lesson-grid:#e4e8e0;
+  --lesson-green:#12634b; --lesson-mint:#e7f3e8; --lesson-amber:#8a4a18;
+  --lesson-sand:#fcf0dc; --lesson-shade:#f0f3eb;
+}
+@media(prefers-color-scheme:dark) {
+  :root:not([data-theme=light]) {
+    color-scheme:dark !important;
+    --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+    --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+    --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+    --lesson-sand:#473625; --lesson-shade:#212f27;
+  }
+}
+:root[data-theme=dark] {
+  color-scheme:dark !important;
+  --lesson-bg:#141c19; --lesson-panel:#1b2520; --lesson-ink:#e4eee4;
+  --lesson-muted:#a8b9ae; --lesson-line:#3d4d42; --lesson-grid:#314037;
+  --lesson-green:#91d8ae; --lesson-mint:#264336; --lesson-amber:#efbe88;
+  --lesson-sand:#473625; --lesson-shade:#212f27;
+}
+:root {
+  --bg:var(--lesson-bg) !important; --background:var(--lesson-bg) !important;
+  --panel:var(--lesson-panel) !important; --surface:var(--lesson-panel) !important;
+  --card:var(--lesson-panel) !important; --popover:var(--lesson-panel) !important;
+  --ink:var(--lesson-ink) !important; --fg:var(--lesson-ink) !important;
+  --text:var(--lesson-ink) !important; --foreground:var(--lesson-ink) !important;
+  --card-foreground:var(--lesson-ink) !important; --popover-foreground:var(--lesson-ink) !important;
+  --muted-foreground:var(--lesson-muted) !important; --sub:var(--lesson-muted) !important;
+  --line:var(--lesson-line) !important; --border:var(--lesson-line) !important;
+  --grid:var(--lesson-grid) !important; --shade:var(--lesson-shade) !important;
+  --muted:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+  --accent-foreground:var(--lesson-ink) !important;
+  --primary:var(--lesson-green) !important; --primary-foreground:var(--lesson-panel) !important;
+  --accent-soft:var(--lesson-mint) !important; --hover:var(--lesson-shade) !important;
+  --mint:var(--lesson-mint) !important; --sand:var(--lesson-sand) !important;
+  --color-background-primary:var(--lesson-bg) !important;
+  --color-background-secondary:var(--lesson-panel) !important;
+  --color-background-tertiary:var(--lesson-shade) !important;
+  --color-text-primary:var(--lesson-ink) !important;
+  --color-text-secondary:var(--lesson-muted) !important;
+  --color-border-secondary:var(--lesson-line) !important;
+  --viz-panel:var(--lesson-panel) !important;
+  --viz-border:var(--lesson-line) !important;
+  --viz-muted:var(--lesson-muted) !important;
+  background:var(--lesson-bg) !important;
+}
+:root[data-lesson-palette=text] {
+  --muted:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+}
+:root[data-lesson-topic=model-architecture] {
+  --soft:var(--lesson-shade) !important; --accent:var(--lesson-mint) !important;
+}
+:root[data-lesson-palette=matrix] {
+  --soft:var(--lesson-muted) !important; --accent:var(--lesson-green) !important;
+  --wash:var(--lesson-mint) !important;
+}
+body { background:var(--lesson-bg) !important; color:var(--lesson-ink) !important; }
+.learning-scope-shell { color:var(--lesson-muted) !important; }
+.learning-scope { background:var(--lesson-shade) !important; border-color:var(--lesson-line) !important; }
+.learning-scope-kind { color:var(--lesson-green) !important; }
+</style>
+<!-- lesson-theme:end -->
+</head>
+<body>
+<!-- learning-scope:start -->
+<aside class="learning-scope-shell" aria-label="本页范围与源码版本">
+<details class="learning-scope">
+<summary><span class="learning-scope-kind">源码快照</span> 本页范围与源码版本 <span class="learning-scope-hint">展开查看</span></summary>
+<dl><dt>源码基线</dt><dd>vLLM 295c062db8 · V1</dd>
+<dt>后端与配置</dt><dd>GPU MRV1 · 单卡 eager · 同步 · FullAttention</dd>
+<dt>流程范围</dt><dd>持久请求缓存 / 批次行、输入打包、GPU metadata 与采样回写。</dd>
+<dt>教学假设</dt><dd>A/B/C 三请求；block=4 为缩放教学尺寸，不是 GPU kernel 支持声明。</dd></dl>
+</details>
+</aside>
+<!-- learning-scope:end -->
+<!-- lesson-workbench:start -->
+<style>
+.lesson-workbench { max-width:960px; margin:24px auto; padding:0 16px 24px; box-sizing:border-box; font:14px/1.65 system-ui,"Microsoft YaHei",sans-serif; color:var(--lesson-ink); }
+.lesson-workbench * { box-sizing:border-box; }
+.lesson-workbench [hidden] { display:none !important; }
+.lesson-workbench h1,.lesson-workbench h2,.lesson-workbench h3,.lesson-workbench p { margin:0; }
+.lesson-workbench a { color:var(--lesson-green); text-underline-offset:3px; overflow-wrap:anywhere; }
+.lw-header>a { font-size:12px; text-decoration:none; }
+.lw-kicker { margin-top:20px !important; color:var(--lesson-green); font-size:12px; letter-spacing:.06em; }
+.lw-header h1 { font-size:clamp(25px,4vw,36px); line-height:1.3; margin:7px 0 12px; letter-spacing:-.03em; }
+.lw-subtitle { color:var(--lesson-muted); font-size:15px; }
+.lw-scope { margin:18px 0 !important; padding:12px 14px; background:var(--lesson-shade); border-left:3px solid var(--lesson-green); font-size:12px; overflow-wrap:anywhere; }
+.lw-controls { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr)); gap:12px; margin:20px 0; }
+.lw-field { display:flex; flex-direction:column; gap:5px; min-width:0; color:var(--lesson-muted); font-size:12px; }
+.lw-field input,.lw-field select { width:100%; min-width:0; padding:8px 10px; color:var(--lesson-ink); background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:6px; font:14px system-ui,"Microsoft YaHei",sans-serif; }
+.lw-field input[type=range] { padding:9px 0; accent-color:var(--lesson-green); }
+.lw-field output { color:var(--lesson-green); font-variant-numeric:tabular-nums; }
+.lw-toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:12px 0; border-block:1px solid var(--lesson-line); }
+.lesson-workbench button { cursor:pointer; color:var(--lesson-ink); font:inherit; }
+.lw-toolbar button { padding:6px 11px; background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:6px; font-size:13px; }
+.lw-toolbar button[aria-pressed=true] { background:var(--lesson-mint); border-color:var(--lesson-green); color:var(--lesson-green); }
+.lw-toolbar button:disabled { cursor:default; opacity:.4; }
+.lw-counter { margin-left:auto; color:var(--lesson-muted); font-size:12px; }
+.lesson-workbench :is(button,input,select,a,summary):focus-visible { outline:3px solid var(--lesson-amber); outline-offset:3px; }
+.lw-current { padding:17px 0 12px; }
+.lw-current h2 { font-size:19px; line-height:1.45; }
+.lw-current p { margin-top:6px; color:var(--lesson-muted); }
+.lw-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr)); gap:9px; margin:10px 0 18px; }
+.lw-metric { min-width:0; padding:10px 13px; background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:8px; }
+.lw-metric span { display:block; color:var(--lesson-muted); font-size:11px; }
+.lw-metric strong { display:block; font-size:19px; line-height:1.45; color:var(--lesson-green); overflow-wrap:anywhere; }
+.lw-figure { margin:0; border:1px solid var(--lesson-line); border-radius:12px; background:var(--lesson-panel); padding:10px; }
+.lw-figure svg { display:block; width:100%; height:auto; overflow:visible; font-family:system-ui,"Microsoft YaHei",sans-serif; }
+.lw-figure figcaption { padding:5px 5px 8px; color:var(--lesson-muted); font-size:11px; }
+.lw-equation { margin-top:16px; padding:12px; border:1px solid var(--lesson-line); border-radius:7px; background:var(--lesson-mint); font:13px/1.8 ui-monospace,Consolas,"Microsoft YaHei",monospace; overflow-wrap:anywhere; white-space:pre-wrap; }
+.lw-details { display:grid; gap:16px; margin:16px 0; }
+.lw-table-card,.lw-plot { min-width:0; padding:14px; border:1px solid var(--lesson-line); background:var(--lesson-panel); border-radius:9px; }
+.lw-table-card h3,.lw-plot h3 { margin-bottom:9px; font-size:15px; }
+.lw-table-scroll { overflow:auto; max-width:100%; }
+.lw-table-card table { border-collapse:collapse; width:100%; table-layout:fixed; font-size:12px; }
+.lw-table-card th,.lw-table-card td { text-align:left; padding:7px 8px; border:1px solid var(--lesson-line); overflow-wrap:anywhere; vertical-align:top; white-space:pre-wrap; }
+.lw-table-card th { background:var(--lesson-shade); font-weight:650; }
+.lw-plot svg { display:block; width:100%; height:auto; font-family:system-ui,"Microsoft YaHei",sans-serif; }
+.lw-legend { display:flex; flex-wrap:wrap; gap:4px 15px; color:var(--lesson-muted); font-size:12px; margin-top:8px; }
+.lw-legend span::before { content:''; display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; background:var(--swatch,var(--lesson-green)); }
+.lw-plot-caption { color:var(--lesson-muted); font-size:11px; margin-top:8px !important; overflow-wrap:anywhere; }
+.lw-notes { margin:18px 0; padding:13px 15px; background:var(--lesson-sand); border-left:3px solid var(--lesson-amber); border-radius:0 6px 6px 0; font-size:12px; }
+.lw-notes p+p { margin-top:6px; }
+.lw-steps { margin:22px 0; }
+.lw-steps h2 { margin-bottom:10px; font-size:19px; }
+.lw-steps ol { margin:0; padding:0; list-style:none; display:grid; gap:7px; }
+.lw-step-button { display:grid; grid-template-columns:30px minmax(0,1fr); width:100%; padding:10px; gap:8px; text-align:left; background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:7px; }
+.lw-step-button[aria-current=true] { border-color:var(--lesson-green); background:var(--lesson-mint); }
+.lw-step-button b { font-size:12px; color:var(--lesson-green); }
+.lw-step-button strong { display:block; font-size:13px; }
+.lw-step-button small { display:block; margin-top:3px; color:var(--lesson-muted); font-size:12px; }
+.lw-sources { border-top:1px solid var(--lesson-line); padding-top:16px; margin-top:24px; font-size:12px; }
+.lw-sources summary { cursor:pointer; font-weight:650; }
+.lw-sources a,.lw-related a { display:block; margin-top:6px; }
+.lw-related { margin-top:20px; font-size:12px; }
+.lw-status { color:var(--lesson-amber); font-size:12px; min-height:1.5em; }
+@media(max-width:500px) { .lw-table-card,.lw-plot { padding:10px; } .lw-table-card td,.lw-table-card th { padding:6px 4px; } .lw-counter { flex-basis:100%; margin:0; } .lw-figure { padding:4px; } }
+@media print { .lw-controls,.lw-toolbar,.lw-step-button { break-inside:avoid; } }
+</style>
+<main class="lesson-workbench" id="lesson-workbench" data-topic="modelrunner-inputs"></main>
+<noscript>请启用 JavaScript 查看逐步演算；源码与范围说明仍可阅读。</noscript>
+<script>
+/* Pure teaching data; fixed GPU MRV1 source, no GPU execution. */
+window.LESSON = {
+  title: 'ModelRunner：持久批次怎样变成模型输入',
+  subtitle: '从请求加入、退出和压紧，到 packed tokens、位置、块表和 slot；再追踪采样回写。',
+  kind: '框架机制',
+  controls: [{id:'scenario',label:'场景',type:'select',value:'normal',options:[
+    {value:'normal',label:'A/B 常驻，C 加入'},
+    {value:'change',label:'下一轮 B 结束，C 压紧'}
+  ]}],
+  build(params) {
+    const change = params.scenario === 'change';
+    const blockSize = 4;
+    const arr = x => '[' + x.map(v => v === null ? '空' : v).join(', ') + ']';
+    const base = {
+      A:{id:'A',tokens:[11,12,13,14],computed:2,count:2,blocks:[2],sample:15},
+      B:{id:'B',tokens:[21,22,23,24,25],computed:4,count:1,blocks:[5,7],sample:26},
+      C:{id:'C',tokens:[31,32,33],computed:0,count:3,blocks:[9],sample:34}
+    };
+    const initial = change ? ['A','B','C'] : ['A','B'];
+    if (change) {
+      for (const req of Object.values(base)) {
+        req.tokens.push(req.sample);
+        req.computed += req.count;
+        req.count = 1;
+      }
+      base.A.blocks.push(6);
+      base.A.sample = 16;
+      base.C.sample = 35;
+    }
+    const holes = change ? ['A',null,'C'] : ['A','B'];
+    const order = change ? ['A','C'] : ['A','B','C'];
+    const reqs = order.map(id => base[id]);
+    const starts = [0];
+    for (const req of reqs) starts.push(starts.at(-1) + req.count);
+    const packed = reqs.flatMap((req,row) => Array.from({length:req.count}, (_,local) => {
+      const position = req.computed + local;
+      const block = req.blocks[Math.floor(position / blockSize)];
+      return {index:starts[row]+local,id:req.id,row,local,token:req.tokens[position],position,
+        logical:Math.floor(position/blockSize),block,offset:position%blockSize,
+        slot:block*blockSize+position%blockSize};
+    }));
+    const ids = packed.map(x=>x.token), positions = packed.map(x=>x.position);
+    const slots = packed.map(x=>x.slot), seqLens = reqs.map(x=>x.computed+x.count);
+    const logits = starts.slice(1).map(x=>x-1);
+    const samples = reqs.map(x=>x.sample);
+    const rowText = ids => ids.map((id,i)=>`${i}:${id === null ? '空' : id}`).join(' · ');
+    const rowTable = (title, ids, appended=false, beforeUpdate=false) => ({title,headers:['行','请求','已知 token IDs','CPU computed','块表'],rows:ids.map((id,i)=>id === null ? [i,'空','—','—','—'] : [i,id,arr(appended ? [...base[id].tokens,base[id].sample] : base[id].tokens),beforeUpdate&&change?{A:2,B:4,C:0}[id]:base[id].computed,arr(beforeUpdate&&change&&id==='A'?[2]:base[id].blocks)])});
+    const inputTable = {title:'本轮 SchedulerOutput（教学输入）',headers:['请求','scheduled tokens','computed 输入','新分配 block IDs'],rows:reqs.map(r=>[r.id,r.count,r.computed,change && r.id==='A'?'[6]':r.id==='C'&&!change?'[9]':'[]'])};
+    const packingTable = {title:'逐 token 打包与物理槽',headers:['packed 下标','请求/行','token ID','position','逻辑块','物理块','块内偏移','slot'],rows:packed.map(x=>[x.index,`${x.id}/${x.row}`,x.token,x.position,x.logical,x.block,x.offset,x.slot])};
+    const cpuPackingTable = {title:'CPU gather 结果（slot 尚未计算）',headers:packingTable.headers.slice(0,4),rows:packingTable.rows.map(row=>row.slice(0,4))};
+    const offsetTable = {title:'批次元数据',headers:['字段','值','消费者'],rows:[
+      ['query_start_loc',arr(starts),'Attention metadata / slot mapping'],
+      ['seq_lens',arr(seqLens),'Attention backend'],
+      ['logits_indices',arr(logits),'hidden_states → logits'],
+      ['input_ids',arr(ids),'模型 embedding'],
+      ['positions',arr(positions),'模型位置编码 / slot mapping'],
+      ['slot_mapping',arr(slots),'KV cache 写入']
+    ]};
+    const pendingSlotTable = {...offsetTable,title:'打包元数据（slot 尚未计算）',rows:offsetTable.rows.filter(row=>row[0]!=='slot_mapping')};
+    const outputTable = {title:'采样后的持久状态',headers:['请求','采样 ID（给定）','num_tokens_no_spec','num_computed_tokens_cpu','输出 IDs 追加'],rows:reqs.map(r=>[r.id,r.sample,r.tokens.length+1,r.computed,arr([r.sample])])};
+    const nodes = [
+      {id:'schedule',title:'① SchedulerOutput',lane:'CPU · 调度器→Worker',row:0,col:0,readyAt:0,detail:`顺序待重建；${reqs.map(r=>r.id+':'+r.count).join('、')} tokens`},
+      {id:'cache',title:'② CachedRequestState',lane:'CPU · 请求字典',row:0,col:1,readyAt:0,detail:`请求缓存与批次行是两种状态；初始 ${initial.join('/')}`},
+      {id:'batch',title:'③ InputBatch 持久行',lane:'CPU · 固定容量缓冲',row:1,col:0,readyAt:0,detail:rowText(initial)},
+      {id:'packed',title:'④ 当前迭代的紧凑输入',lane:'CPU · gather',row:1,col:1,readyAt:4,detail:`IDs=${arr(ids)}；positions=${arr(positions)}`},
+      {id:'device',title:'⑤ GPU 输入与块表',lane:'GPU · device buffers',row:2,col:0,readyAt:5,detail:`query_start_loc=${arr(starts)}；块表与行序 ${order.join('/')}`},
+      {id:'slot',title:'⑥ GPU slot_mapping',lane:'GPU · Triton kernel',row:2,col:1,readyAt:6,detail:arr(slots)},
+      {id:'consumer',title:'⑦ 模型与 Attention 消费者',lane:'GPU · eager',row:3,col:0,readyAt:7,detail:'IDs→embedding；positions→位置编码；块表→KV读；slot→KV写'},
+      {id:'output',title:'⑧ 采样与持久状态回写',lane:'GPU→CPU · 同步路径',row:3,col:1,readyAt:8,detail:`给定 sample IDs=${arr(samples)}；稍后写回 token 行`}
+    ];
+    const edges = [
+      {id:'s-cache',from:'schedule',to:'cache',label:'① finished / new / cached 请求增量',steps:[1,2]},
+      {id:'c-batch',from:'cache',to:'batch',label:'②③ token 行、computed、block IDs',steps:[2,3]},
+      {id:'s-pack',from:'schedule',to:'packed',label:'④ 按当前批次行重排 scheduled counts',steps:[4]},
+      {id:'b-pack',from:'batch',to:'packed',label:'④ computed+局部下标 → gather token IDs',steps:[4]},
+      {id:'b-dev',from:'batch',to:'device',label:'⑤ block table CPU→GPU；不是 KV 张量复制',steps:[5]},
+      {id:'p-dev',from:'packed',to:'device',label:'⑤ input IDs / query offsets；positions 在 GPU 重建',steps:[5]},
+      {id:'d-slot',from:'device',to:'slot',label:'⑥ query offsets + positions + block table',steps:[6]},
+      {id:'d-model',from:'device',to:'consumer',label:'⑦ IDs/positions 与 Attention metadata',steps:[7]},
+      {id:'slot-model',from:'slot',to:'consumer',label:'⑦ 每个 token 的 KV 写入地址',steps:[7]},
+      {id:'m-out',from:'consumer',to:'output',label:'⑧ logits → sample_tokens；execute 先保存中间状态',steps:[8]},
+      {id:'out-batch',from:'output',to:'batch',label:'⑨ sampled ID 追加到 CPU token 行',steps:[9]},
+      {id:'out-cache',from:'output',to:'cache',label:'⑨ output_token_ids 追加；computed 等下一轮调度输入',steps:[9]}
+    ];
+    const persistent = (phase, done=false) => ({
+      cache:change?'B 已完成时从 requests 删除；A/C 的缓存保留。':'A/B 缓存保留；C 由新请求元数据构造。',
+      batch:rowText(phase)+(done?`；已追加 ${arr(samples)}，computed 仍为 ${arr(reqs.map(r=>r.computed))}`:''),
+      ...(done?{output:`回写完成；num_tokens_no_spec=${arr(reqs.map(r=>r.tokens.length+1))}；computed 未在此增加。`}:{})
+    });
+    const step = (title,summary,activeNodes,activeEdges,state,tables,equation,notes=[]) => ({title,summary,activeNodes,activeEdges,state,tables,equation,notes});
+    const steps = [
+      step('接收本轮调度增量',change?'前一轮已采样 A=15、B=26、C=34。调度器反馈 computed，并宣布 B 完成；初始 CPU 行还未应用此增量。':'A/B 已在持久批次，C 本轮加入；调度器给出各请求本轮 token 数。',['schedule','cache'],['s-cache'],{batch:rowText(initial),cache:`初始缓存：${initial.join('/')}`},[inputTable,rowTable('初始持久批次',initial,false,true)]),
+      step(change?'移除 B，暂留空行':'接收 C，保留 A/B',change?'remove_request 删除 B 的行索引并清空该块表行；物理 KV 块释放属于 Scheduler。':'构造 C 的 CachedRequestState；旧请求保留缓存与行。本场景没有删除请求。',['cache','batch'],['s-cache','c-batch'],persistent(holes),[inputTable,rowTable('加入/移除后的中间行',holes)],undefined,['未被本轮调度的请求也可从 InputBatch 移除，但 requests 缓存仍保留；这与 finished 的删除不同。']),
+      step(change?'压紧：C 从行 2 移到行 1':'加入 C，形成连续三行',change?'condense 将最后活动行 C 搬入 B 的空位；tokens、computed 和块表同行移动。A 本轮收到新块 6。':'add_request 把 C 写入行 2；condense 检查后没有空洞。后续 scheduled counts 按这个行序读取。',['cache','batch'],['c-batch'],persistent(order),[rowTable('压紧后的 CPU 批次',order)]),
+      step('计算 offsets、positions 并 gather',`本轮共 ${ids.length} 个 token。query_start_loc 的相邻差等于各请求 scheduled counts。`,['schedule','batch','packed'],['s-pack','b-pack'],{...persistent(order),packed:`IDs=${arr(ids)}；positions=${arr(positions)}；query_start_loc=${arr(starts)}`},[cpuPackingTable,pendingSlotTable],`position = computed[row] + local；query_start_loc = [0, cumsum(counts)]`),
+      step('提交 GPU 缓冲与块表','commit_block_table 传块号元数据；输入 IDs 复制到 GPU，positions/seq_lens 由已有 GPU 缓冲与本轮计数更新。',['packed','batch','device'],['b-dev','p-dev'],{...persistent(order),device:`IDs=${arr(ids)}；positions=${arr(positions)}；query_start_loc=${arr(starts)}；seq_lens=${arr(seqLens)}`},[pendingSlotTable,rowTable('用于本轮 GPU 块表的行',order)],undefined,['图按数据依赖组织，部分源码语句合并到同一阶段；block_table.commit 位于 _prepare_inputs 开头，_prepare_input_ids 的调用则在 slot mapping 调用之后。']),
+      step('把逻辑位置转换成物理 slot','每个请求用自己的块表行；相同 position 并不意味着使用相同物理地址。',['device','slot'],['d-slot'],{...persistent(order),slot:`slot_mapping=${arr(slots)}`},[packingTable],`slot = block_table[row][floor(position/${blockSize})] × ${blockSize} + position % ${blockSize}`),
+      step('交给模型与 Attention','模型消费 input_ids/positions；Attention metadata 携带 query offsets、seq_lens、block table 和 slot mapping。读 KV 用块表，写 KV 用 slot。',['device','slot','consumer'],['d-model','slot-model'],{...persistent(order),consumer:`${order.join('/')} 的 metadata 对齐；logits_indices=${arr(logits)} 选每个请求本轮最后一行 hidden state。`},[offsetTable],`logits_indices = query_start_loc[1:] − 1`),
+      step('execute 返回续点，再采样','execute_model 保存 ExecuteModelState 并返回 None；独立的 sample_tokens 继续消费 logits。本页采样 ID 是给定教学输出。',['consumer','output'],['m-out'],{...persistent(order),output:`给定 sampled IDs=${arr(samples)}；尚未显示为下一轮已计算 token。`},[{title:'给定采样结果',headers:['请求','sampled ID'],rows:reqs.map(r=>[r.id,r.sample])}],undefined,['未计算模型权重、Attention 数值或真实采样概率。']),
+      step('同步 bookkeeping 回写','追加 sampled IDs 和 output_token_ids，更新 num_tokens_no_spec。num_computed_tokens_cpu 此处不前移；下一轮 _update_states 接收调度器的权威值。',['output','batch','cache'],['out-batch','out-cache'],persistent(order,true),[outputTable,rowTable('回写后的 CPU token 行',order,true)])
+    ];
+    return {scope:'vLLM 295c062db8 · GPU MRV1 · 单卡 TP/PP/CP=1 · eager · 同步调度 · 普通文本与 FullAttention；无推测解码/LoRA/连接器。行序固定为本例未触发后端重排的顺序。block=4 是缩放教学尺寸，不是可直接运行的 GPU backend 配置。',nodes,edges,steps,
+      metrics:[{label:'请求行',value:order.join(' → ')},{label:'本轮 token 数',value:ids.length},{label:'query_start_loc',value:arr(starts)},{label:'教学 block size',value:blockSize+' tokens'}],
+      tables:[packingTable,offsetTable,outputTable],plots:[],notes:['GPU 块表只含地址元数据；KV tensor 保留在设备缓存中。','InputBatch 行号会改变，请求 ID 才是请求身份。','normal 与 change 是相邻两轮的教学快照；采样 ID 由本页给定，非实测。']};
+  },
+  sources:[
+    {label:'GPUModelRunner：更新、打包与采样回写',url:'https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/worker/gpu_model_runner.py#L1195'},
+    {label:'InputBatch：行加入、退出与压紧',url:'https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/worker/gpu_input_batch.py#L347'},
+    {label:'BlockTable：slot mapping kernel',url:'https://github.com/vllm-project/vllm/blob/295c062db8a48ea73bbd05d1174cb37d24bf86f9/vllm/v1/worker/block_table.py#L415'}
+  ],
+  related:[{label:'Scheduler',href:'../scheduler/index.html'},{label:'PagedAttention',href:'../paged-attention/index.html'},{label:'混合 KV 管理',href:'../hybrid-kv-cache/index.html'}]
+};
+/* Shared offline renderer. Lesson definitions own the calculations and state transitions. */
+(() => {
+  function mount() {
+    const root = document.getElementById('lesson-workbench'), lesson = window.LESSON;
+    if (!root || !lesson || window.lessonController) return;
+    const topic = root.dataset.topic, key = 'lesson-workbench:' + topic;
+    const controls = lesson.controls || [], defaults = Object.fromEntries(controls.map(c => [c.id,c.value]));
+    let params = {...defaults}, step = 0, result, resizeFrame;
+    const make = (tag,text,cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = String(text); if (cls) e.className = cls; return e; };
+    const svg = (tag,attrs = {},text) => { const e = document.createElementNS('http://www.w3.org/2000/svg',tag); for (const [k,v] of Object.entries(attrs)) e.setAttribute(k,String(v)); if (text !== undefined) e.textContent=String(text); return e; };
+    const context = document.createElement('canvas').getContext('2d');
+    function wrap(text,width,size=12) {
+      context.font = size + 'px system-ui,"Microsoft YaHei",sans-serif';
+      const lines = [];
+      for (const paragraph of String(text ?? '').split('\n')) {
+        let line = '';
+        for (const token of paragraph.match(/[A-Za-z0-9_.+-]+|./gu)||[]) {
+          const pieces=context.measureText(token).width>width?[...token]:[token];
+          for(const piece of pieces){
+            if (line && context.measureText(line+piece).width > width) { lines.push(line); line = piece; }
+            else line += piece;
+          }
+        }
+        lines.push(line);
+      }
+      return lines;
+    }
+    function textLines(parent,lines,x,y,size=12,color,anchor='start') {
+      const t = svg('text',{x,y,'font-size':size,fill:color,'text-anchor':anchor});
+      lines.forEach((line,i)=>t.append(svg('tspan',{x,dy:i ? size*1.5 : 0},line))); parent.append(t); return t;
+    }
+    const fmt = value => typeof value !== 'number' ? String(value) : !Number.isFinite(value) ? '—' : Math.abs(value)>=10000 || Math.abs(value)>0 && Math.abs(value)<.001 ? value.toExponential(2) : Number(value.toFixed(4)).toString();
+    function colors() {
+      const style = getComputedStyle(document.documentElement), get = name => style.getPropertyValue('--lesson-'+name).trim();
+      return {ink:get('ink'),muted:get('muted'),panel:get('panel'),line:get('line'),green:get('green'),mint:get('mint'),shade:get('shade'),sand:get('sand'),amber:get('amber'),series:[get('green'),get('amber'),'#568aad','#ad7099','#89954e','#856eb3']};
+    }
+    root.innerHTML = `<header class="lw-header"><a href="../index.html">← 学习流程目录</a><p class="lw-kicker"></p><h1></h1><p class="lw-subtitle"></p></header>
+      <p class="lw-scope"></p><form class="lw-controls" aria-label="教学参数"></form>
+      <nav class="lw-toolbar" aria-label="流程步骤"><button type="button" data-lw-global>全局关系</button><button type="button" data-lw-prev>上一步</button><button type="button" data-lw-next>下一步</button><button type="button" data-lw-reset>重置参数</button><span class="lw-counter"></span></nav>
+      <div class="lw-current" aria-live="polite"><h2></h2><p></p></div><div class="lw-metrics"></div>
+      <figure class="lw-figure"><svg role="img" aria-label="端到端数据流程"></svg><figcaption>箭头开头的数字对应下方执行步骤；卡片中的圈号仅标识组件。箭头表示字段、数据或通知的去向；数值和时间属于所声明的教学示例。</figcaption></figure>
+      <div class="lw-equation" hidden></div><div class="lw-details"></div><aside class="lw-notes"></aside>
+      <section class="lw-steps"><h2>完整编号流程</h2><ol></ol></section><details class="lw-sources"><summary>依据与适用范围</summary><div></div></details><nav class="lw-related" aria-label="相关学习主题"></nav><p class="lw-status" role="status"></p>`;
+    const $ = q => root.querySelector(q);
+    document.title = lesson.title + ' · vLLM 学习笔记';
+    $('.lw-header h1').textContent=lesson.title; $('.lw-kicker').textContent=lesson.kind || '交互学习'; $('.lw-subtitle').textContent=lesson.subtitle || '';
+    function validated(values,strict=false) {
+      const out={...defaults};
+      if (strict) for (const key of Object.keys(values)) if (!controls.some(c=>c.id===key)) throw new Error('未知参数：'+key);
+      for (const control of controls) {
+        const value=values[control.id] ?? control.value;
+        if (control.type==='select') {
+          if ((control.options||[]).some(o=>String(o.value)===String(value))) out[control.id]=String(value);
+          else if(strict) throw new Error('无效场景或选项：'+control.id);
+        } else {
+          const number=Number(value);
+          const ticks=(number-(control.min??0))/(Number(control.step)||1);
+          if (!Number.isFinite(number) || number<control.min || number>control.max || Math.abs(ticks-Math.round(ticks))>1e-7) {
+            if(strict) throw new Error('参数超出范围：'+control.id);
+          } else out[control.id]=number;
+        }
+      }
+      return out;
+    }
+    try { const saved=JSON.parse(localStorage.getItem(key)); if(saved) { params=validated(saved.params || {}); step=Number.isInteger(saved.step)?saved.step:0; } } catch {}
+    for (const control of controls) {
+      const field=make('label',undefined,'lw-field');field.dataset.control=control.id;
+      field.append(make('span',control.label));
+      const input=make(control.type==='select'?'select':'input'); input.name=control.id; input.setAttribute('aria-label',control.label);
+      if (control.type==='select') for(const option of control.options||[]) { const el=make('option',option.label);el.value=String(option.value);input.append(el); }
+      else {input.type=control.type || 'number'; for(const attr of ['min','max','step']) if(control[attr]!==undefined) input[attr]=control[attr];}
+      field.append(input);if(control.type==='range')field.append(make('output'));
+      input.addEventListener('change',()=>{
+        try {params=validated({...params,[control.id]:input.value},true);step=0;$('.lw-status').textContent='';compute();}
+        catch(error){$('.lw-status').textContent=error.message;input.value=params[control.id];}
+      });
+      $('.lw-controls').append(field);
+    }
+    $('.lw-controls').addEventListener('submit',event=>event.preventDefault());
+    function verifyResult(model) {
+      if(!model || !Array.isArray(model.nodes) || !Array.isArray(model.steps) || !model.steps.length)throw new Error('教学流程缺少节点或步骤');
+      const ids=new Set(model.nodes.map(n=>n.id));if(ids.size!==model.nodes.length)throw new Error('流程节点重复');
+      const edges=new Set();
+      for(const edge of model.edges||[]) {
+        if(edges.has(edge.id) || !ids.has(edge.from) || !ids.has(edge.to))throw new Error('流程边引用错误：'+edge.id);
+        edges.add(edge.id);
+        for(const n of edge.steps||[])if(!Number.isInteger(n)||n<1||n>model.steps.length)throw new Error('边的步骤编号错误');
+      }
+      for(const node of model.nodes)if(node.readyAt!==undefined&&(!Number.isInteger(node.readyAt)||node.readyAt<0||node.readyAt>model.steps.length))throw new Error('节点就绪步骤错误：'+node.id);
+      for(const item of model.steps){
+        for(const id of item.activeNodes||[])if(!ids.has(id))throw new Error('步骤引用未知节点：'+id);
+        for(const id of item.activeEdges||[])if(!edges.has(id))throw new Error('步骤引用未知边：'+id);
+        for(const id of Object.keys(item.state||{}))if(!ids.has(id))throw new Error('状态引用未知节点：'+id);
+      }
+    }
+    function remember(){try{localStorage.setItem(key,JSON.stringify({params,step}));}catch{}}
+    function compute(){result=lesson.build({...params});verifyResult(result);step=Math.max(0,Math.min(step,result.steps.length));render();}
+    function drawFlow(){
+      if(!root.getBoundingClientRect().width)return;
+      const drawing=$('.lw-figure svg'),c=colors(),width=Math.max(220,$('.lw-figure').clientWidth-20);
+      const nodes=[...result.nodes].sort((a,b)=>(a.row??result.nodes.indexOf(a))-(b.row??result.nodes.indexOf(b))||(a.col||0)-(b.col||0));
+      const columns=width<620?1:Math.min(3,Math.max(...nodes.map(n=>(n.col||0)+1)));
+      const current=step?result.steps[step-1]:null,positions=new Map(),rows=new Map();
+      nodes.forEach((n,i)=>positions.set(n.id,{...n,row:columns===1?i:(n.row??i),col:columns===1?0:Math.min(columns-1,n.col||0)}));
+      const edges=result.edges||[],longEdges=edges.filter(e=>positions.get(e.to).row-positions.get(e.from).row!==1);
+      const margin=12,gap=30,railGap=columns===1?5:7,rail=longEdges.length?18+longEdges.length*railGap:4;
+      const cardWidth=(width-2*margin-rail-gap*(columns-1))/columns;
+      const labels=new Map(),rowGaps=new Map(),outgoing=new Map(),incoming=new Map(),rowIncoming=new Map();
+      for(const edge of edges){
+        const a=positions.get(edge.from),b=positions.get(edge.to);
+        const out=outgoing.get(a.id)||[];out.push(edge);outgoing.set(a.id,out);
+        const ins=incoming.get(b.id)||[];ins.push(edge);incoming.set(b.id,ins);
+        const rowIns=rowIncoming.get(b.row)||[];rowIns.push(edge);rowIncoming.set(b.row,rowIns);
+        const label=(edge.steps||[]).join('·')+' '+String(edge.label).replace(/^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]+\s*/u,'');
+        labels.set(edge.id,wrap(label,cardWidth-8,11));
+      }
+      for(const n of positions.values()){
+        const detail=current?.state && Object.hasOwn(current.state,n.id)?current.state[n.id]:step && step<(n.readyAt||0)?'等待上游产出':n.detail;
+        n.titleLines=wrap(n.title,cardWidth-24,14);n.lines=wrap(detail,cardWidth-24,12);n.laneLines=wrap(n.lane||'数据 / 计算',cardWidth-24,10);
+        n.titleY=24+n.laneLines.length*15;n.detailY=n.titleY+4+n.titleLines.length*21;
+        n.height=n.detailY+n.lines.length*18+10;n.x=margin+n.col*(cardWidth+gap);n.width=cardWidth;
+        rows.set(n.row,Math.max(rows.get(n.row)||0,n.height));
+      }
+      const labelOffsets=new Map();
+      for(const row of rows.keys()){
+        let used=22;
+        for(const edge of edges.filter(e=>positions.get(e.from).row===row)){
+          labelOffsets.set(edge.id,used);used+=labels.get(edge.id).length*16.5+16;
+        }
+        const incomingLanes=Math.max(1,(rowIncoming.get(row+1)||[]).length+(rowIncoming.get(row)||[]).filter(e=>positions.get(e.from).row===row).length);
+        rowGaps.set(row,used+24+incomingLanes*8);
+      }
+      let y=20+(rowIncoming.get(0)||[]).length*8;const bottoms=new Map();for(const row of [...rows.keys()].sort((a,b)=>a-b)){
+        for(const n of positions.values())if(n.row===row)n.y=y;
+        bottoms.set(row,y+rows.get(row));y+=rows.get(row)+rowGaps.get(row);
+      }
+      const height=Math.max(180,y+15);drawing.replaceChildren();drawing.setAttribute('viewBox',`0 0 ${width} ${height}`);
+      drawing.setAttribute('aria-label',lesson.title+'：'+(current?.title||'全局输入、处理和消费者'));
+      const defs=svg('defs'),marker=svg('marker',{id:'lw-flow-arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:6,markerHeight:6,orient:'auto-start-reverse'});
+      marker.append(svg('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:c.green}));defs.append(marker);drawing.append(defs);
+      const labelPositions=[];
+      for(const edge of edges){
+        const a=positions.get(edge.from),b=positions.get(edge.to),outs=outgoing.get(a.id),ins=incoming.get(b.id);
+        const active=!current||(current.activeEdges||[]).includes(edge.id)||(edge.steps||[]).includes(step);
+        const sx=a.x+18+(a.width-36)*(outs.indexOf(edge)+1)/(outs.length+1);
+        const tx=b.x+18+(b.width-36)*(ins.indexOf(edge)+1)/(ins.length+1);
+        const sy=a.y+a.height,ly=bottoms.get(a.row)+labelOffsets.get(edge.id),mid=ly+labels.get(edge.id).length*16.5-7;
+        let d;
+        if(b.row-a.row===1)d=`M ${sx} ${sy} V ${mid} H ${tx} V ${b.y-3}`;
+        else {
+          const rx=width-margin-rail+12+longEdges.indexOf(edge)*railGap;
+          if(a.row===b.row)d=`M ${sx} ${sy} V ${mid} H ${rx} V ${bottoms.get(a.row)+rowGaps.get(a.row)-12-rowIncoming.get(b.row).indexOf(edge)*8} H ${tx} V ${b.y+b.height+3}`;
+          else {const entryY=b.y-12-rowIncoming.get(b.row).indexOf(edge)*8;d=`M ${sx} ${sy} V ${mid} H ${rx} V ${entryY} H ${tx} V ${b.y-3}`;}
+        }
+        const path=svg('path',{d,fill:'none',stroke:active?c.green:c.line,'stroke-width':active?1.7:1,'stroke-dasharray':edge.kind==='control'?'5 4':'none','marker-end':'url(#lw-flow-arrow)',opacity:active?1:.45,'data-lw-edge':edge.id});
+        path.append(svg('title',{},(edge.steps||[]).join('·')+' '+a.title+' → '+b.title+'：'+edge.label));drawing.append(path);
+        labelPositions.push({edge,x:a.x+a.width/2,y:ly,active});
+      }
+      for(const n of positions.values()){
+        const active=current&&(current.activeNodes||[]).includes(n.id);
+        drawing.append(svg('rect',{x:n.x,y:n.y,width:n.width,height:n.height,rx:9,fill:active?c.mint:c.panel,stroke:active?c.green:c.line,'stroke-width':active?2:1,'data-lw-node':n.id}));
+        textLines(drawing,n.laneLines,n.x+12,n.y+18,10,c.muted);
+        textLines(drawing,n.titleLines,n.x+12,n.y+n.titleY,14,c.ink).setAttribute('font-weight','650');
+        textLines(drawing,n.lines,n.x+12,n.y+n.detailY,12,c.muted);
+      }
+      for(const item of labelPositions){
+        const lines=labels.get(item.edge.id),maxWidth=cardWidth-8;
+        context.font='11px system-ui,"Microsoft YaHei",sans-serif';
+        const w=Math.min(maxWidth+8,Math.max(...lines.map(line=>context.measureText(line).width))+8),h=lines.length*16.5+4;
+        drawing.append(svg('rect',{x:item.x-w/2,y:item.y-12,width:w,height:h,rx:3,fill:c.panel,opacity:.96,'data-lw-edge-label':item.edge.id}));
+        textLines(drawing,lines,item.x,item.y,11,item.active?c.green:c.muted,'middle');
+      }
+    }
+    function drawPlot(box,plot,index){
+      const c=colors(),width=Math.max(210,box.clientWidth-28),drawing=svg('svg',{role:'img','aria-label':plot.title||plot.type});box.append(drawing);
+      let height=210;
+      const legend=(labels)=>{const el=make('div',undefined,'lw-legend');labels.forEach((entry,i)=>{const item=make('span',typeof entry==='string'?entry:entry.label);item.style.setProperty('--swatch',entry.color||c.series[i%c.series.length]);el.append(item);});box.append(el);};
+      if(plot.type==='bars'){
+        const labels=plot.labels||[],series=plot.series||[],values=series.flatMap(s=>s.values).filter(Number.isFinite),low=Math.min(0,...values),high=Math.max(0,...values),span=high-low||1;
+        const left=Math.min(110,width*.32),right=65,usable=Math.max(60,width-left-right),x=v=>left+(v-low)/span*usable,rowHeight=Math.max(45,series.length*18+20);height=labels.length*rowHeight+35;
+        drawing.append(svg('line',{x1:x(0),x2:x(0),y1:8,y2:height-20,stroke:c.line}));
+        labels.forEach((label,row)=>{const y=17+row*rowHeight;textLines(drawing,wrap(label,left-9,11),3,y+9,11,c.ink);series.forEach((s,col)=>{const value=s.values[row];if(!Number.isFinite(value))return;const py=y+col*18;drawing.append(svg('rect',{x:Math.min(x(0),x(value)),y:py,width:Math.max(1,Math.abs(x(value)-x(0))),height:12,rx:2,fill:c.series[col%c.series.length]}));textLines(drawing,[fmt(value)],width-right+6,py+10,10,c.muted);});});legend(series.map(s=>s.label));
+      }else if(plot.type==='vectors'){
+        height=Math.min(370,width+45);const cx=width/2,cy=(height-25)/2,r=Math.min(width,height-25)*.32,vectors=plot.vectors||[],bound=Math.max(1,...vectors.map(v=>Math.hypot(v.x,v.y)))*1.18,scale=r/bound;
+        drawing.append(svg('circle',{cx,cy,r:scale,fill:'none',stroke:c.line,'stroke-dasharray':'4 4'}));
+        drawing.append(svg('path',{d:`M 15 ${cy} H ${width-15} M ${cx} 12 V ${height-35}`,stroke:c.line,fill:'none'}));textLines(drawing,['x'],width-12,cy-6,11,c.muted);textLines(drawing,['y'],cx+6,15,11,c.muted);
+        vectors.forEach((v,i)=>{const x=cx+v.x*scale,y=cy-v.y*scale,color=c.series[i%c.series.length],angle=Math.atan2(y-cy,x-cx),tip=6;drawing.append(svg('line',{x1:cx,y1:cy,x2:x,y2:y,stroke:color,'stroke-width':2}));drawing.append(svg('path',{d:`M ${x-tip*Math.cos(angle-.45)} ${y-tip*Math.sin(angle-.45)} L ${x} ${y} L ${x-tip*Math.cos(angle+.45)} ${y-tip*Math.sin(angle+.45)}`,stroke:color,fill:'none','stroke-width':2}));textLines(drawing,[String(i+1)],Math.max(12,Math.min(width-18,x+6)),Math.max(14,Math.min(height-30,y-7+i%2*18)),12,color);});legend(vectors.map((v,i)=>(i+1)+'. '+v.label+' ['+fmt(v.x)+', '+fmt(v.y)+']'));
+      }else if(plot.type==='timeline'){
+        const rows=plot.rows||[],max=Math.max(1,...rows.flatMap(r=>[...(r.segments||[]).map(s=>s.end),...(r.events||[]).map(e=>e.time)])),left=45,usable=width-left-16,x=v=>left+v/max*usable; height=rows.length*94+45;
+        rows.forEach((row,i)=>{const y=25+i*94;textLines(drawing,wrap(row.label,39,11),2,y+13,11,c.ink);drawing.append(svg('line',{x1:left,x2:width-15,y1:y+17,y2:y+17,stroke:c.line}));(row.segments||[]).forEach((s,j)=>{drawing.append(svg('rect',{x:x(s.start),y,width:Math.max(1,x(s.end)-x(s.start)),height:24,fill:c.series[j%c.series.length],opacity:.65}));});(row.events||[]).forEach((e,j)=>{drawing.append(svg('circle',{cx:x(e.time),cy:y+12,r:4,fill:c.green,stroke:c.panel}));textLines(drawing,[String(j+1)],x(e.time),y+43+(j%2)*15,10,c.muted,'middle');});});textLines(drawing,['0'],left,height-8,11,c.muted);textLines(drawing,[fmt(max)+' '+(plot.unit||'ms')],width-12,height-8,11,c.muted,'end');
+        legend(rows.flatMap(row=>(row.segments||[]).map((s,i)=>({label:row.label+' · '+s.label+' '+fmt(s.start)+'–'+fmt(s.end)+' '+(plot.unit||'ms'),color:c.series[i%c.series.length]}))));
+        for(const row of rows){const caption=make('p',row.label+' 输出事件：'+(row.events||[]).map((e,i)=>(i+1)+'. '+e.label+' @ '+fmt(e.time)+' '+(plot.unit||'ms')).join('；'),'lw-plot-caption');box.append(caption);}
+      }else if(plot.type==='stack'){
+        const parts=plot.parts||[],sum=parts.reduce((a,p)=>a+p.value,0),limit=Math.max(plot.total||0,sum,1),left=6,usable=width-12; height=90;
+        drawing.append(svg('rect',{x:left,y:23,width:usable,height:26,fill:c.shade,rx:4}));let used=0;parts.forEach((p,i)=>{drawing.append(svg('rect',{x:left+used/limit*usable,y:23,width:p.value/limit*usable,height:26,fill:c.series[i%c.series.length]}));used+=p.value;});const capacity=left+(plot.total||0)/limit*usable;drawing.append(svg('line',{x1:capacity,x2:capacity,y1:14,y2:60,stroke:c.amber,'stroke-width':2}));const capacityLabel='容量 '+fmt(plot.total)+' '+(plot.unit||'');context.font='11px system-ui,"Microsoft YaHei",sans-serif';textLines(drawing,[capacityLabel],Math.max(context.measureText(capacityLabel).width+5,Math.min(width-5,capacity)),12,11,c.amber,'end');textLines(drawing,['合计 '+fmt(sum)+' '+(plot.unit||'')],6,77,12,c.ink);legend(parts.map(p=>p.label+' '+fmt(p.value)+' '+(plot.unit||'')));
+      }else {textLines(drawing,['此图表类型尚未实现：'+plot.type],5,25,12,c.amber);}
+      drawing.setAttribute('viewBox',`0 0 ${width} ${height}`);
+    }
+    function renderDetails(){
+      const current=step?result.steps[step-1]:null,holder=$('.lw-details');holder.replaceChildren();
+      for(const table of current?.tables ?? result.tables ?? []){
+        const card=make('section',undefined,'lw-table-card');card.append(make('h3',table.title||'数据变化'));const scroll=make('div',undefined,'lw-table-scroll'),el=make('table'),head=make('thead'),row=make('tr');
+        for(const value of table.headers||[])row.append(make('th',value));head.append(row);el.append(head);const body=make('tbody');
+        for(const values of table.rows||[]){const row=make('tr');for(const value of values)row.append(make('td',fmt(value)));body.append(row);}el.append(body);scroll.append(el);card.append(scroll);holder.append(card);
+      }
+      for(const [i,plot]of(current?.plots ?? result.plots ?? []).entries()){const box=make('section',undefined,'lw-plot');box.append(make('h3',plot.title||'数值视图'));holder.append(box);drawPlot(box,plot,i);}
+      const equation=current?.equation ?? result.equation;$('.lw-equation').hidden=!equation;$('.lw-equation').textContent=equation||'';
+      const notes=[...(result.notes||[]),...(current?.notes||[])];$('.lw-notes').replaceChildren(...notes.map(note=>make('p',note)));$('.lw-notes').hidden=!notes.length;
+    }
+    function render(){
+      root.dataset.step=String(step);root.dataset.ready='true';
+      $('.lw-scope').textContent=result.scope||'';
+      for(const control of controls){const field=root.querySelector('[data-control="'+control.id+'"]'),input=field.querySelector('input,select');input.value=params[control.id];field.hidden=control.showIf?!control.showIf(params):false;if(field.querySelector('output'))field.querySelector('output').textContent=fmt(params[control.id]);}
+      const current=step?result.steps[step-1]:null;
+      $('.lw-current h2').textContent=current?'第 '+step+' 步 · '+current.title:'全局关系 · 输入、计算与消费者';
+      $('.lw-current p').textContent=current?.summary || lesson.subtitle || '';
+      $('[data-lw-global]').setAttribute('aria-pressed',String(step===0));$('[data-lw-prev]').disabled=step===0;$('[data-lw-next]').disabled=step===result.steps.length;
+      $('.lw-counter').textContent=step+' / '+result.steps.length+' · 0 为全局';
+      $('.lw-metrics').replaceChildren(...(result.metrics||[]).map(metric=>{const e=make('div',undefined,'lw-metric');e.append(make('span',metric.label),make('strong',metric.value));return e;}));
+      const list=$('.lw-steps ol');list.replaceChildren();result.steps.forEach((item,i)=>{const li=make('li'),button=make('button',undefined,'lw-step-button');button.type='button';button.dataset.lwStep=String(i+1);if(step===i+1)button.setAttribute('aria-current','true');const text=make('span');text.append(make('strong',item.title),make('small',item.summary));button.append(make('b',String(i+1).padStart(2,'0')),text);li.append(button);list.append(li);});
+      drawFlow();renderDetails();remember();
+    }
+    function select(next){if(!Number.isInteger(next)||next<0||next>result.steps.length)throw new Error('无效步骤：'+next);step=next;render();}
+    root.addEventListener('click',event=>{const button=event.target.closest('button');if(!button)return;if(button.hasAttribute('data-lw-global'))select(0);if(button.hasAttribute('data-lw-prev'))select(Math.max(0,step-1));if(button.hasAttribute('data-lw-next'))select(Math.min(result.steps.length,step+1));if(button.hasAttribute('data-lw-reset')){params={...defaults};step=0;compute();}if(button.dataset.lwStep)select(Number(button.dataset.lwStep));});
+    for(const source of lesson.sources||[]){const a=make('a',source.label);a.href=source.url;a.target='_blank';a.rel='noopener noreferrer';$('.lw-sources>div').append(a);}
+    for(const related of lesson.related||[]){const a=make('a',related.label+' →');a.href=related.href;$('.lw-related').append(a);}
+    function redraw(){cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(()=>{if(root.getBoundingClientRect().width){drawFlow();renderDetails();}});}
+    window.addEventListener('resize',redraw);matchMedia('(prefers-color-scheme:dark)').addEventListener('change',redraw);
+    window.lessonController={
+      getState:()=>({params:{...params},step,result}),
+      setParams:values=>{const next=validated({...params,...values},true),built=lesson.build({...next});verifyResult(built);params=next;result=built;step=0;render();},
+      openTarget:async action=>{
+        if(!action||!Number.isInteger(action.step))throw new Error('目标缺少有效步骤');
+        const next=validated({...defaults,...(action.params||{})},true),built=lesson.build({...next});verifyResult(built);
+        if(action.step<0||action.step>built.steps.length)throw new Error('无效步骤：'+action.step);
+        params=next;result=built;step=action.step;render();
+        await new Promise(resolve=>requestAnimationFrame(resolve));drawFlow();
+        return {label:action.step?'第 '+action.step+' 步 · '+result.steps[action.step-1].title:'全局关系'};
+      }
+    };
+    compute();
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
+})();
+</script>
+<!-- lesson-workbench:end -->
+<!-- call-adapter:start -->
+<script>
+window.openLessonTarget = async action => window.lessonController.openTarget(action);
+// Runs in the visualization document, including sandboxed srcdoc frames.
+(() => {
+  const pending = new Map();
+  let queue = Promise.resolve();
+  const ready = document.readyState === 'loading'
+    ? new Promise(resolve => document.addEventListener('DOMContentLoaded',resolve,{once:true}))
+    : Promise.resolve();
+  const pause = () => document.querySelectorAll('button').forEach(button => {
+    if (/^(暂停(?:流程|播放|动画)?|停止播放)$/.test(button.textContent.trim())) button.click();
+  });
+  window.addEventListener('lesson-pause-visual',pause);
+  if (parent === window) return;
+  const post = data => parent.postMessage(data,'*');
+  window.addEventListener('message',async event => {
+    if (event.source !== parent || !event.data || typeof event.data !== 'object') return;
+    const {type,id,action} = event.data;
+    if (type === 'lesson-call-ping') {
+      await ready; post({type:'lesson-call-ready'}); return;
+    }
+    if (type === 'lesson-call-pause') { pause(); return; }
+    if (type !== 'lesson-call-open' || typeof id !== 'string') return;
+    if (!pending.has(id)) {
+      const work = queue.then(() => ready).then(() => {
+        if (typeof window.openLessonTarget !== 'function') throw new Error('可视化步骤入口尚未就绪');
+        return window.openLessonTarget(action);
+      });
+      pending.set(id,work);
+      queue = work.catch(() => {});
+      if (pending.size > 16) pending.delete(pending.keys().next().value);
+    }
+    try { post({type:'lesson-call-result',id,ok:true,result:await pending.get(id)}); }
+    catch (error) { post({type:'lesson-call-result',id,ok:false,error:error.message}); }
+  });
+  for (const name of ['click','change']) document.addEventListener(name,event => {
+    if (event.isTrusted && event.target.closest('button,select,input')) post({type:'lesson-call-edited'});
+  },true);
+  ready.then(() => post({type:'lesson-call-ready'}));
+})();
+</script>
+<!-- call-adapter:end -->
+<!-- call-ui:start -->
+<style>
+/* Scope every rule: the visualizations keep their original layout and semantics. */
+.code-walkthrough { width:100%; max-width:960px; margin:18px auto 24px; color:var(--lesson-ink); font:14px/1.6 system-ui,"Microsoft YaHei",sans-serif; text-align:left; }
+.code-walkthrough * { box-sizing:border-box; }
+.code-walkthrough [hidden],.lesson-original.lesson-hidden { display:none !important; }
+html[data-call-chain-ready=true],html[data-call-chain-ready=true] body { overflow-anchor:none; }
+.code-walkthrough[data-cw-screen=visual] { padding-top:55px; }
+.code-walkthrough[data-cw-screen=visual] .cw-nav { position:fixed; z-index:100; top:8px; left:50%; transform:translateX(-50%); width:calc(100% - 32px); max-width:960px; margin:0; padding:7px 9px; border:1px solid var(--lesson-line); border-radius:9px; background:var(--lesson-bg); box-shadow:0 3px 12px #0000000b; }
+.code-walkthrough h1,.code-walkthrough h2,.code-walkthrough h3,.code-walkthrough p,.code-walkthrough dl,.code-walkthrough dd { margin:0; }
+.code-walkthrough button,.code-walkthrough select { font:inherit; color:inherit; cursor:pointer; }
+.code-walkthrough button:disabled { cursor:wait; opacity:.6; }
+.code-walkthrough a { color:var(--lesson-green); text-underline-offset:3px; }
+.code-walkthrough :is(button,select,a,summary):focus-visible { outline:3px solid var(--lesson-amber); outline-offset:3px; }
+.code-walkthrough code { font-family:ui-monospace,Consolas,"Microsoft YaHei",monospace; overflow-wrap:anywhere; }
+.cw-header { padding:8px 0 16px; }
+.cw-header>a { font-size:12px; text-decoration:none; }
+.cw-header h1 { font-size:clamp(24px,4vw,34px); line-height:1.35; margin:13px 0 8px; font-weight:700; letter-spacing:-.025em; }
+.cw-header p { color:var(--lesson-muted); font-size:13px; }
+.cw-nav { display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin:12px 0; }
+.code-walkthrough .cw-nav button,.cw-tools button,.cw-jump { border:1px solid var(--lesson-line); border-radius:7px; padding:7px 12px; background:var(--lesson-panel); font-size:13px; font-weight:650; }
+.code-walkthrough .cw-nav button[aria-pressed=true],.cw-jump { background:var(--lesson-mint); color:var(--lesson-green); border-color:var(--lesson-green); }
+.cw-variant { display:grid; grid-template-columns:minmax(0,1fr); gap:7px; padding:13px 15px; margin:12px 0; border:1px solid var(--lesson-line); border-radius:10px; background:var(--lesson-panel); }
+.cw-variant label { display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-size:13px; font-weight:650; }
+.cw-variant select { padding:5px 9px; max-width:100%; min-width:0; border:1px solid var(--lesson-line); border-radius:6px; background:var(--lesson-panel); font-size:13px; }
+.cw-variant p,.cw-scope { font-size:12px; color:var(--lesson-muted); overflow-wrap:anywhere; }
+.cw-scope summary { cursor:pointer; color:var(--lesson-green); font-weight:650; }
+.cw-scope a { display:block; margin-top:4px; overflow-wrap:anywhere; }
+.cw-guide { color:var(--lesson-muted); font-size:12px; margin:12px 0 !important; }
+.cw-layout { display:grid; grid-template-columns:minmax(0,1.12fr) minmax(0,1fr); gap:14px; align-items:start; }
+.cw-tree-panel,.cw-detail { min-width:0; background:var(--lesson-panel); border:1px solid var(--lesson-line); border-radius:12px; }
+.cw-tree-panel { overflow:hidden; }
+.cw-tools { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:5px; padding:10px 12px; border-bottom:1px solid var(--lesson-line); }
+.cw-tools strong { font-size:13px; }
+.cw-tools button { padding:3px 7px; font-size:11px; }
+.cw-tree-scroll { max-height:680px; overflow:auto; padding:12px 9px; scrollbar-gutter:stable; }
+.code-walkthrough .cw-tree { padding:0; margin:0; list-style:none; min-width:0; }
+.code-walkthrough .cw-tree li { padding:0; margin:0; }
+.code-walkthrough .cw-tree .cw-tree { margin-left:12px; border-left:1px solid var(--lesson-line); }
+.cw-row { display:flex; align-items:flex-start; min-width:0; margin:2px 0; }
+.code-walkthrough .cw-toggle,.cw-branch { flex:0 0 22px; width:22px; padding:7px 0; border:0; background:transparent; text-align:center; color:var(--lesson-green); font:13px/1.5 ui-monospace,Consolas,monospace; }
+.code-walkthrough .cw-node { min-width:0; flex:1; display:grid; grid-template-columns:auto minmax(0,1fr); align-items:start; gap:5px; padding:7px; text-align:left; border:1px solid transparent; border-radius:6px; background:transparent; line-height:1.45; }
+.code-walkthrough .cw-node:hover { background:var(--lesson-shade); }
+.code-walkthrough .cw-node[aria-current=true] { background:var(--lesson-mint); border-color:var(--lesson-green); }
+.cw-number { padding-top:1px; color:var(--lesson-green); font:600 11px/1.6 ui-monospace,Consolas,monospace; }
+.cw-node code { display:block; font-size:13px; font-weight:650; }
+.cw-node small { display:block; margin-top:2px; color:var(--lesson-muted); font-size:12px; }
+.cw-detail { padding:17px; scroll-margin-top:14px; }
+.cw-kicker { color:var(--lesson-green); font:700 11px/1.5 ui-monospace,Consolas,monospace; }
+.cw-path { display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 6px; padding-bottom:10px; margin-bottom:10px; border-bottom:1px solid var(--lesson-line); color:var(--lesson-muted); font-size:11px; overflow-wrap:anywhere; }
+.code-walkthrough .cw-path button { max-width:100%; border:0; padding:0; background:none; color:var(--lesson-green); text-decoration:underline; text-align:left; overflow-wrap:anywhere; font:inherit; }
+.cw-detail h2 { margin:5px 0 7px; font-size:19px; line-height:1.4; overflow-wrap:anywhere; }
+.cw-summary { font-size:14px; }
+.cw-data { margin-top:12px !important; font-size:13px; }
+.cw-data dt { margin-top:12px; color:var(--lesson-green); font-weight:700; }
+.cw-data dd { margin-top:3px; overflow-wrap:anywhere; }
+.code-walkthrough .cw-note { padding:9px 10px; margin-top:12px; border-left:3px solid var(--lesson-amber); background:var(--lesson-sand); color:var(--lesson-amber); font-size:12px; }
+.cw-evidence,.cw-targets { margin-top:14px; padding-top:10px; border-top:1px solid var(--lesson-line); }
+.cw-evidence h3,.cw-targets h3 { margin:0 0 5px; font-size:13px; }
+.cw-evidence a { display:block; margin-top:6px; font-size:11px; overflow-wrap:anywhere; }
+.cw-evidence a small { display:block; color:var(--lesson-muted); font:10px/1.5 ui-monospace,Consolas,monospace; }
+.cw-targets p { color:var(--lesson-muted); font-size:12px; margin-bottom:7px; }
+.cw-jump { display:block; margin:7px 0 0; max-width:100%; text-align:left; white-space:normal; }
+.cw-context { padding:9px 12px; border:1px solid var(--lesson-line); background:var(--lesson-shade); border-radius:8px; font-size:12px; color:var(--lesson-muted); overflow-wrap:anywhere; }
+.cw-error { margin:10px 0 !important; border:1px solid var(--lesson-amber); padding:10px; background:var(--lesson-sand); color:var(--lesson-amber); border-radius:7px; }
+@media(max-width:760px) { .cw-layout { grid-template-columns:minmax(0,1fr); } .cw-tree-scroll { max-height:420px; } .cw-detail { padding:14px; } }
+@media(max-width:400px) { .code-walkthrough .cw-tree .cw-tree { margin-left:3px; } .code-walkthrough .cw-toggle,.cw-branch { flex-basis:16px; width:16px; } .code-walkthrough .cw-node { grid-template-columns:minmax(0,1fr); padding:6px 4px; gap:2px; } .cw-number { overflow-wrap:anywhere; } }
+</style>
+<script type="application/json" id="lesson-call-chain-data">{"title":"GPU MRV1 输入打包与回写调用链","defaultVariant":"gpu-mrv1","variants":[{"id":"gpu-mrv1","title":"单卡 GPU MRV1 · 同步 eager","scope":"普通文本、FullAttention、TP/PP/CP=1，无 async/spec/connector/LoRA；图中行序为未触发后端重排的案例。block=4 为缩放教学值。execute 与 sample 是两个外部阶段。","repositories":{"vllm":{"url":"https://github.com/vllm-project/vllm","commit":"295c062db8a48ea73bbd05d1174cb37d24bf86f9","label":"vLLM"}},"nodes":[{"id":"execute","parent":null,"number":"1","kind":"边界","title":"GPUModelRunner.execute_model()","summary":"Worker 的本轮执行入口。","input":"SchedulerOutput；上轮持久批次。","changes":"更新 CPU 请求状态并准备本轮 GPU 输入；保存执行中间状态。","output":"普通生成路径返回 None，logits 等保存在 execute_model_state。","resume":"调用方随后调用 sample_tokens；它不是 execute_model 的子调用。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":4105,"label":"实际实现","end":4144},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":4443,"label":"实际实现","end":4462}],"targets":[{"label":"normal：第1步","action":{"step":1,"params":{"scenario":"normal"}}},{"label":"change：第1步","action":{"step":1,"params":{"scenario":"change"}}}]},{"id":"update","parent":"execute","number":"1.1","kind":"调用","title":"GPUModelRunner._update_states()","summary":"把调度增量合并进 requests 与 InputBatch。","input":"新请求、cached 请求增量、finished IDs、scheduled counts。","changes":"删除 finished；更新 computed/block IDs；加入行并压紧。","output":"同步路径完成后的持久批次。","resume":"execute_model 按压紧后的 req_ids 收集 scheduled counts。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":4144,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":1195,"label":"实际实现","end":1220},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":1440,"label":"实际实现","end":1519}],"targets":[{"label":"normal：第2步","action":{"step":2,"params":{"scenario":"normal"}}},{"label":"change：第2步","action":{"step":2,"params":{"scenario":"change"}}}]},{"id":"remove","parent":"update","number":"1.1.1","kind":"调用","title":"InputBatch.remove_request()","summary":"B 完成后移除其批次行。","input":"req_id=B，row=1。","changes":"删除 req_id_to_index；行设 None；块表 clear_row。","output":"B 的原行号；request 字典的删除由 _update_states 执行。","resume":"_update_states 处理后续增量，最终 condense。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":1219,"label":"调用位置","end":1220},{"repo":"vllm","path":"vllm/v1/worker/gpu_input_batch.py","line":525,"label":"实际实现","end":544}],"targets":[{"label":"change：第2步","action":{"step":2,"params":{"scenario":"change"}}}]},{"id":"clear-group","parent":"remove","number":"1.1.1.1","kind":"调用","title":"MultiGroupBlockTable.clear_row()","summary":"逐 KV group 清空 B 的块表行。","input":"row=1。","changes":"对每张 BlockTable 执行 clear_row。","output":"None；只改变地址元数据。","resume":"回到 InputBatch.remove_request；不会调用 Scheduler 的 free。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_input_batch.py","line":543,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/worker/block_table.py","line":364,"label":"实际实现","end":366}],"targets":[{"label":"change：第2步","action":{"step":2,"params":{"scenario":"change"}}}]},{"id":"clear-row","parent":"clear-group","number":"1.1.1.1.1","kind":"调用","title":"BlockTable.clear_row()","summary":"清零 CPU 块表有效区间。","input":"B 对应行的 num_blocks_per_row。","changes":"有效区间写0；该行块数设0。","output":"None。","resume":"返回 MultiGroupBlockTable 的逐组循环。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/block_table.py","line":366,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/worker/block_table.py","line":179,"label":"实际实现","end":183}],"targets":[{"label":"change：第2步","action":{"step":2,"params":{"scenario":"change"}}}]},{"id":"add","parent":"update","number":"1.1.2","kind":"调用","title":"InputBatch.add_request()","summary":"把 C 的 CachedRequestState 放入批次。","input":"C tokens=[31,32,33]，computed=0，blocks=[9]。","changes":"创建 req_id→row；写 token 行、计数、采样参数和块表。","output":"C 的行号2。","resume":"_update_states 加完请求后执行 condense。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":1508,"label":"调用位置","end":1512},{"repo":"vllm","path":"vllm/v1/worker/gpu_input_batch.py","line":347,"label":"实际实现","end":395}],"targets":[{"label":"normal：第3步","action":{"step":3,"params":{"scenario":"normal"}}}]},{"id":"add-group","parent":"add","number":"1.1.2.1","kind":"调用","title":"MultiGroupBlockTable.add_row()","summary":"按组把请求 block IDs 写入行。","input":"C 的分组 block_ids 与 row=2。","changes":"逐组调用 BlockTable.add_row。","output":"None。","resume":"回 InputBatch.add_request 继续采样状态初始化。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_input_batch.py","line":395,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/worker/block_table.py","line":360,"label":"实际实现","end":362}],"targets":[{"label":"normal：第3步","action":{"step":3,"params":{"scenario":"normal"}}}]},{"id":"add-row","parent":"add-group","number":"1.1.2.1.1","kind":"调用","title":"BlockTable.add_row()","summary":"先重置行长度，再调用 append_row。","input":"[9]，row=2。","changes":"num_blocks_per_row[2]=0。","output":"append 后 C 块表为[9]。","resume":"返回逐组 add_row 循环。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/block_table.py","line":362,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/worker/block_table.py","line":175,"label":"实际实现","end":177}],"targets":[{"label":"normal：第3步","action":{"step":3,"params":{"scenario":"normal"}}}]},{"id":"append-row","parent":"add-row","number":"1.1.2.1.1.1","kind":"调用","title":"BlockTable.append_row()","summary":"落地 CPU block table 的连续片段。","input":"[9]，start=0，无 kernel block 拆分。","changes":"块数加1，并写 block_table.np[row,0:1]。","output":"None。","resume":"返回 BlockTable.add_row。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/block_table.py","line":177,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/worker/block_table.py","line":157,"label":"实际实现","end":173}],"targets":[{"label":"normal：第3步","action":{"step":3,"params":{"scenario":"normal"}}}]},{"id":"condense","parent":"update","number":"1.1.3","kind":"调用","title":"InputBatch.condense()","summary":"用最后活动行填补中间空洞。","input":"change：[A,None,C]；normal：[A,B,C]。","changes":"change 中 C 从2搬到1，token/计数/块表保持同一请求对齐。","output":"连续活动行：[A,C] 或[A,B,C]。","resume":"回 _update_states 的后端重排检查；本例选择不触发重排的行序。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":1515,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/worker/gpu_input_batch.py","line":700,"label":"实际实现","end":779}],"targets":[{"label":"normal：第3步","action":{"step":3,"params":{"scenario":"normal"}}},{"label":"change：第3步","action":{"step":3,"params":{"scenario":"change"}}}]},{"id":"move-group","parent":"condense","number":"1.1.3.1","kind":"调用","title":"MultiGroupBlockTable.move_row()","summary":"C 的各组块表与 token 行一起搬迁。","input":"src=2，tgt=1。","changes":"遍历块表并调用 move_row。","output":"None。","resume":"回 condense 移动其余请求采样状态。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_input_batch.py","line":779,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/worker/block_table.py","line":368,"label":"实际实现","end":370}],"targets":[{"label":"change：第3步","action":{"step":3,"params":{"scenario":"change"}}}]},{"id":"move-row","parent":"move-group","number":"1.1.3.1.1","kind":"调用","title":"BlockTable.move_row()","summary":"复制有效块号，并清空旧行。","input":"C 的[9]，src=2→tgt=1。","changes":"行1写[9]；行2旧数据及有效块数清0。","output":"None。","resume":"返回分组 move_row 循环。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/block_table.py","line":370,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/worker/block_table.py","line":185,"label":"实际实现","end":194}],"targets":[{"label":"change：第3步","action":{"step":3,"params":{"scenario":"change"}}}]},{"id":"prepare","parent":"execute","number":"1.2","kind":"调用","title":"GPUModelRunner._prepare_inputs()","summary":"把持久行裁出本轮紧凑 token 批。","input":"压紧后的 row order 与各行 scheduled count。","changes":"提交块表、gather IDs、构造 offsets/positions/seq_lens/slots。","output":"logits_indices 及可选推测解码元数据；设备缓冲已更新。","resume":"execute_model 构建 Attention metadata。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":4180,"label":"调用位置","end":4188},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":1943,"label":"实际实现","end":2003},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2052,"label":"实际实现","end":2072},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2150,"label":"实际实现","end":2178}],"targets":[{"label":"normal：第4步","action":{"step":4,"params":{"scenario":"normal"}}},{"label":"change：第4步","action":{"step":4,"params":{"scenario":"change"}}}]},{"id":"commit","parent":"prepare","number":"1.2.1","kind":"调用","title":"MultiGroupBlockTable.commit_block_table()","summary":"本函数开头先提交有效请求的块表。","input":"num_reqs 与 CPU block IDs。","changes":"逐组调用 BlockTable.commit_block_table。","output":"GPU 块表元数据。","resume":"回 _prepare_inputs 生成 token buffers；图第5步按依赖合并展示传输。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":1963,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/worker/block_table.py","line":385,"label":"实际实现","end":387}],"targets":[{"label":"normal：第5步","action":{"step":5,"params":{"scenario":"normal"}}},{"label":"change：第5步","action":{"step":5,"params":{"scenario":"change"}}}]},{"id":"cumsum","parent":"prepare","number":"1.2.2","kind":"调用","title":"GPUModelRunner._get_cumsum_and_arange()","summary":"生成每个请求的累计结束位置和局部 token 下标。","input":"counts=[2,1,3] 或[1,1]。","changes":"cumsum；repeat 每个请求的起始累计值；与 arange 相减。","output":"cumsum=[2,3,6] / [1,2]；local=[0,1,0,0,1,2] / [0,0]。","resume":"_prepare_inputs 用 computed[row]+local 得到 positions，接着 gather token。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":1971,"label":"调用位置","end":1973},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":1718,"label":"实际实现","end":1742}],"targets":[{"label":"normal：第4步","action":{"step":4,"params":{"scenario":"normal"}}},{"label":"change：第4步","action":{"step":4,"params":{"scenario":"change"}}}]},{"id":"gather","parent":"prepare","number":"1.2.3","kind":"动作","title":"torch.index_select()（CPU gather）","summary":"按 flattened token 行索引收集本轮 IDs。","input":"token_indices=position+row×CPU 行 stride。","changes":"写 self.input_ids.cpu[:total]；不改变持久 token 行。","output":"normal [13,14,25,31,32,33]；change [15,34]。","resume":"_prepare_inputs 继续更新 offsets 与 GPU 元数据。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":1976,"label":"实际实现","end":2003}],"targets":[{"label":"normal：第4步","action":{"step":4,"params":{"scenario":"normal"}}},{"label":"change：第4步","action":{"step":4,"params":{"scenario":"change"}}}]},{"id":"slot-group","parent":"prepare","number":"1.2.4","kind":"调用","title":"MultiGroupBlockTable.compute_slot_mapping()","summary":"逐组计算每个 token 的 KV slot。","input":"GPU query_start_loc、positions、num_reqs。","changes":"对每个 BlockTable 调用 compute_slot_mapping。","output":"按组的 slot_mapping 缓冲。","resume":"回 _prepare_inputs，随后准备 input IDs。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2167,"label":"调用位置","end":2171},{"repo":"vllm","path":"vllm/v1/worker/block_table.py","line":376,"label":"实际实现","end":383}],"targets":[{"label":"normal：第6步","action":{"step":6,"params":{"scenario":"normal"}}},{"label":"change：第6步","action":{"step":6,"params":{"scenario":"change"}}}]},{"id":"slot-block","parent":"slot-group","number":"1.2.4.1","kind":"调用","title":"BlockTable.compute_slot_mapping()","summary":"选择 TOKEN_TO_KV_SLOT 路径并调用 kernel 对象。","input":"块表、positions、query offsets、CP=1、无块拆分。","changes":"启动 _COMPUTE_SLOT_MAPPING_KERNEL。","output":"该组 GPU slot buffer。","resume":"回 MultiGroupBlockTable 的逐组循环。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/block_table.py","line":383,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/worker/block_table.py","line":201,"label":"实际实现","end":225}],"targets":[{"label":"normal：第6步","action":{"step":6,"params":{"scenario":"normal"}}},{"label":"change：第6步","action":{"step":6,"params":{"scenario":"change"}}}]},{"id":"slot-kernel","parent":"slot-block","number":"1.2.4.1.1","kind":"提交","title":"ComputeSlotMappingKernel.__call__() / kernel()","summary":"kernel launcher 对象的 launch spec 与 Triton 实现边界。","input":"每个请求的 packed 区间与 GPU 块表。","changes":"按 position 求逻辑页、块内 offset；slot=block×4+offset。","output":"normal [10,11,28,36,37,38]；change [24,39]。","resume":"设备结果被 Attention metadata 引用；CPU 返回不意味着已测量 kernel 耗时。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/block_table.py","line":214,"label":"调用位置","end":225},{"repo":"vllm","path":"vllm/v1/worker/block_table.py","line":519,"label":"launch spec","end":545},{"repo":"vllm","path":"vllm/v1/worker/block_table.py","line":445,"label":"Triton 实现","end":478}],"targets":[{"label":"normal：第6步","action":{"step":6,"params":{"scenario":"normal"}}},{"label":"change：第6步","action":{"step":6,"params":{"scenario":"change"}}}]},{"id":"input-copy","parent":"prepare","number":"1.2.5","kind":"调用","title":"GPUModelRunner._prepare_input_ids()","summary":"同步路径从 CPU 准备好的 IDs 复制到 GPU。","input":"total_num_scheduled_tokens；prev_sampled_token_ids=None。","changes":"input_ids.copy_to_gpu(total)。","output":"GPU input IDs。","resume":"回 _prepare_inputs 继续确定 logits indices。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2174,"label":"调用位置","end":2178},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":1759,"label":"实际实现","end":1786}],"targets":[{"label":"normal：第5步","action":{"step":5,"params":{"scenario":"normal"}}},{"label":"change：第5步","action":{"step":5,"params":{"scenario":"change"}}}]},{"id":"metadata","parent":"execute","number":"1.3","kind":"调用","title":"GPUModelRunner._build_attention_metadata()","summary":"建立跨后端公共 Attention metadata 并分派 builder。","input":"query_start_loc、seq_lens、block table、slot_mapping。","changes":"构造 CommonAttentionMetadata；按 attention group 调用 backend builder。","output":"按层名组织的 attn_metadata。","resume":"execute_model 将其放入 forward context，随后 _model_forward。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":4317,"label":"调用位置"},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2272,"label":"实际实现","end":2288},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2421,"label":"实际实现","end":2438},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":2524,"label":"后端分派边界","end":2528}],"targets":[{"label":"normal：第7步","action":{"step":7,"params":{"scenario":"normal"}}},{"label":"change：第7步","action":{"step":7,"params":{"scenario":"change"}}}]},{"id":"forward","parent":"execute","number":"1.4","kind":"边界","title":"GPUModelRunner._model_forward()","summary":"把 input IDs 与 positions 交给实际模型。","input":"GPU input_ids、positions；Attention 从 forward context 读取 metadata。","changes":"调用 self.model；模型内部与权重计算不在本页展开。","output":"hidden_states 等模型输出。","resume":"execute_model 取最后 token hidden states 算 logits，并保存 ExecuteModelState。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":4383,"label":"调用位置","end":4389},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":3786,"label":"实际实现","end":3817}],"targets":[{"label":"normal：第7步","action":{"step":7,"params":{"scenario":"normal"}}},{"label":"change：第7步","action":{"step":7,"params":{"scenario":"change"}}}]},{"id":"save","parent":"execute","number":"1.5","kind":"返回","title":"保存 ExecuteModelState 并返回","summary":"这是 execute_model 的普通生成路径返回续点。","input":"logits、hidden_states、scheduler_output 等。","changes":"写 self.execute_model_state。","output":"None。","resume":"外部调用 sample_tokens，不能把 sample_tokens 画成 execute_model 内部同步调用。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":4443,"label":"实际实现","end":4462}],"targets":[{"label":"normal：第8步","action":{"step":8,"params":{"scenario":"normal"}}},{"label":"change：第8步","action":{"step":8,"params":{"scenario":"change"}}}]},{"id":"sample","parent":null,"number":"2","kind":"边界","title":"GPUModelRunner.sample_tokens()","summary":"下一执行阶段取出 execute_model_state 并采样。","input":"保留的 logits 等状态；本例无 grammar/spec。","changes":"调用 _sample；随后同步 bookkeeping。","output":"ModelRunnerOutput 交回 Worker/Executor。","resume":"EngineCore/Scheduler 消费模型输出；下轮调度器再下发 computed 计数。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":4480,"label":"实际实现","end":4516},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":4653,"label":"实际实现","end":4662}],"targets":[{"label":"normal：第8步","action":{"step":8,"params":{"scenario":"normal"}}},{"label":"change：第8步","action":{"step":8,"params":{"scenario":"change"}}}]},{"id":"bookkeep","parent":"sample","number":"2.1","kind":"调用","title":"GPUModelRunner._bookkeeping_sync()","summary":"同步路径回写 sampled token IDs。","input":"SamplerOutput；本页给定 normal=[15,26,34]、change=[16,35]。","changes":"追加 token_ids_cpu、更新 num_tokens_no_spec、追加 CachedRequestState.output_token_ids。","output":"请求顺序和采样结果等 bookkeeping 数据。","resume":"sample_tokens 组装 ModelRunnerOutput；num_computed_tokens_cpu 等下一轮 _update_states。","note":"可视化定位该子过程所在阶段的教学快照，不代表单独执行了这个函数。","evidence":[{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":4653,"label":"调用位置","end":4662},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":3634,"label":"实际实现","end":3656},{"repo":"vllm","path":"vllm/v1/worker/gpu_model_runner.py","line":3738,"label":"实际实现","end":3752}],"targets":[{"label":"normal：第9步","action":{"step":9,"params":{"scenario":"normal"}}},{"label":"change：第9步","action":{"step":9,"params":{"scenario":"change"}}}]}]}],"topic":"modelrunner-inputs"}</script>
+<script>
+/* Common entry: verified call tree -> existing visualization, preserving native DOM. */
+(() => {
+  function mount() {
+    const dataElement = document.getElementById('lesson-call-chain-data');
+    if (!dataElement || document.getElementById('lesson-call-chain')) return;
+    const data = JSON.parse(dataElement.textContent);
+    const variants = new Map(data.variants.map(variant => [variant.id,variant]));
+    const fallback = variants.get(data.defaultVariant) || data.variants[0];
+    const topic = data.topic;
+    const original = [...document.body.children].filter(node =>
+      !['SCRIPT','STYLE','LINK','META','NOSCRIPT'].includes(node.tagName) && !node.classList.contains('learning-scope-shell'));
+    original.forEach(node => node.classList.add('lesson-original'));
+    const frame = document.getElementById('codex-visualization');
+    const storageKey = 'lesson-call-chain:' + topic + ':' + location.pathname.split('/').at(-1);
+    let variant = fallback, selected = variant.entry || variant.nodes[0].id, screen = 'chain', targetIndex = null;
+    let collapsed = new Set(), busy = false, revision = 0, frameReady = false, requestId = 0;
+    const replies = new Map();
+    let nativeQueue = Promise.resolve();
+    const nodeById = id => variant.nodes.find(node => node.id === id);
+    const make = (tag,text,className) => {
+      const node = document.createElement(tag);
+      if (text !== undefined) node.textContent = text;
+      if (className) node.className = className;
+      return node;
+    };
+    const root = make('section',undefined,'code-walkthrough');
+    root.id = 'lesson-call-chain';
+    root.innerHTML = `<header class="cw-header"><a href="../index.html">← vLLM 学习笔记</a><h1></h1><p>先沿源码调用链定位接口，再进入对应的可视化步骤。</p></header>
+      <nav class="cw-nav" aria-label="阅读方式"><button type="button" data-cw-view="chain">01 整体调用链</button><button type="button" data-cw-view="visual">02 可视化执行</button></nav>
+      <p class="cw-error" role="alert" hidden></p>
+      <section class="cw-chain"><div class="cw-variant"><label>实现与场景 <select aria-label="选择调用链实现"></select></label><p class="cw-scope-text"></p><details class="cw-scope"><summary>源码仓库与固定 commit</summary><div class="cw-repositories"></div></details></div>
+      <p class="cw-guide">默认展开三层，点 ＋ 继续跟入子调用。父子缩进表示调用或明确标记的控制块；异步提交与消费分别说明。点名称查看数据变化，沿详情中的调用路径返回上层。</p>
+      <div class="cw-layout"><section class="cw-tree-panel" aria-label="源码调用树"><div class="cw-tools"><strong></strong><div><button type="button" data-cw-depth>展开三层</button> <button type="button" data-cw-expand>全部展开</button> <button type="button" data-cw-fold>只看主链</button></div></div><div class="cw-tree-scroll"><ol class="cw-tree"></ol></div></section>
+      <article class="cw-detail" tabindex="-1" aria-labelledby="cw-node-title"><nav class="cw-path" aria-label="当前调用路径"></nav><div class="cw-kicker"></div><h2 id="cw-node-title"></h2><p class="cw-summary"></p><dl class="cw-data"></dl><p class="cw-note" hidden></p>
+      <section class="cw-evidence"><h3>源码依据 · 行号属于所示 commit</h3><div></div></section><section class="cw-targets"><h3>进入可视化执行</h3><p>按下列入口定位现有图中的对应步骤。</p><div></div></section></article></div></section>
+      <div class="cw-context" tabindex="-1" hidden></div>`;
+    document.body.insertBefore(root,original[0] || dataElement);
+    const $ = selector => root.querySelector(selector);
+    $('.cw-header h1').textContent = data.title;
+    for (const item of data.variants) {
+      const option = make('option',item.title); option.value = item.id; $('.cw-variant select').append(option);
+    }
+    function validState(value) {
+      const nextVariant = variants.get(value?.variant);
+      const node = nextVariant?.nodes.find(item => item.id === value.node);
+      if (!node || !['chain','visual'].includes(value.screen)) return null;
+      const target = value.target === null ? null : Number(value.target);
+      if (target !== null && (!Number.isInteger(target) || target < 0 || target >= node.targets.length)) return null;
+      return {variant:nextVariant.id,node:node.id,screen:value.screen,target};
+    }
+    const state = () => ({variant:variant.id,node:selected,screen,target:targetIndex});
+    function parseRoute() {
+      const query = new URLSearchParams(location.search);
+      if (!query.has('cw-view')) return null;
+      return validState({variant:query.get('cw-variant'),node:query.get('cw-node'),screen:query.get('cw-view'),target:query.has('cw-target') ? query.get('cw-target') : null});
+    }
+    function applyState(next) {
+      variant = variants.get(next.variant); selected = next.node; screen = next.screen; targetIndex = next.target;
+    }
+    try {
+      const saved = validState(JSON.parse(localStorage.getItem(storageKey)));
+      if (saved) applyState({...saved,screen:'chain'});
+    } catch {}
+    const requested = parseRoute();
+    if (requested) applyState(requested);
+    function routeKey() {
+      const query = new URLSearchParams(location.search);
+      return ['cw-view','cw-variant','cw-node','cw-target'].map(key => query.get(key)).join('|');
+    }
+    let lastRoute = routeKey();
+    function urlFor(next = state(),url = new URL(location.href)) {
+      url.searchParams.set('cw-view',next.screen); url.searchParams.set('cw-variant',next.variant); url.searchParams.set('cw-node',next.node);
+      if (next.target === null) url.searchParams.delete('cw-target'); else url.searchParams.set('cw-target',String(next.target));
+      return url;
+    }
+    function remember(method = 'replace') {
+      try { localStorage.setItem(storageKey,JSON.stringify(state())); } catch {}
+      const url = urlFor();
+      if (url.href !== location.href) {
+        try { history[method + 'State']({...history.state,lessonCallChain:state()},'',url); } catch {}
+      }
+      lastRoute = routeKey();
+    }
+    function depthOf(node) {
+      let depth = 1;
+      while (node.parent !== null) { node = nodeById(node.parent); depth++; }
+      return depth;
+    }
+    function resetTree() {
+      collapsed = new Set(variant.nodes.filter(node => depthOf(node) >= 3).map(node => node.id));
+      revealSelected();
+    }
+    function revealSelected() {
+      let node = nodeById(selected);
+      while (node?.parent) { collapsed.delete(node.parent); node = nodeById(node.parent); }
+    }
+    function buildTree() {
+      const top = $('.cw-tree'); top.replaceChildren();
+      const append = (list,parent) => {
+        const children = variant.nodes.filter(node => node.parent === parent);
+        children.forEach((node,index) => {
+          const item = make('li'), row = make('div',undefined,'cw-row');
+          const hasChildren = variant.nodes.some(child => child.parent === node.id);
+          const branch = make(hasChildren ? 'button' : 'span',hasChildren ? (collapsed.has(node.id) ? '+' : '−') : (index === children.length - 1 ? '└─' : '├─'),hasChildren ? 'cw-toggle' : 'cw-branch');
+          if (hasChildren) {
+            branch.type = 'button'; branch.dataset.cwToggle = node.id;
+            branch.setAttribute('aria-expanded',!collapsed.has(node.id)); branch.setAttribute('aria-label',(collapsed.has(node.id) ? '展开 ' : '收起 ') + node.title);
+          } else branch.setAttribute('aria-hidden','true');
+          const button = make('button',undefined,'cw-node'); button.type = 'button'; button.dataset.cwNode = node.id;
+          const childCount = variant.nodes.filter(child => child.parent === node.id).length;
+          const label = make('span'); label.append(make('code',node.title),make('small','[' + node.kind + '] ' + node.summary + (childCount ? ' · ' + childCount + ' 个子节点' : '')));
+          button.append(make('span',node.number,'cw-number'),label); row.append(branch,button); item.append(row);
+          if (hasChildren) { const nested = make('ol',undefined,'cw-tree'); nested.hidden = collapsed.has(node.id); append(nested,node.id); item.append(nested); }
+          list.append(item);
+        });
+      };
+      append(top,null); $('.cw-tools strong').textContent = '调用与返回 · ' + variant.nodes.length + ' 节点 / ' + Math.max(...variant.nodes.map(depthOf)) + ' 层';
+    }
+    function detail() {
+      const node = nodeById(selected);
+      const ancestors = [];
+      for (let item = node; item; item = item.parent === null ? null : nodeById(item.parent)) ancestors.unshift(item);
+      const path = $('.cw-path'); path.replaceChildren(make('span','调用路径'));
+      ancestors.forEach((item,index) => {
+        if (index) path.append(make('span','›'));
+        const part = make(index === ancestors.length - 1 ? 'span' : 'button',item.number + ' ' + item.title);
+        if (part.tagName === 'BUTTON') { part.type = 'button'; part.dataset.cwAncestor = item.id; }
+        path.append(part);
+      });
+      root.querySelectorAll('[data-cw-node]').forEach(button => {
+        if (button.dataset.cwNode === selected) button.setAttribute('aria-current','true'); else button.removeAttribute('aria-current');
+      });
+      $('.cw-kicker').textContent = '节点 ' + node.number + ' / ' + node.kind;
+      $('#cw-node-title').textContent = node.title; $('.cw-summary').textContent = node.summary;
+      $('.cw-data').replaceChildren();
+      for (const [label,key] of [['输入从哪来','input'],['内部动作与持久状态','changes'],['输出交给谁','output'],['返回后在哪里继续','resume']]) $('.cw-data').append(make('dt',label),make('dd',node[key]));
+      $('.cw-note').hidden = !node.note; $('.cw-note').textContent = node.note || '';
+      $('.cw-evidence>div').replaceChildren();
+      $('.cw-evidence h3').textContent = variant.provenance === 'teaching' ? '算法教学对照 · 不绑定源码' : '源码依据 · 行号属于所示 commit';
+      if (variant.provenance === 'teaching') $('.cw-evidence>div').append(make('p','此分支说明教学算法，不表示 vLLM 内存在同名函数。','cw-guide'));
+      for (const evidence of node.evidence) {
+        const repo = variant.repositories[evidence.repo];
+        const link = make('a',evidence.label + ' · ' + evidence.path + ':' + evidence.line + (evidence.end ? '–' + evidence.end : ''));
+        link.href = repo.url + '/blob/' + repo.commit + '/' + evidence.path + '#L' + evidence.line + (evidence.end ? '-L' + evidence.end : '');
+        link.target = '_blank'; link.rel = 'noopener noreferrer'; link.title = repo.commit;
+        link.append(make('small',(repo.label || evidence.repo) + ' @ ' + repo.commit.slice(0,10)));
+        $('.cw-evidence>div').append(link);
+      }
+      $('.cw-targets>div').replaceChildren();
+      node.targets.forEach((target,index) => {
+        const button = make('button',target.label + ' →','cw-jump'); button.type = 'button'; button.dataset.cwTarget = index; button.disabled = busy;
+        $('.cw-targets>div').append(button);
+      });
+    }
+    function render() {
+      const visual = screen === 'visual';
+      root.dataset.cwBusy = String(busy);
+      root.dataset.cwScreen = screen;
+      original.forEach(node => node.classList.toggle('lesson-hidden',!visual));
+      $('.cw-header').hidden = visual; $('.cw-chain').hidden = visual; $('.cw-context').hidden = !visual;
+      root.querySelectorAll('[data-cw-view]').forEach(button => button.setAttribute('aria-pressed',button.dataset.cwView === screen));
+      $('[data-cw-view=chain]').textContent = visual ? '← 返回调用链' : '01 整体调用链';
+      $('.cw-variant select').value = variant.id; $('.cw-scope-text').textContent = variant.scope;
+      const repos = $('.cw-repositories'); repos.replaceChildren();
+      $('.cw-scope summary').textContent = variant.provenance === 'teaching' ? '算法教学对照 · 无源码仓库' : '源码仓库与固定 commit';
+      for (const [key,repo] of Object.entries(variant.repositories)) {
+        const link = make('a',(repo.label || key) + ' · ' + repo.url.replace('https://github.com/','') + ' @ ' + repo.commit);
+        link.href = repo.url + '/tree/' + repo.commit; link.target = '_blank'; link.rel = 'noopener noreferrer'; repos.append(link);
+      }
+      $('.cw-context').textContent = targetIndex === null
+        ? '当前展示原交互流程。从调用链的具体节点跳转，可定位对应模式和步骤。'
+        : '来自节点 ' + nodeById(selected).number + ' · ' + nodeById(selected).title + '。可继续使用图中的模式与步进控件。';
+      detail();
+      if (visual) window.dispatchEvent(new Event('resize'));
+    }
+    function scrollSelected() {
+      const button = root.querySelector('[data-cw-node="' + selected + '"]'), box = $('.cw-tree-scroll');
+      const a = button.getBoundingClientRect(), b = box.getBoundingClientRect();
+      if (a.top < b.top) box.scrollTop += a.top - b.top - 8;
+      else if (a.bottom > b.bottom) box.scrollTop += a.bottom - b.bottom + 8;
+    }
+    function clearError() { $('.cw-error').hidden = true; $('.cw-error').textContent = ''; }
+    function errorMessage(error) { $('.cw-error').textContent = '无法定位该步骤：' + error.message; $('.cw-error').hidden = false; }
+    window.addEventListener('message',event => {
+      if (!frame || event.source !== frame.contentWindow || !event.data) return;
+      if (event.data.type === 'lesson-call-ready') frameReady = true;
+      if (event.data.type === 'lesson-call-result') {
+        const pending = replies.get(event.data.id);
+        if (pending) { replies.delete(event.data.id); clearTimeout(pending.timer); event.data.ok ? pending.resolve(event.data.result) : pending.reject(new Error(event.data.error)); }
+      }
+      if (event.data.type === 'lesson-call-edited' && !busy && screen === 'visual') markEdited();
+    });
+    function markEdited() {
+      targetIndex = null;
+      $('.cw-context').textContent = '图中的模式或步骤已手动调整，当前状态不再绑定调用链节点。返回调用链可重新定位源码对应步骤。';
+      remember();
+    }
+    async function invoke(action) {
+      if (!frame) {
+        if (typeof window.openLessonTarget !== 'function') throw new Error('当前页面缺少步骤入口');
+        const work = nativeQueue.then(() => window.openLessonTarget(action));
+        nativeQueue = work.catch(() => {});
+        return work;
+      }
+      const deadline = Date.now() + 5000;
+      while (!frameReady && Date.now() < deadline) {
+        frame.contentWindow?.postMessage({type:'lesson-call-ping'},'*');
+        await new Promise(resolve => setTimeout(resolve,80));
+      }
+      if (!frameReady) throw new Error('内嵌可视化尚未就绪，请稍后重试');
+      const id = topic + ':' + ++requestId;
+      return new Promise((resolve,reject) => {
+        const timer = setTimeout(() => { replies.delete(id); reject(new Error('步骤定位超时')); },8000);
+        replies.set(id,{resolve,reject,timer});
+        frame.contentWindow.postMessage({type:'lesson-call-open',id,action},'*');
+      });
+    }
+    async function openTarget(index,method = 'push',scroll = true) {
+      const target = nodeById(selected).targets[index];
+      if (!target) return;
+      const currentPage = location.pathname.split('/').at(-1);
+      if (target.action.page && target.action.page !== currentPage) {
+        if (!['index.html','comparison.html'].includes(target.action.page)) throw new Error('不支持的页面目标');
+        const url = new URL(target.action.page,location.href); url.hash = '';
+        location.assign(urlFor({...state(),screen:'visual',target:index},url)); return;
+      }
+      const job = ++revision; busy = true; screen = 'visual'; targetIndex = index; clearError(); render();
+      $('.cw-context').textContent = '正在定位：' + target.label;
+      try {
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const result = await invoke(target.action);
+        if (job !== revision) return;
+        $('.cw-context').textContent = '来自节点 ' + nodeById(selected).number + ' · ' + nodeById(selected).title + ' → ' + (result?.label || target.label);
+        if (method) remember(method);
+        if (scroll) { $('.cw-context').scrollIntoView({block:'start'}); $('.cw-context').focus({preventScroll:true}); }
+      } catch (error) {
+        if (job === revision) { screen = 'chain'; render(); errorMessage(error); }
+      } finally { if (job === revision) { busy = false; root.dataset.cwBusy = 'false'; detail(); } }
+    }
+    function pauseVisual() {
+      if (frame) frame.contentWindow?.postMessage({type:'lesson-call-pause'},'*');
+      else window.dispatchEvent(new Event('lesson-pause-visual'));
+    }
+    function openChain() {
+      revision++; busy = false; screen = 'chain'; clearError();
+      pauseVisual();
+      revealSelected(); buildTree(); render(); remember('push'); scrollSelected();
+      root.scrollIntoView({block:'start'});
+    }
+    root.addEventListener('click',event => {
+      const target = event.target.closest('[data-cw-target]');
+      if (target) { openTarget(Number(target.dataset.cwTarget)); return; }
+      const layer = event.target.closest('[data-cw-view]');
+      if (layer) {
+        if (layer.dataset.cwView === 'chain') openChain();
+        else if (targetIndex !== null) openTarget(targetIndex);
+        else { screen = 'visual'; clearError(); render(); remember('push'); }
+        return;
+      }
+      const toggle = event.target.closest('[data-cw-toggle]');
+      if (toggle) {
+        const id = toggle.dataset.cwToggle;
+        if (collapsed.has(id)) collapsed.delete(id); else collapsed.add(id);
+        buildTree(); detail(); root.querySelector('[data-cw-toggle="' + id + '"]').focus({preventScroll:true}); return;
+      }
+      const button = event.target.closest('[data-cw-node],[data-cw-ancestor]');
+      if (button) {
+        selected = button.dataset.cwNode || button.dataset.cwAncestor; targetIndex = null; clearError();
+        if (button.dataset.cwAncestor) { revealSelected(); buildTree(); }
+        detail(); remember('push');
+        if (button.dataset.cwAncestor) scrollSelected();
+        if (matchMedia('(max-width:760px)').matches) { $('.cw-detail').scrollIntoView({block:'start'}); $('.cw-detail').focus({preventScroll:true}); }
+      }
+    });
+    $('[data-cw-expand]').addEventListener('click',() => { collapsed.clear(); buildTree(); detail(); });
+    $('[data-cw-depth]').addEventListener('click',() => { resetTree(); buildTree(); detail(); });
+    $('[data-cw-fold]').addEventListener('click',() => { collapsed = new Set(variant.nodes.filter(node => node.parent !== null).map(node => node.id)); buildTree(); detail(); });
+    $('.cw-variant select').addEventListener('change',event => {
+      variant = variants.get(event.target.value); selected = variant.entry || variant.nodes[0].id; targetIndex = null;
+      resetTree(); buildTree(); clearError(); render(); remember('push');
+    });
+    for (const name of ['click','change']) document.addEventListener(name,event => {
+      if (event.isTrusted && !busy && screen === 'visual' && event.target.closest('.lesson-original') && event.target.closest('button,select,input')) markEdited();
+    },true);
+    window.addEventListener('popstate',() => {
+      if (routeKey() === lastRoute) return;
+      lastRoute = routeKey(); revision++; busy = false;
+      const next = parseRoute() || {variant:fallback.id,node:fallback.entry || fallback.nodes[0].id,screen:'chain',target:null};
+      applyState(next); resetTree(); buildTree(); render(); clearError();
+      if (screen === 'visual' && targetIndex !== null) openTarget(targetIndex,null,false);
+      else if (screen === 'chain') { pauseVisual(); scrollSelected(); }
+    });
+    resetTree(); buildTree(); render();
+    if (screen === 'visual' && targetIndex !== null) openTarget(targetIndex,null,false);
+    else if (screen === 'chain') scrollSelected();
+    document.documentElement.dataset.callChainReady = 'true';
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded',mount,{once:true}); else mount();
+})();
+</script>
+<!-- call-ui:end -->
+</body>
+</html>

@@ -25,6 +25,16 @@
 | vLLM 并行流程 | 六种单项并行与 TP+SP、DP+EP、DP+TP+PP 三种组合，默认 TP+SP，附训练 DP 对照 | [parallelism](parallelism/README.md) | [parallelism/index.html](parallelism/index.html) |
 | vLLM DPLB 与 EPLB | 请求分流、队列反馈、专家副本与放置，以及请求执行中的同步权重迁移 | [eplb-dplb](eplb-dplb/README.md) | [eplb-dplb/index.html](eplb-dplb/index.html) |
 | 通信原语 | 具体数组的发送、归约、汇集、散布与交换，以及 Ring Attention 的 K/V 环传 | [communication-primitives](communication-primitives/README.md) | [communication-primitives/index.html](communication-primitives/index.html) |
+| RoPE 与位置编码 | 从二维旋转、多频率到位置插值，验算相对位置怎样进入 Q/K 点积。 | [rope-position](rope-position/README.md) | [rope-position/index.html](rope-position/index.html) |
+| 从 logits 到采样 token | 逐步调整温度、top-k、top-p 和随机数，查看候选与概率如何变化。 | [sampling](sampling/README.md) | [sampling/index.html](sampling/index.html) |
+| 量化：scale、zero-point 与误差 | 从范围和分组生成量化参数，观察整数编码、反量化与裁剪误差。 | [quantization](quantization/README.md) | [quantization/index.html](quantization/index.html) |
+| 推理显存预算 | 计算权重、块对齐后的 KV、运行空间与理想并发上界。 | [memory-budget](memory-budget/README.md) | [memory-budget/index.html](memory-budget/index.html) |
+| 推理性能指标与理论下界 | 用时间戳算 TTFT、TPOT 和吞吐，再比较单个 GEMM 的计算与带宽约束。 | [inference-performance](inference-performance/README.md) | [inference-performance/index.html](inference-performance/index.html) |
+| 异步调度：计划与完成分开 | 对照同步与异步两轮执行，追踪输出占位、在途批次和真实 token 回报。 | [async-scheduling](async-scheduling/README.md) | [async-scheduling/index.html](async-scheduling/index.html) |
+| ModelRunner 输入打包 | 从请求加入、退出和压紧到 packed tokens、positions、块表和写入槽。 | [modelrunner-inputs](modelrunner-inputs/README.md) | [modelrunner-inputs/index.html](modelrunner-inputs/index.html) |
+| 结构化输出：语法约束与采样 | 从 schema 与合法 token 集合到 logits mask，再由真实输出推进语法状态。 | [structured-output](structured-output/README.md) | [structured-output/index.html](structured-output/index.html) |
+| Multi-LoRA：按 token 行选择适配器 | 追踪 CPU 权重、GPU 槽位、行映射，以及 shrink/expand 产生的增量。 | [multi-lora](multi-lora/README.md) | [multi-lora/index.html](multi-lora/index.html) |
+| 混合 KV：多组块表与共享块池 | 对照 Full/SWA 分配、窗口释放和前缀查询，查看共同可恢复边界。 | [hybrid-kv-cache](hybrid-kv-cache/README.md) | [hybrid-kv-cache/index.html](hybrid-kv-cache/index.html) |
 
 ```text
 vllm-learning-notes/
@@ -50,6 +60,16 @@ vllm-learning-notes/
 ├── prefix-kv-cache/                   # vLLM 块哈希与 SGLang 前缀树的单步模拟
 ├── kv-offloading/                     # NPU 与 CPU 之间的 KV 块映射
 ├── pd-disaggregation/                 # Prefill / Decode 分离与 KV 传输
+├── rope-position/                       # RoPE 与位置编码
+├── sampling/                            # 从 logits 到采样 token
+├── quantization/                        # 量化：scale、zero-point 与误差
+├── memory-budget/                       # 推理显存预算
+├── inference-performance/               # 推理性能指标与理论下界
+├── async-scheduling/                    # 异步调度：计划与完成分开
+├── modelrunner-inputs/                  # ModelRunner 输入打包
+├── structured-output/                   # 结构化输出：语法约束与采样
+├── multi-lora/                          # Multi-LoRA：按 token 行选择适配器
+├── hybrid-kv-cache/                     # 混合 KV：多组块表与共享块池
 └── vllm-ascend-graph/                 # Ascend 图捕获、回放与底层调用
 ```
 
@@ -69,9 +89,9 @@ GitHub 仓库中的 HTML 链接通常显示源码；本地演示需要用浏览�
 
 ## 从调用链进入可视化
 
-Scheduler 和其余 14 个涉及框架实现的主题，默认先展示整体调用链并展开三层。关键路径继续追到实际子调用、注册分派、缓存管理器或通信边界；可逐层展开、全部展开，也可沿详情中的调用路径返回父接口。选择实现或场景，再点节点查看输入、状态变化、输出消费者和返回续点；节点下的入口会定位原图中的模式与步骤。点击「返回调用链」回到刚才的节点，地址栏支持复制深链接与浏览器前进、后退。直接选择「可视化执行」仍可自由探索原图；手动切换图中模式或步骤后，会解除与源码节点的定位绑定。
+Scheduler 和其余 19 个涉及框架实现的主题，默认先展示整体调用链并展开三层。关键路径继续追到实际子调用、注册分派、缓存管理器或通信边界；可逐层展开、全部展开，也可沿详情中的调用路径返回父接口。选择实现或场景，再点节点查看输入、状态变化、输出消费者和返回续点；节点下的入口会定位原图中的模式与步骤。点击「返回调用链」回到刚才的节点，地址栏支持复制深链接与浏览器前进、后退。直接选择「可视化执行」仍可自由探索原图；手动切换图中模式或步骤后，会解除与源码节点的定位绑定。
 
-覆盖请求生命周期、批处理、Chunked Prefill、DPLB/EPLB、PD 分离、启动、PagedAttention、前缀缓存、KV Offloading、权重卸载与预取、并行机制、投机解码、Ascend 图优化及模型架构。历史 V0/V1、GPU/Ascend 和 SGLang 路径按场景分开，不能把它们串成同一次运行。静态批处理对照明确标为算法教学；训练 DP 和通信原语、Transformer、注意力数学、HC/mHC 等基础演算不冒充 vLLM 执行链。
+覆盖请求生命周期、批处理、Chunked Prefill、DPLB/EPLB、PD 分离、启动、PagedAttention、前缀缓存、KV Offloading、权重卸载与预取、并行机制、投机解码、Ascend 图优化及模型架构，以及异步调度、ModelRunner 输入打包、结构化输出、Multi-LoRA 和混合 KV 管理。历史 V0/V1、GPU/Ascend 和 SGLang 路径按场景分开，不能把它们串成同一次运行。静态批处理对照明确标为算法教学；训练 DP 和通信原语、Transformer、注意力数学、HC/mHC 等基础演算不冒充 vLLM 执行链。
 
 图中的张量、步数和时间是教学示例；调用链依据静态源码，跳转只切换教学页面，不启动模型或硬件执行。详细范围以各场景的说明为准。
 
@@ -82,13 +102,23 @@ Scheduler 和其余 14 个涉及框架实现的主题，默认先展示整体调
 新增的调用链由各主题的 `call-chain.json` 描述，`call-chain-adapter.js` 将节点映射到原图已有控件。公共界面、样式与 iframe 通信在 `assets/call-chain.*` 和 `assets/call-chain-bridge.js`。修改图源后，先运行该主题原有的导出脚本，再生成范围说明与公共界面：
 
 ```powershell
+python scripts/build_lessons.py
 python scripts/update_scope_headers.py
 python scripts/build_learning_ui.py
+python scripts/build_lessons.py --check
 python scripts/update_scope_headers.py --check
 python scripts/build_learning_ui.py --check
 ```
 
 生成器把主题、调用链数据和交互代码内联到 HTML，包括 sandbox iframe；新增调用链无需启动服务或联网。标记为 `lesson-theme`、`call-adapter`、`call-ui` 的区域由生成器维护，不应直接编辑导出副本。
+
+### 新增数值与框架工作台
+
+新增十个主题共用离线逐步工作台：五个基础知识主题（RoPE、采样、量化、显存预算、性能指标）直接从输入进入计算；五个框架主题（异步调度、输入打包、结构化输出、Multi-LoRA、混合 KV）先显示固定 commit 的多层调用链，再跳转到具体场景和步骤。
+
+教学数据与状态维护在各目录的 `lesson.js`，公共接口见 [assets/lesson-workbench-schema.md](assets/lesson-workbench-schema.md)。`scripts/build_lessons.py` 内联图、表、数值与交互；不依赖 CDN 或服务。源码节点跳转会重置为该节点声明的参数，避免先前探索的参数与源码场景混合。手动改参数后可继续自由探索。
+
+每个新主题的 `verify.mjs` 独立验证关键算式或状态守恒；`node scripts/verify_lessons.mjs` 汇总检查控件边界、步骤依赖、数据确定性、相关链接和源码节点目标。基础知识中的数值并非模型运行输出；框架主题的真实调用位置与教学 token、块号、小矩阵分别标注，源码证据固定到 vLLM `295c062db8a48ea73bbd05d1174cb37d24bf86f9`。
 
 ### 调用位置必须与源码 commit 匹配
 
